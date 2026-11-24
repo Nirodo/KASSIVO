@@ -14,6 +14,8 @@ from kassivo.months import month_of, valid_month
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.filters["eur"] = format_eur
+MONTH_ABBR = ("Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez")
+templates.env.filters["month_abbr"] = lambda n: MONTH_ABBR[n - 1]
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 MIN_YEAR, MAX_YEAR = 1900, 2100
@@ -32,6 +34,11 @@ async def get_conn(request: Request):
 
 def render(request: Request, name: str, status: int = 200, **ctx) -> HTMLResponse:
     return templates.TemplateResponse(request, name, ctx, status_code=status)
+
+
+async def get_today() -> date:
+    """Heutiges Datum als Dependency, damit Tests es per dependency_overrides festlegen."""
+    return date.today()
 
 
 def current_month() -> str:

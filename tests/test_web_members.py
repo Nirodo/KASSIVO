@@ -51,9 +51,9 @@ def _upload(client, data, name="geheim-name.zip"):
 
 # --- Grundlagen / Sicherheit -------------------------------------------------
 
-def test_root_redirects_to_members(client):
+def test_root_redirects_to_dues(client):
     r = client.get("/")
-    assert r.status_code in (302, 303, 307) and r.headers["location"] == "/members"
+    assert r.status_code in (302, 303, 307) and r.headers["location"] == "/dues"
 
 
 def test_nav_links(client):

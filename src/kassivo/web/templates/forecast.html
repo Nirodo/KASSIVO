@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Prognose{% endblock %}
+{% block content %}
+{% if error %}<p class="alert" role="alert"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
+<form method="get" action="/forecast" class="filter">
+  <div class="field">
+    <label for="until">Offene Beiträge bis einschließlich (JJJJ-MM-TT)</label>
+    <input id="until" name="until" type="text" value="{{ until_text }}" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" placeholder="JJJJ-MM-TT"{% if error %} aria-invalid="true"{% endif %}>
+  </div>
+  <button type="submit">Anzeigen</button>
+</form>
+<p class="quick">Schnellwahl:
+  {% for label, d in quick %}<a href="/forecast?until={{ d }}">{{ label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+</p>
+{% if fc %}
+<dl class="sums">
+  <div><dt>Überfällig</dt><dd>{{ fc.overdue_cents | eur }}</dd></div>
+  <div><dt>Noch fällig</dt><dd>{{ fc.due_cents | eur }}</dd></div>
+  <div><dt>Gesamt offen</dt><dd><strong>{{ (fc.overdue_cents + fc.due_cents) | eur }}</strong></dd></div>
+</dl>
+{% if items %}
+<div class="table-wrap">
+<table>
+  <caption>Offene Beiträge im Einzelnen</caption>
+  <thead><tr><th scope="col">Mitglied</th><th scope="col">Monat</th><th scope="col" class="num">Offen</th></tr></thead>
+  <tbody>
+  {% for it in items %}
+  <tr><th scope="row"><a href="/members/{{ it.member_id }}/history?year={{ it.month[:4] }}">{{ it.name }}</a></th>
+    <td>{{ it.month }}</td><td class="num">{{ it.open | eur }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="notice">Nichts offen bis zu diesem Datum.</p>
+{% endif %}
+{% endif %}
+{% endblock %}
