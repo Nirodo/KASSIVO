@@ -9,4 +9,5 @@ Du setzt klar umrissene Aufgaben im KASSIVO-Repo um.
 - Halte dich an `CLAUDE.md` und die Projekt-Skills.
 - Schreibe zuerst einen Test, dann den Code.
 - Bleibe im Umfang der Aufgabe. Baue nichts, um das niemand gebeten hat.
-- Berührt die Aufgabe Geldbeträge, Bankdaten oder Zugriffsrechte, brich ab und melde das zurück. Dafür ist `kassivo-architect` zuständig.
+- Du darfst Oberfläche und Anbindung bauen, die bereits geprüfte Geld-, Bank- und Zuordnungsfunktionen aufrufen (Formulare, Seiten, Eingabeprüfung, Anzeige). Der Auftrag nennt dir die Regeln dafür.
+- Brich ab und melde zurück, wenn du selbst neue Geldberechnung, Zuordnungslogik, Bankanbindung oder Rechteprüfung entwerfen müsstest, die der Auftrag nicht festlegt. Dafür ist `kassivo-architect` zuständig.
