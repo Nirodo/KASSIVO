@@ -61,8 +61,10 @@ Sicherung: Seite `/backup` (Menüpunkt "Backup") öffnen und "Sicherung erstelle
 Wiederherstellung (von Hand):
 
 1. KASSIVO beenden.
-2. Die gewünschte Sicherung aus `data/backups/` über `data/kassivo.db` kopieren.
-3. KASSIVO wieder starten.
+2. Die aktuelle `data/kassivo.db` an einen anderen Ort kopieren oder umbenennen, damit sie nicht verloren geht.
+3. Eine eventuell vorhandene Datei `kassivo.db-journal` neben der Datenbank löschen, damit kein altes Journal auf die wiederhergestellte Kopie angewendet wird.
+4. Die gewünschte Sicherung aus `data/backups/` nach `data/kassivo.db` kopieren.
+5. KASSIVO starten und die Daten prüfen.
 
 ## Tests
 

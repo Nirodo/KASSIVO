@@ -255,3 +255,72 @@ def test_readme_not_stale():
     t = (ROOT / "README.md").read_text(encoding="utf-8")
     for s in ("python -m kassivo", "127.0.0.1", "data/backups", "CAMT"):
         assert s in t
+
+
+# --- Fix-Runde 1: exklusive Namensreservierung ---
+
+def test_existing_name_from_generator_untouched(src, tmp_path, monkeypatch):
+    d = tmp_path / "o"
+    d.mkdir()
+    (d / "kassivo-20260301-123045.db").write_bytes(b"alt")
+    import kassivo.backup as kb
+    monkeypatch.setattr(
+        kb, "_candidates",
+        lambda dest, stem: iter([dest / f"{stem}.db", dest / f"{stem}-2.db"]))
+    p = backup_db(src, d, now=NOW)
+    assert p.name == "kassivo-20260301-123045-2.db"
+    assert (d / "kassivo-20260301-123045.db").read_bytes() == b"alt"
+    assert _leftovers(d) == []
+
+
+def test_two_threads_same_second(tmp_path):
+    import threading
+    dbp = tmp_path / "s.db"
+    c = connect(dbp)
+    c.execute("insert into member(name) values('A')")
+    c.commit()
+    c.close()
+    d = tmp_path / "o"
+    results, errors = [], []
+
+    def run():
+        try:
+            conn = connect(dbp)
+            results.append(backup_db(conn, d, now=NOW))
+            conn.close()
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    ts = [threading.Thread(target=run) for _ in range(2)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert not errors
+    assert len({p.name for p in results}) == 2
+    for p in results:
+        b = sqlite3.connect(p)
+        assert _count(b, "member") == 1
+        b.close()
+    assert _leftovers(d) == []
+    assert len(list(d.iterdir())) == 2
+
+
+def test_copy_failure_removes_reserved_file(src, tmp_path, monkeypatch):
+    def boom(conn, target):
+        raise sqlite3.OperationalError("kaputt")
+    monkeypatch.setattr("kassivo.backup._copy", boom)
+    with pytest.raises(sqlite3.Error):
+        backup_db(src, tmp_path / "o", now=NOW)
+    assert list((tmp_path / "o").iterdir()) == []
+
+
+def test_listing_skips_zero_byte(tmp_path):
+    (tmp_path / "kassivo-20260101-000000.db").write_bytes(b"")
+    (tmp_path / "kassivo-20260101-000001.db").write_bytes(b"x")
+    assert [i["name"] for i in list_backups(tmp_path)] == ["kassivo-20260101-000001.db"]
+
+
+def test_readme_restore_mentions_journal():
+    t = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "journal" in t.split("Wiederherstellung (von Hand)")[1]

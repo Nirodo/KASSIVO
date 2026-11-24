@@ -2,6 +2,7 @@
 import os
 import re
 import sqlite3
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -27,21 +28,37 @@ def _copy(conn: sqlite3.Connection, target: Path) -> None:
             own.close()
 
 
+def _candidates(dest_dir: Path, stem: str):
+    yield dest_dir / f"{stem}.db"
+    n = 2
+    while True:
+        yield dest_dir / f"{stem}-{n}.db"
+        n += 1
+
+
+def _reserve(dest_dir: Path, stem: str) -> Path:
+    """Legt den Zielnamen exklusiv an (xb), nimmt bei Kollision den nächsten Suffix."""
+    for final in _candidates(dest_dir, stem):
+        try:
+            with open(final, "xb"):
+                return final
+        except FileExistsError:
+            continue
+
+
 def backup_db(conn: sqlite3.Connection, dest_dir: Path, now: datetime | None = None) -> Path:
     """Schreibt kassivo-JJJJMMTT-HHMMSS.db in dest_dir (nie überschreiben, atomar)."""
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     stem = "kassivo-" + (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
-    final, n = dest_dir / f"{stem}.db", 1
-    while final.exists():
-        n += 1
-        final = dest_dir / f"{stem}-{n}.db"
-    tmp = dest_dir / f".{final.name}.tmp"
+    final = _reserve(dest_dir, stem)
+    tmp = dest_dir / f".{final.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
     try:
         _copy(conn, tmp)
         os.replace(tmp, final)
     except BaseException:
         tmp.unlink(missing_ok=True)
+        final.unlink(missing_ok=True)  # nur unsere eigene Reservierung
         raise
     return final
 
@@ -59,7 +76,7 @@ def list_backups(dest_dir: Path | None) -> list[dict]:
     found = []
     for p in Path(dest_dir).iterdir():
         m = NAME_RE.fullmatch(p.name)
-        if m and p.is_file():
+        if m and p.is_file() and p.stat().st_size > 0:
             found.append(((m[1], m[2], int(m[3] or 1)), p, m))
     found.sort(key=lambda t: t[0], reverse=True)
     out = []
