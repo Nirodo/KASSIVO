@@ -177,3 +177,20 @@ def test_forecast_is_frozen(conn):
     f = forecast(conn, NOV_END, TODAY)
     with pytest.raises(Exception):
         f.due_cents = 1
+
+
+def test_until_year_9999_raises_fast(conn):
+    import time
+    _two(conn)
+    t = time.monotonic()
+    with pytest.raises(ValueError):
+        forecast(conn, date(9999, 12, 31), TODAY)
+    assert time.monotonic() - t < 1
+
+
+def test_horizon_boundary(conn):
+    _two(conn)
+    # TODAY-Monat 2026-11 + 600 Monate = 2076-11
+    assert isinstance(forecast(conn, date(2076, 11, 30), TODAY), Forecast)
+    with pytest.raises(ValueError):
+        forecast(conn, date(2076, 12, 1), TODAY)

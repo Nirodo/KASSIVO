@@ -8,7 +8,7 @@ from datetime import date, datetime
 
 from kassivo.dues import get_check_start, month_status
 from kassivo.members import list_members
-from kassivo.months import month_of, month_range
+from kassivo.months import add_months, month_of, month_range
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,8 @@ def forecast(conn, until: date, today: date) -> Forecast:
     """
     if not _is_date(until) or not _is_date(today):
         raise ValueError("until und today müssen datetime.date sein")
+    if month_of(until) > add_months(month_of(today), 600):
+        raise ValueError("until liegt mehr als 50 Jahre in der Zukunft")
     members = list_members(conn)
     starts = [m["fee_start"] for m in members if m["fee_start"]]
     start = get_check_start(conn) or (min(starts) if starts else None)
