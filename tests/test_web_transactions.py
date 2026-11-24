@@ -640,7 +640,8 @@ def test_learn_cascade_skipped_when_ambiguous(client, db):
     db.execute("insert into member_iban(iban, member_id) values(?,?)", (OTHER_IBAN, a))
     db.commit()
     r = _assign(client, _tx_id(db, "M 1"), b, next="/unmatched")  # IBAN wird mehrdeutig
-    assert r.headers["location"] == "/unmatched"  # kein Hinweis, nichts weiter zugeordnet
+    # Hinweis auf die Mehrdeutigkeit, nichts weiter zugeordnet
+    assert r.headers["location"] == "/unmatched?note=ambiguous&n=0"
     assert _col(db, _tx_id(db, "M 2"), "member_id") is None
     assert _col(db, _tx_id(db, "M 3"), "member_id") is None
 
@@ -666,3 +667,54 @@ def test_import_bad_amount_is_422_not_500(client, db, raw):
     r = client.post("/import", files={"file": ("x.xml", data, "application/xml")})
     assert r.status_code == 422 and "Es wurde nichts importiert" in r.text
     assert db.execute('select count(*) from "transaction"').fetchone()[0] == 0
+
+
+# --- Fix-Runde 2 (N1): Mehrdeutigkeit auch über member.iban ---------------------
+
+AMBIG_NOTE = ("Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
+              " künftig nicht automatisch zugeordnet.")
+
+
+def _kid(db, name, **kw):
+    # Eintritt Dezember 2025 -> Beitrag ab 2026-01
+    return create_member(db, name, "Aktiv", date(2025, 12, 10), **kw)
+
+
+def test_siblings_member_iban_learn_on_unmatched_stays_ambiguous(client, db):
+    """sim4: beide Kinder haben die Eltern-IBAN in den Stammdaten."""
+    set_check_start(db, "2026-01")
+    a = _kid(db, "Kind A", iban=OTHER_IBAN)
+    b = _kid(db, "Kind B", iban=OTHER_IBAN)
+    entries = [dict(E_ERIKA, ref=f"P{i}", purpose=f"P {i}", booking_date=d)
+               for i, d in enumerate(("2026-01-03", "2026-01-04", "2026-02-03", "2026-02-04"))]
+    _upload(client, entries)
+    ids = [_tx_id(db, f"P {i}") for i in range(4)]
+    assert all(_col(db, t, "member_id") is None for t in ids)  # Import: mehrdeutig
+    r = _assign(client, ids[0], a, next="/unmatched")
+    assert r.status_code == 303
+    assert r.headers["location"] == "/unmatched?note=ambiguous&n=0"
+    assert AMBIG_NOTE in _text(client.get(r.headers["location"]).text)
+    assert db.execute("select member_id from member_iban where iban=?",
+                      (OTHER_IBAN,)).fetchone()[0] is None
+    assert all(_col(db, t, "member_id") is None for t in ids[1:])
+    assert db.execute("select count(*) from allocation where tx_id<>?",
+                      (ids[0],)).fetchone()[0] == 0
+    assert db.execute("select count(*) from allocation where member_id=?",
+                      (b,)).fetchone()[0] == 0
+    feb = date(2026, 3, 10)
+    assert month_status(db, a, "2026-02", feb).status == "OVERDUE"
+    assert month_status(db, b, "2026-02", feb).status == "OVERDUE"
+    # späterer Lauf "Unklare automatisch zuordnen" ordnet auch nichts zu
+    assert client.post("/unmatched/auto").headers["location"] == "/unmatched?note=auto&n=0"
+
+
+def test_single_payer_learn_cascade_confirms_booking_months(client, db):
+    set_check_start(db, "2026-01")
+    m = _kid(db, "Erika Muster")
+    _three_months(client)
+    r = _assign(client, _tx_id(db, "M 1"), m, next="/unmatched")
+    assert r.headers["location"] == "/unmatched?note=learned&n=2"
+    for i in (1, 2, 3):
+        tx = _tx_id(db, f"M {i}")
+        assert _col(db, tx, "member_id") == m
+        assert [tuple(x) for x in _alloc(db, tx)] == [(f"2026-0{i}", 1700, "confirmed")]

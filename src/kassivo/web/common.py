@@ -74,6 +74,8 @@ _NOTES = {
     "auto": "{n} unklare Zahlungen automatisch zugeordnet.",
     "learned": "Zugeordnet. {n} weitere Zahlungen mit derselben Absender-IBAN wurden"
                " automatisch zugeordnet.",
+    "ambiguous": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
+                 " künftig nicht automatisch zugeordnet.",
 }
 _COUNT_RE = re.compile(r"[0-9]{1,7}", re.ASCII)
 

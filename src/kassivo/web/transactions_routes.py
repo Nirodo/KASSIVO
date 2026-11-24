@@ -193,8 +193,11 @@ async def set_member(request: Request, tx_id: int, member_id: str = Form(""),
     if not (learning and member is not None):
         return _see_other(safe_next(next))
     # Gelernte IBAN gleich auf die übrigen unklaren Zahlungen dieses Absenders
-    # anwenden; ist sie mehrdeutig geworden, ordnet auto_assign nichts zu.
+    # anwenden; ist sie mehrdeutig geworden, wird nichts weiter zugeordnet und
+    # der Hinweis sagt das.
     iban = normalize_iban(_tx(conn, tx_id)["cp_iban"])
+    if matching.iban_is_ambiguous(conn, iban):
+        return _see_other(with_note(safe_next(next), "ambiguous", 0))
     others = [r["id"] for r in matching.unmatched(conn)
               if iban and normalize_iban(r["cp_iban"]) == iban]
     n = matching.auto_assign(conn, others)

@@ -120,12 +120,15 @@ def test_mother_pays_for_child(conn):
 def test_member_iban_before_member_iban_column(conn):
     a = _member(conn, "A", iban=MOM)
     b = _member(conn, "B")
-    t1, t2 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
-    assign_member(conn, t1, b)
+    t2 = _tx(conn, 1700, MOM)
+    # ein vorhandener gelernter Eintrag hat beim Nachschlagen Vorrang.
+    # Über assign_member(learn=True) entsteht er so nicht mehr: die Zuordnung
+    # an B macht die IBAN von A mehrdeutig (Fix-Runde 2, N1).
+    conn.execute("insert into member_iban(iban, member_id) values(?,?)", (MOM, b))
+    conn.commit()
     assert auto_assign(conn, [t2]) == 1
     assert _row(conn, t2)["member_id"] == b
     assert _row(conn, t2)["member_id"] != a
-    assert _learned(conn) == {MOM: b}
 
 
 def test_ambiguous_iban_skipped(conn):
@@ -576,3 +579,67 @@ def test_assign_persists_after_commit(conn):
     assign_member(conn, t, m)
     conn.rollback()
     assert _row(conn, t)["member_id"] == m
+
+
+# --- Fix-Runde 2 (N1): Mehrdeutigkeit auch über member.iban ---------------------
+
+def test_learn_other_member_than_member_iban_owner_makes_ambiguous(conn):
+    """sim3 D: nur A hat die IBAN in den Stammdaten, Zuordnung an B mit Lernen."""
+    set_check_start(conn, "2025-01")
+    a = _member(conn, "A", iban="XX00FAKEPARENT")
+    b = _member(conn, "B")
+    t1 = _tx(conn, 1700, "XX00FAKEPARENT", day="2025-01-03")
+    t2 = _tx(conn, 1700, "XX00FAKEPARENT", day="2025-01-04")
+    conn.commit()
+    assert auto_assign(conn, [t1]) == 1 and _row(conn, t1)["member_id"] == a
+    assign_member(conn, t2, b, learn=True)
+    assert _row(conn, t2)["member_id"] == b
+    assert _learned(conn) == {"XX00FAKEPARENT": None}  # mehrdeutig, nicht B
+    t3 = _tx(conn, 1700, "XX00FAKEPARENT", day="2025-02-03")
+    conn.commit()
+    assert auto_assign(conn, [t3]) == 0
+    assert _row(conn, t3)["member_id"] is None
+
+
+def test_learn_on_member_iban_shared_by_siblings_makes_ambiguous(conn):
+    a = _member(conn, "Kind A", iban=MOM)
+    b = _member(conn, "Kind B", iban=MOM.lower())
+    t1, t2, t3 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
+    assign_member(conn, t1, a, learn=True)
+    assert _learned(conn) == {MOM: None}
+    assert auto_assign(conn, [t2, t3]) == 0
+    assign_member(conn, t2, a, learn=True)  # späteres Lernen bleibt mehrdeutig
+    assert _learned(conn) == {MOM: None}
+    assert auto_assign(conn, [t3]) == 0
+    assert b != a
+
+
+def test_learn_member_iban_owner_keeps_mapping(conn):
+    a = _member(conn, "A", iban=MOM)
+    t1, t2 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
+    assign_member(conn, t1, a, learn=True)
+    assert _learned(conn) == {MOM: a}
+    assert auto_assign(conn, [t2]) == 1
+    assert _row(conn, t2)["member_id"] == a
+
+
+def test_learn_learned_owner_wins_over_member_iban_for_same_member(conn):
+    # gelernter Eintrag hat Vorrang; dasselbe Mitglied erneut bleibt eindeutig
+    a, b = _member(conn, "A"), _member(conn, "B", iban=MOM)
+    t1, t2, t3 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
+    conn.execute("insert into member_iban(iban, member_id) values(?,?)", (MOM, a))
+    conn.commit()
+    assign_member(conn, t1, a, learn=True)
+    assert _learned(conn) == {MOM: a}
+    assign_member(conn, t2, b, learn=True)  # anderes Mitglied als der Eintrag
+    assert _learned(conn) == {MOM: None}
+    assert auto_assign(conn, [t3]) == 0
+
+
+def test_learn_false_writes_nothing_even_with_member_iban(conn):
+    a = _member(conn, "A", iban=MOM)
+    b = _member(conn, "B", iban=MOM)
+    t1, t2 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
+    assign_member(conn, t1, a, learn=False)
+    assign_member(conn, t2, b, learn=False)
+    assert _learned(conn) == {}

@@ -57,16 +57,21 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
             _set_fee_category_if_empty(conn, tx_id)
             iban = normalize_iban(tx["cp_iban"])
             if learn and iban:
-                # Gelernt für ein anderes Mitglied (oder schon mehrdeutig):
-                # die IBAN wird mehrdeutig (NULL), auto_assign überspringt sie.
+                # Maßgeblich ist, was auto_assign heute für die IBAN nähme
+                # (gelernt, mehrdeutig oder member.iban): gehört sie schon
+                # einem anderen Mitglied oder ist mehrdeutig, wird sie
+                # mehrdeutig (NULL), auto_assign überspringt sie.
                 # Verworfen: "letzte Zuordnung gewinnt" (Geschwister-Fall
-                # ordnete still alle Zahlungen dem zuletzt gewählten Kind zu).
+                # ordnete still alle Zahlungen dem zuletzt gewählten Kind zu)
+                # und nur gelernte Einträge vergleichen (übersah Geschwister
+                # mit derselben Eltern-IBAN in member.iban).
+                lookup = _iban_lookup(conn)
+                learned = (member_id if iban not in lookup
+                           or lookup[iban] == member_id else None)
                 conn.execute(
                     "insert into member_iban(iban, member_id) values(?,?)"
-                    " on conflict(iban) do update set member_id=case"
-                    " when member_iban.member_id=excluded.member_id"
-                    " then member_iban.member_id else null end",
-                    (iban, member_id),
+                    " on conflict(iban) do update set member_id=excluded.member_id",
+                    (iban, learned),
                 )
             if changed:
                 dues.propose_allocations(conn, tx_id, commit=False)
@@ -96,6 +101,13 @@ def _iban_lookup(conn) -> dict[str, int | None]:
         if iban:
             lookup[iban] = r["member_id"]
     return lookup
+
+
+def iban_is_ambiguous(conn, iban: str | None) -> bool:
+    """True, wenn auto_assign die IBAN als mehrdeutig überspringt."""
+    iban = normalize_iban(iban)
+    lookup = _iban_lookup(conn)
+    return bool(iban) and iban in lookup and lookup[iban] is None
 
 
 def auto_assign(conn, tx_ids: list[int]) -> int:
