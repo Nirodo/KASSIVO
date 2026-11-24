@@ -187,6 +187,26 @@ def confirm_allocations(conn, tx_id: int, allocs: list[tuple[str, int]]) -> None
     conn.commit()
 
 
+def clear_allocations(conn, tx_id: int) -> int:
+    """Löscht alle Verteilungen (proposed und confirmed) einer Buchung.
+
+    Macht eine falsche Zuordnung korrigierbar: danach greift die Sperre in
+    assign_member nicht mehr. member_id, Kategorie und gelernte IBAN bleiben,
+    es wird nichts neu vorgeschlagen. Gibt die Zahl gelöschter Zeilen zurück.
+    """
+    if not conn.execute(
+        'select 1 from "transaction" where id=?', (tx_id,)
+    ).fetchone():
+        raise ValueError(f"unbekannte Buchung {tx_id}")
+    try:
+        n = conn.execute("delete from allocation where tx_id=?", (tx_id,)).rowcount
+    except Exception:
+        conn.rollback()
+        raise
+    conn.commit()
+    return n
+
+
 def dues_grid(conn, year: int, today: date) -> list[dict]:
     members = sorted(list_members(conn), key=lambda r: (r["name"].casefold(), r["id"]))
     months = [f"{year:04d}-{i:02d}" for i in range(1, 13)]

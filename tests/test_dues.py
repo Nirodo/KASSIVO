@@ -1,15 +1,17 @@
 """Beitragsprüfung: Status, Verteilungsvorschlag, Historie. Nur erfundene Daten."""
 from datetime import date
 
+import sqlite3
+
 import pytest
 
 from kassivo.db import set_setting
 from kassivo.dues import (
-    MonthStatus, confirm_allocations, dues_grid, get_check_start, month_status,
+    MonthStatus, clear_allocations, confirm_allocations, dues_grid, get_check_start, month_status,
     payment_history, propose_allocations, set_check_start,
 )
 from kassivo.fees import set_fee
-from kassivo.matching import assign_member
+from kassivo.matching import assign_member, unmatched
 from kassivo.members import create_member, leave_member
 
 MOM = "DE22222222222222222222"
@@ -450,3 +452,100 @@ def test_payment_history_ties_by_id_desc(conn):
     hist = payment_history(conn, m)
     assert [h["tx_id"] for h in hist] == [t2, t1]
     assert hist[0]["allocations"] == []
+
+
+# --- Verteilung aufheben ----------------------------------------------------
+
+def _tx_row(conn, tx_id):
+    return conn.execute(
+        'select member_id, category_id from "transaction" where id=?', (tx_id,)
+    ).fetchone()
+
+
+def test_clear_undoes_auto_confirm(conn):
+    m = _anna(conn)
+    t = _tx(conn, 1700, cp_iban=MOM)
+    assign_member(conn, t, m)
+    assert month_status(conn, m, "2026-01", JAN).status == "PAID"
+    before = tuple(_tx_row(conn, t))
+    learned = conn.execute("select iban, member_id from member_iban").fetchall()
+    assert clear_allocations(conn, t) == 1
+    assert month_status(conn, m, "2026-01", JAN) == MonthStatus(
+        "2026-01", 1700, 0, "OPEN")
+    assert tuple(_tx_row(conn, t)) == before
+    assert conn.execute(
+        "select iban, member_id from member_iban").fetchall() == learned
+    assert _rows(conn, t) == []  # kein neuer Vorschlag
+    assert not conn.in_transaction
+
+
+def test_clear_then_reassign_other_member(conn):
+    a, b = _anna(conn, "A"), _anna(conn, "B")
+    t = _tx(conn, 1700, cp_iban=MOM)
+    assign_member(conn, t, a)
+    clear_allocations(conn, t)
+    assign_member(conn, t, b)
+    assert _tx_row(conn, t)["member_id"] == b
+    assert month_status(conn, b, "2026-01", JAN).status == "PAID"
+    assert month_status(conn, a, "2026-01", JAN).status == "OPEN"
+
+
+def test_clear_then_unassign(conn):
+    m = _anna(conn)
+    t = _tx(conn, 1700, cp_iban=MOM)
+    assign_member(conn, t, m)
+    clear_allocations(conn, t)
+    assign_member(conn, t, None)
+    assert _tx_row(conn, t)["member_id"] is None
+    assert t in [r["id"] for r in unmatched(conn)]
+
+
+def test_clear_two_proposed_rows(conn):
+    m = _anna(conn)
+    t = _tx(conn, 3400, member_id=m)
+    propose_allocations(conn, t)
+    assert clear_allocations(conn, t) == 2
+    assert _rows(conn, t) == []
+
+
+def test_clear_without_rows_returns_0(conn):
+    t = _tx(conn, 1700)
+    assert clear_allocations(conn, t) == 0
+    assert not conn.in_transaction
+
+
+def test_clear_unknown_tx_raises(conn):
+    m = _anna(conn)
+    t = _tx(conn, 1700, member_id=m)
+    propose_allocations(conn, t)
+    with pytest.raises(ValueError):
+        clear_allocations(conn, 9999)
+    assert len(_rows(conn, t)) == 1
+    assert not conn.in_transaction
+
+
+def test_clear_leaves_other_tx_untouched(conn):
+    m = _anna(conn)
+    ta = _tx(conn, 1700, member_id=m)
+    tb = _tx(conn, 3400, day="2026-01-06", member_id=m)
+    propose_allocations(conn, ta)
+    propose_allocations(conn, tb)
+    before = _rows(conn, tb)
+    assert clear_allocations(conn, ta) == 1
+    assert _rows(conn, tb) == before == [
+        ("2026-02", 1700, "proposed", m), ("2026-03", 1700, "proposed", m)]
+
+
+def test_clear_failure_keeps_rows_and_no_open_transaction(conn):
+    m = _anna(conn)
+    t = _tx(conn, 3400, member_id=m)
+    propose_allocations(conn, t)
+    # Fehler im Delete erzwingen, robust über einen Trigger
+    conn.execute(
+        "create trigger no_del before delete on allocation"
+        " begin select raise(abort, 'gesperrt'); end")
+    conn.commit()
+    with pytest.raises(sqlite3.DatabaseError):
+        clear_allocations(conn, t)
+    assert not conn.in_transaction
+    assert len(_rows(conn, t)) == 2
