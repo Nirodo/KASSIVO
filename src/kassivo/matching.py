@@ -45,11 +45,12 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
     conn.execute(
         'update "transaction" set member_id=? where id=?', (member_id, tx_id)
     )
-    if member_id is None:
+    if member_id != tx["member_id"]:
+        # Vorschläge gehören zum alten Mitglied und wären jetzt falsch
         conn.execute(
             "delete from allocation where tx_id=? and status='proposed'", (tx_id,)
         )
-    else:
+    if member_id is not None:
         _set_fee_category_if_empty(conn, tx_id)
         iban = normalize_iban(tx["cp_iban"])
         if learn and iban:
@@ -85,9 +86,13 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
     if not wanted:
         return 0
     lookup = _iban_lookup(conn)
+    austritt = {
+        r["id"]: r["austritt"]
+        for r in conn.execute("select id, austritt from member where austritt is not null")
+    }
     assigned = 0
     rows = conn.execute(
-        'select id, cp_iban from "transaction"'
+        'select id, cp_iban, booking_date from "transaction"'
         " where amount_cents > 0 and member_id is null and cp_iban is not null"
     ).fetchall()
     for tx in rows:
@@ -95,6 +100,10 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
             continue
         member_id = lookup.get(normalize_iban(tx["cp_iban"]))
         if member_id is None:  # unbekannt oder mehrdeutig
+            continue
+        left = austritt.get(member_id)
+        if left and tx["booking_date"] > left:
+            # ausgetreten: bleibt in "Unklar", kein Rückgriff auf member.iban
             continue
         conn.execute(
             'update "transaction" set member_id=? where id=?', (member_id, tx["id"])

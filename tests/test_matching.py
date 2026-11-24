@@ -122,7 +122,8 @@ def test_member_iban_before_member_iban_column(conn):
     assign_member(conn, t1, b)
     assert auto_assign(conn, [t2]) == 1
     assert _row(conn, t2)["member_id"] == b
-    assert a != b
+    assert _row(conn, t2)["member_id"] != a
+    assert _learned(conn) == {MOM: b}
 
 
 def test_ambiguous_iban_skipped(conn):
@@ -292,6 +293,90 @@ def test_reassign_same_member_keeps_allocations(conn):
     assign_member(conn, t, m)
     assert _row(conn, t)["member_id"] == m
     assert _allocs(conn, t) == ["proposed", "confirmed"]
+
+
+def test_reassign_other_member_deletes_proposed(conn):
+    a, b = _member(conn, "A"), _member(conn, "B")
+    t = _tx(conn, 1700, MOM)
+    assign_member(conn, t, a)
+    _alloc(conn, t, a, "proposed")
+    assign_member(conn, t, b)
+    assert _row(conn, t)["member_id"] == b
+    assert _allocs(conn, t) == []
+
+
+def test_reassign_other_member_confirmed_still_raises(conn):
+    a, b = _member(conn, "A"), _member(conn, "B")
+    t = _tx(conn, 1700, MOM)
+    assign_member(conn, t, a)
+    _alloc(conn, t, a, "proposed")
+    _alloc(conn, t, a, "confirmed")
+    with pytest.raises(ValueError, match="Verteilung zuerst aufheben"):
+        assign_member(conn, t, b)
+    assert _allocs(conn, t) == ["proposed", "confirmed"]
+
+
+def test_assign_from_none_deletes_stale_proposed(conn):
+    a, b = _member(conn, "A"), _member(conn, "B")
+    t = _tx(conn, 1700, MOM)
+    _alloc(conn, t, a, "proposed")
+    assign_member(conn, t, b)
+    assert _allocs(conn, t) == []
+
+
+def _leave(conn, member_id, day):
+    conn.execute("update member set austritt=? where id=?", (day, member_id))
+
+
+def test_left_member_learned_iban_not_auto_assigned(conn):
+    a = _member(conn, "A")
+    t1 = _tx(conn, 1700, MOM, day="2026-01-01")
+    t2 = _tx(conn, 1700, MOM, day="2026-03-01")
+    assign_member(conn, t1, a)
+    _leave(conn, a, "2026-02-28")
+    assert auto_assign(conn, [t2]) == 0
+    assert _row(conn, t2)["member_id"] is None
+    assert t2 in _ids(unmatched(conn))
+
+
+def test_left_member_column_iban_not_auto_assigned(conn):
+    a = _member(conn, "A", iban=KID)
+    _leave(conn, a, "2026-02-28")
+    t = _tx(conn, 1700, KID, day="2026-03-01")
+    assert auto_assign(conn, [t]) == 0
+    assert t in _ids(unmatched(conn))
+
+
+def test_booking_at_or_before_austritt_still_assigned(conn):
+    a = _member(conn, "A", iban=KID)
+    _leave(conn, a, "2026-02-28")
+    t1 = _tx(conn, 1700, KID, day="2026-02-28")
+    t2 = _tx(conn, 1700, KID, day="2026-02-01")
+    assert auto_assign(conn, [t1, t2]) == 2
+    assert _row(conn, t1)["member_id"] == a
+    assert _row(conn, t2)["member_id"] == a
+
+
+def test_left_learned_member_no_fall_through_to_member_iban(conn):
+    a = _member(conn, "A")
+    b = _member(conn, "B", iban=MOM)
+    t1 = _tx(conn, 1700, MOM, day="2026-01-01")
+    t2 = _tx(conn, 1700, MOM, day="2026-03-01")
+    assign_member(conn, t1, a)
+    _leave(conn, a, "2026-02-28")
+    assert auto_assign(conn, [t2]) == 0
+    assert _row(conn, t2)["member_id"] is None
+    t3 = _tx(conn, 1700, KID, day="2026-03-01")
+    conn.execute("update member set iban=? where id=?", (KID, b))
+    assert auto_assign(conn, [t3]) == 1  # b selbst ist aktiv und zuordenbar
+
+
+def test_manual_assign_to_left_member_allowed(conn):
+    a = _member(conn, "A")
+    _leave(conn, a, "2026-02-28")
+    t = _tx(conn, 1700, MOM, day="2026-03-01")
+    assign_member(conn, t, a)
+    assert _row(conn, t)["member_id"] == a
 
 
 def test_unmatched_order_newest_first(conn):
