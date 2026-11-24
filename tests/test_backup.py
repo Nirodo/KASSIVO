@@ -253,7 +253,8 @@ def test_gitignore_protects_data():
 
 def test_readme_not_stale():
     t = (ROOT / "README.md").read_text(encoding="utf-8")
-    for s in ("python -m kassivo", "127.0.0.1", "data/backups", "CAMT"):
+    for s in ("python -m kassivo", "127.0.0.1", "<DB-Ordner>/backups", "CAMT",
+              "KASSIVO_DB", "%LOCALAPPDATA%", "OneDrive", "Vorhandene Datenbank umziehen"):
         assert s in t
 
 

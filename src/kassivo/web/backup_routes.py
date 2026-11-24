@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Request
 
 from kassivo.backup import backup_db, list_backups
+from kassivo.settings import backup_dir
 from kassivo.web.common import get_conn, render
 
 router = APIRouter()
@@ -10,7 +11,7 @@ E_MEMORY = "Sicherung nur bei dateibasierter Datenbank möglich."
 
 def _backup_dir(request: Request):
     path = request.app.state.db_path
-    return None if str(path) == ":memory:" else path.parent / "backups"
+    return None if str(path) == ":memory:" else backup_dir(path)
 
 
 def _page(request, status=200, created=None, error=None):

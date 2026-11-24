@@ -38,7 +38,29 @@ Unter Linux oder macOS heißt der Aktivierungsbefehl `source .venv/bin/activate`
 python -m kassivo
 ```
 
-Danach ist KASSIVO unter http://127.0.0.1:8000 im Browser erreichbar. Standardmäßig liegt die Datenbank in `data/kassivo.db`. Mit der Umgebungsvariable `KASSIVO_DB` lässt sich ein anderer Pfad wählen, zum Beispiel `KASSIVO_DB=D:\Kasse\kassivo.db`.
+Danach ist KASSIVO unter http://127.0.0.1:8000 im Browser erreichbar. Beim Start zeigt KASSIVO den vollständigen Pfad der Datenbank und des Sicherungsordners an.
+
+## Speicherort der Daten
+
+Die Datenbank liegt standardmäßig außerhalb des Projektordners in einem lokalen Ordner des Benutzers:
+
+- Windows: `%LOCALAPPDATA%\KASSIVO\kassivo.db` (meist `C:\Users\<Name>\AppData\Local\KASSIVO\kassivo.db`)
+- Linux und macOS: `$XDG_DATA_HOME/kassivo/kassivo.db`, sonst `~/.local/share/kassivo/kassivo.db`
+
+Sicherungen liegen im Ordner `backups` neben der Datenbank, also in `<DB-Ordner>/backups`. Der DB-Ordner wird beim Start angelegt, falls er fehlt.
+
+Einen anderen Ort wählt die Umgebungsvariable `KASSIVO_DB` (ein relativer Pfad wird beim Start in einen absoluten umgewandelt):
+
+```
+set KASSIVO_DB=D:\Kasse\kassivo.db
+python -m kassivo
+```
+
+Unter Linux oder macOS: `KASSIVO_DB=/pfad/zur/kassivo.db python -m kassivo`.
+
+**Warnung zu Cloud-Ordnern:** Die Datenbank und die Sicherungen enthalten Namen, Adressen und IBANs. Sie gehören nicht in einen Ordner, der mit OneDrive, Dropbox, Google Drive oder iCloud synchronisiert wird. Liegt der Pfad in einem solchen Ordner, zeigt KASSIVO beim Start eine Warnung (der Start wird nicht verhindert).
+
+**Vorhandene Datenbank umziehen:** Wer schon mit einer älteren Version gearbeitet hat, findet die Datenbank in `data/kassivo.db` im Projektordner. KASSIVO beenden, `data/kassivo.db` (und `data/backups/`, falls vorhanden) an den neuen Ort kopieren, zum Beispiel nach `%LOCALAPPDATA%\KASSIVO\`, KASSIVO starten und prüfen, dass der angezeigte Pfad stimmt und die Daten da sind. Danach die alte Kopie im Projektordner löschen, damit sie nicht weiter synchronisiert wird.
 
 ## Ablauf Import
 
@@ -51,19 +73,19 @@ Danach ist KASSIVO unter http://127.0.0.1:8000 im Browser erreichbar. Standardm�
 
 - Alles bleibt lokal. KASSIVO hat keine Verbindung zur Bank und schickt nichts ins Internet.
 - Der Server lauscht nur auf 127.0.0.1, andere Rechner im Netz erreichen ihn nicht.
-- Die Datenbank enthält Namen, Adressen und IBANs. Sie liegt in `data/kassivo.db`, Sicherungen in `data/backups/`.
+- Die Datenbank enthält Namen, Adressen und IBANs. Sie liegt im lokalen Datenordner (siehe "Speicherort der Daten"), Sicherungen in `<DB-Ordner>/backups`.
 - Echte Bankdateien und Datenbanken gehören nie ins Git-Repository, in Issues oder Pull Requests. Die `.gitignore` schließt unter anderem `data/`, `backups/`, `*.db`, `*.zip`, `*.xml` und CAMT/MT940-Dateien aus.
 
 ## Backup und Wiederherstellung
 
-Sicherung: Seite `/backup` (Menüpunkt "Backup") öffnen und "Sicherung erstellen" wählen. Die Sicherung ist eine vollständige Kopie der Datenbank mit dem Namen `kassivo-JJJJMMTT-HHMMSS.db` in `data/backups/`. Die Seite listet die vorhandenen Sicherungen. Alte Sicherungen können von Hand gelöscht werden, KASSIVO löscht nichts selbst.
+Sicherung: Seite `/backup` (Menüpunkt "Backup") öffnen und "Sicherung erstellen" wählen. Die Sicherung ist eine vollständige Kopie der Datenbank mit dem Namen `kassivo-JJJJMMTT-HHMMSS.db` in `<DB-Ordner>/backups`. Den genauen Pfad zeigt KASSIVO beim Start an. Die Seite listet die vorhandenen Sicherungen. Alte Sicherungen können von Hand gelöscht werden, KASSIVO löscht nichts selbst.
 
 Wiederherstellung (von Hand):
 
 1. KASSIVO beenden.
-2. Die aktuelle `data/kassivo.db` an einen anderen Ort kopieren oder umbenennen, damit sie nicht verloren geht.
+2. Die aktuelle `kassivo.db` im DB-Ordner an einen anderen Ort kopieren oder umbenennen, damit sie nicht verloren geht.
 3. Eine eventuell vorhandene Datei `kassivo.db-journal` neben der Datenbank löschen, damit kein altes Journal auf die wiederhergestellte Kopie angewendet wird.
-4. Die gewünschte Sicherung aus `data/backups/` nach `data/kassivo.db` kopieren.
+4. Die gewünschte Sicherung aus `<DB-Ordner>/backups` als `kassivo.db` in den DB-Ordner kopieren.
 5. KASSIVO starten und die Daten prüfen.
 
 ## Tests
@@ -93,7 +115,7 @@ src/kassivo/
   money.py      Geldbeträge (ganze Cent)
   months.py     Monatsrechnung
   reports.py    Jahresreport
-  settings.py   Pfad der Datenbank (KASSIVO_DB)
+  settings.py   Ort der Datenbank (Standardordner, KASSIVO_DB, Cloud-Warnung)
   web/          Weboberfläche (FastAPI, Templates, Routen)
 ```
 
