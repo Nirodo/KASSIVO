@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import summary, field, select, month_field %}
+{% from "_macros.html" import summary, field, select, month_field, help_link %}
 {% block title %}Beiträge und Prüfungsstart{% endblock %}
 {% block content %}
+{{ help_link("beitraege") }}
 {% if ok %}<p class="notice" role="status"><strong>Gespeichert.</strong></p>{% endif %}
 <section>
   <h2>Aktuelle Beiträge ({{ month }})</h2>

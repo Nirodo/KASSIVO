@@ -3,6 +3,7 @@
 {% import "_txrow.html" as row %}
 {% block title %}Unklar{% endblock %}
 {% block content %}
+{{ ui.help_link("zuordnung") }}
 <p><a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> prüfen und bestätigen.</p>
 <form method="post" action="/unmatched/auto" class="inline">
   <button type="submit">Unklare automatisch zuordnen</button>

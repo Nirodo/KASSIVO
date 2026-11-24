@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import summary, field, select, month_field %}
+{% from "_macros.html" import summary, field, select, month_field, help_link %}
 {% block title %}{% if member %}Mitglied bearbeiten{% else %}Mitglied anlegen{% endif %}{% endblock %}
 {% block content %}
+{{ help_link("mitglieder") }}
 <p><a href="/members">Zurück zur Liste</a></p>
 {% if ok %}<p class="notice" role="status"><strong>Gespeichert.</strong></p>{% endif %}
 

@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_cell, legend, year_nav %}
+{% from "_macros.html" import status_cell, legend, year_nav, help_link %}
 {% block title %}Zahlungshistorie: {{ member["name"] }}{% endblock %}
 {% block content %}
+{{ help_link("beitragsuebersicht") }}
 <dl class="facts">
   <dt>Name</dt><dd>{{ member["name"] }}</dd>
   <dt>Art (aktuell)</dt><dd>{{ type_name }}</dd>

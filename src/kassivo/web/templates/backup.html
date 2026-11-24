@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "_macros.html" import help_link %}
 {% block title %}Backup{% endblock %}
 {% block content %}
+{{ help_link("backup") }}
 {% if created %}<p class="notice" role="status"><strong>Sicherung erstellt:</strong> {{ created }}</p>{% endif %}
 {% if error %}<p class="alert" role="alert"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
 <section>

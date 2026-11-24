@@ -1,3 +1,5 @@
+{% macro help_link(slug, text="Hilfe zu dieser Seite") %}<p class="help-link"><a href="/wiki/{{ slug }}">{{ text }}</a></p>{% endmacro %}
+
 {% macro summary(errors) %}
 {% if errors %}<p class="alert" role="alert"><strong>Fehler:</strong> Bitte die markierten Eingaben prüfen. Es wurde nichts gespeichert.</p>{% endif %}
 {% endmacro %}

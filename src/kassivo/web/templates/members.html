@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "_macros.html" import help_link %}
 {% block title %}Mitglieder{% endblock %}
 {% block content %}
+{{ help_link("mitglieder") }}
 <div class="toolbar">
   <form method="get" action="/members" role="search" class="inline">
     <label for="q">Name suchen</label>

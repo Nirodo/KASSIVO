@@ -83,3 +83,31 @@ dl.sums dt { font-weight: 600; }
 .chart-box { position: relative; height: 22rem; }
 .chart-box.chart-wide { height: 20rem; }
 section .table-wrap { margin-bottom: 1.5rem; }
+.help-link { margin: 0 0 1rem; font-size: .9rem; }
+.wiki { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 1.5rem 2rem; align-items: start; }
+.wiki-toc { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: .75rem 1rem; font-size: .95rem; }
+.wiki-toc h2 { font-size: 1rem; margin: .75rem 0 .25rem; }
+.wiki-toc h2:first-child { margin-top: 0; }
+.wiki-toc ul { list-style: none; margin: 0; padding: 0; display: block; }
+.wiki-toc a { display: block; padding: .2rem 0; }
+.wiki-toc a[aria-current="page"] { font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
+.wiki-body { min-width: 0; }
+.wiki-body h2 { margin-top: 2rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+.wiki-body li { margin-bottom: .35rem; }
+.wiki-body dt { font-weight: 700; margin-top: .75rem; }
+.wiki-body dd { margin: .1rem 0 0 0; }
+.wiki-topics { list-style: none; padding: 0; }
+.wiki-topics li { margin-bottom: .5rem; }
+.wiki-topics span { display: block; color: var(--muted); font-size: .9rem; }
+.callout { margin: 1rem 0; padding: .75rem 1rem; border-radius: 4px; border-left: 6px solid currentColor; }
+.callout p { margin: .25rem 0; }
+.callout-tip { background: var(--ok-bg); color: var(--ok-fg); }
+.callout-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.callout-example { background: var(--panel); color: var(--fg); border-left-color: var(--accent); }
+.steps { padding-left: 1.5rem; }
+.steps li { margin-bottom: .6rem; }
+.wiki-pager { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1.5rem; margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.quickstart { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: .75rem 1rem; margin: 1rem 0; }
+@media (max-width: 48rem) {
+  .wiki { grid-template-columns: minmax(0, 1fr); }
+}

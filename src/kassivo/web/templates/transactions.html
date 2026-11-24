@@ -3,6 +3,7 @@
 {% import "_txrow.html" as row %}
 {% block title %}Buchungen{% endblock %}
 {% block content %}
+{{ ui.help_link("zuordnung") }}
 <p><a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> (Zahlungen, deren Verteilung auf Bestätigung wartet) · <a href="/unmatched">Unklar</a></p>
 <form method="get" action="/transactions" class="filter" role="search">
   <div class="field"><label for="year">Jahr (JJJJ oder „all“)</label>

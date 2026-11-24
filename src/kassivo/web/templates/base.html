@@ -11,7 +11,7 @@
   <a class="brand" href="/">KASSIVO</a>
   <nav aria-label="Hauptnavigation">
     <ul>
-      {% for href, label in [("/dues", "Beiträge"), ("/members", "Mitglieder"), ("/transactions", "Buchungen"), ("/unmatched", "Unklar"), ("/categories", "Kategorien"), ("/forecast", "Prognose"), ("/reports", "Reports"), ("/import", "Import"), ("/backup", "Backup"), ("/settings/fees", "Einstellungen")] %}
+      {% for href, label in [("/dues", "Beiträge"), ("/members", "Mitglieder"), ("/transactions", "Buchungen"), ("/unmatched", "Unklar"), ("/categories", "Kategorien"), ("/forecast", "Prognose"), ("/reports", "Reports"), ("/import", "Import"), ("/backup", "Backup"), ("/settings/fees", "Einstellungen"), ("/wiki", "Wiki")] %}
       <li><a href="{{ href }}"{% if request.url.path == href %} aria-current="page"{% endif %}>{{ label }}</a></li>
       {% endfor %}
     </ul>

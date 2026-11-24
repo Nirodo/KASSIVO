@@ -1,0 +1,24 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block title %}Wiki{% endblock %}
+{% block body %}
+<p>Dieses Wiki erklärt, wie KASSIVO arbeitet und was Sie wann tun. Es läuft im Programm, ist nur zum Lesen da und braucht kein Internet.</p>
+<div class="quickstart">
+  <h2>Schnellstart</h2>
+  <ol class="steps">
+    <li>Prüfungsstart festlegen (<a href="/settings/fees">Einstellungen</a>).</li>
+    <li>Mitglieder anlegen (<a href="/members/new">Mitglied anlegen</a>) und Beiträge prüfen.</li>
+    <li>Kontoexport importieren (<a href="/import">Import</a>).</li>
+    <li>Zahlungen in <a href="/unmatched">Unklar</a> zuordnen, mit „Absender merken“.</li>
+    <li><a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> prüfen und bestätigen.</li>
+    <li>Ergebnis ansehen: <a href="/dues">Beiträge</a>, <a href="/forecast">Prognose</a>, <a href="/reports">Reports</a>.</li>
+  </ol>
+</div>
+<h2>Alle Themen</h2>
+{% for group, items in groups if items %}
+<h3>{{ group }}</h3>
+<ul class="wiki-topics">
+  {% for s, t in items %}<li><a href="/wiki/{{ s }}">{{ t }}</a><span>{{ topics[s][2] }}</span></li>
+  {% endfor %}
+</ul>
+{% endfor %}
+{% endblock %}

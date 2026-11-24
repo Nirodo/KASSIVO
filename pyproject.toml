@@ -17,6 +17,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 kassivo = [
   "web/templates/*.html",
+  "web/templates/wiki/*.html",
   "web/static/*.js",
   "web/static/*.css",
   "web/static/vendor/*",

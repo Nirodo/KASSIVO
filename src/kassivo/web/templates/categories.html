@@ -2,6 +2,7 @@
 {% import "_macros.html" as ui %}
 {% block title %}Kategorien{% endblock %}
 {% block content %}
+{{ ui.help_link("kategorien") }}
 {{ ui.error_list(errors) }}
 {% if ok %}<p class="notice" role="status">Gespeichert.</p>{% endif %}
 {% if applied is not none %}<p class="notice" role="status">Regeln angewendet: {{ applied }} Buchung{{ "" if applied == 1 else "en" }} geändert.</p>{% endif %}
