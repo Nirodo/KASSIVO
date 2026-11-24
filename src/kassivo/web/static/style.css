@@ -75,3 +75,9 @@ dl.facts dt { font-weight: 600; }
 dl.facts dd, dl.sums dd { margin: 0; }
 dl.sums { display: flex; flex-wrap: wrap; gap: .5rem 2rem; }
 dl.sums dt { font-weight: 600; }
+.hidden { display: none; }
+.chart-error { background: var(--err-bg); color: var(--err-fg); padding: .75rem 1rem; border-radius: 4px; }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; }
+.chart-box { position: relative; height: 22rem; }
+.chart-box.chart-wide { height: 20rem; }
+section .table-wrap { margin-bottom: 1.5rem; }

@@ -20,6 +20,8 @@ templates.env.filters["month_abbr"] = lambda n: MONTH_ABBR[n - 1]
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 MIN_YEAR, MAX_YEAR = 1900, 2100
 E_DATE = "Bitte ein gültiges Datum im Format JJJJ-MM-TT angeben (Jahr 1900 bis 2100)."
+E_YEAR = f"Bitte ein gültiges Jahr zwischen {MIN_YEAR} und {MAX_YEAR} angeben."
+_YEAR_RE = re.compile(r"[0-9]{4}", re.ASCII)
 E_MONTH = "Bitte einen gültigen Monat im Format JJJJ-MM angeben."
 
 
@@ -94,3 +96,22 @@ def safe_next(text: str | None, default: str = "/transactions") -> str:
     if text and _NEXT_RE.fullmatch(text) and "\\" not in text:
         return text
     return default
+
+
+def parse_year(text: str | None, today: date) -> int | None:
+    """Fehlt der Parameter: laufendes Jahr. Ungültig: None."""
+    if text is None:
+        return today.year
+    text = text.strip()
+    if _YEAR_RE.fullmatch(text) and MIN_YEAR <= int(text) <= MAX_YEAR:
+        return int(text)
+    return None
+
+
+def year_nav(year: int) -> dict:
+    return {"prev": year - 1 if year > MIN_YEAR else None,
+            "next": year + 1 if year < MAX_YEAR else None}
+
+
+def year_error(request: Request, back: str) -> HTMLResponse:
+    return render(request, "error.html", 422, message=E_YEAR, back=back, back_label="Zurück")

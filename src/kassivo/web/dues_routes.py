@@ -1,5 +1,4 @@
 """Beitragsübersicht, Zahlungshistorie je Mitglied, Prognose. Nur lesend."""
-import re
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,47 +8,25 @@ from kassivo.forecast import forecast
 from kassivo.members import type_at
 from kassivo.months import add_months, month_end, month_of
 from kassivo.web.common import (
-    E_DATE, MAX_YEAR, MIN_YEAR, check_id, get_conn, get_today, parse_date, render,
+    E_DATE, check_id, get_conn, get_today, parse_date, parse_year, render, year_error, year_nav,
 )
 
 router = APIRouter()
-E_YEAR = f"Bitte ein gültiges Jahr zwischen {MIN_YEAR} und {MAX_YEAR} angeben."
 E_HORIZON = "Das Datum liegt zu weit in der Zukunft (höchstens 50 Jahre)."
-_YEAR_RE = re.compile(r"[0-9]{4}", re.ASCII)
-
-
-def _year(text: str | None, today: date) -> int | None:
-    """Fehlt der Parameter: laufendes Jahr. Ungültig: None."""
-    if text is None:
-        return today.year
-    text = text.strip()
-    if _YEAR_RE.fullmatch(text) and MIN_YEAR <= int(text) <= MAX_YEAR:
-        return int(text)
-    return None
-
-
-def _year_error(request, back: str):
-    return render(request, "error.html", 422, message=E_YEAR, back=back, back_label="Zurück")
-
-
-def _year_nav(year: int) -> dict:
-    return {"prev": year - 1 if year > MIN_YEAR else None,
-            "next": year + 1 if year < MAX_YEAR else None}
-
 
 @router.get("/dues")
 async def dues_view(request: Request, year: str | None = None,
                     conn=Depends(get_conn), today: date = Depends(get_today)):
-    y = _year(year, today)
+    y = parse_year(year, today)
     if y is None:
-        return _year_error(request, "/dues")
+        return year_error(request, "/dues")
     grid = dues_grid(conn, y, today)
     totals = [
         {"expected": sum(r["months"][i].expected for r in grid),
          "paid": sum(r["months"][i].paid for r in grid)}
         for i in range(12)
     ]
-    return render(request, "dues.html", year=y, grid=grid, totals=totals, **_year_nav(y))
+    return render(request, "dues.html", year=y, grid=grid, totals=totals, **year_nav(y))
 
 
 @router.get("/members/{member_id:int}/history")
@@ -59,13 +36,13 @@ async def member_history(request: Request, member_id: int, year: str | None = No
     member = conn.execute("select * from member where id=?", (member_id,)).fetchone()
     if member is None:
         raise HTTPException(404)
-    y = _year(year, today)
+    y = parse_year(year, today)
     if y is None:
-        return _year_error(request, f"/members/{member_id}/history")
+        return year_error(request, f"/members/{member_id}/history")
     months = [month_status(conn, member_id, f"{y:04d}-{i:02d}", today) for i in range(1, 13)]
     return render(request, "member_history.html", member=member, year=y, months=months,
                   type_name=type_at(conn, member_id, month_of(today)) or "–",
-                  payments=payment_history(conn, member_id), **_year_nav(y))
+                  payments=payment_history(conn, member_id), **year_nav(y))
 
 
 def _quick_links(today: date) -> list[tuple[str, str]]:
