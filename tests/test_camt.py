@@ -111,3 +111,49 @@ def test_doctype_rejected():
 def test_bad_amount():
     with pytest.raises(CamtError):
         parse_camt052(mk([dict(amount_raw="abc")]))
+
+
+# --- Fix-Welle: Beträge, Sammelbuchungen, mehrere Berichte ---------------------
+
+@pytest.mark.parametrize("raw", ["NaN", "sNaN", "Infinity", "-Infinity", "1E999999",
+                                 "-5.00", "0.00", "0", "+5.00", "1000000000.01", "1E+10",
+                                 " ", "5.001"])
+def test_invalid_amounts_rejected_cleanly(raw):
+    with pytest.raises(CamtError) as e:
+        parse_camt052(mk([dict(amount_raw=raw)]))
+    assert raw.strip() == "" or raw not in str(e.value)  # statische Meldung
+
+
+@pytest.mark.parametrize("raw,cents", [("0.01", 1), ("1000000000.00", 100_000_000_000),
+                                       ("17", 1700), ("17.5", 1750)])
+def test_valid_amount_bounds(raw, cents):
+    assert parse_camt052(mk([dict(amount_raw=raw)])).entries[0].amount_cents == cents
+
+
+def test_zero_balance_still_allowed():
+    st = parse_camt052(mk(opening=0, closing=0))
+    assert st.opening_cents == 0 and st.closing_cents == 0
+
+
+def test_batch_credit_with_several_txdtls_has_no_counterparty():
+    extra = ["<RltdPties><Dbtr><Pty><Nm>Zweiter Zahler</Nm></Pty></Dbtr>"
+             f"<DbtrAcct><Id><IBAN>{IBAN}</IBAN></Id></DbtrAcct></RltdPties>"
+             "<RmtInf><Ustrd>zwei</Ustrd></RmtInf>"]
+    st = parse_camt052(mk([dict(amount=3400, name="Erster Zahler", cp_iban=OTHER_IBAN,
+                                purpose="eins", extra_txdtls=extra)]))
+    tx = st.entries[0]
+    assert tx.cp_iban is None and tx.cp_name is None
+    assert tx.purpose == "eins zwei"
+
+
+def test_single_txdtls_keeps_counterparty():
+    st = parse_camt052(mk([dict(amount=1700, name="Erika Muster", cp_iban=OTHER_IBAN)]))
+    assert st.entries[0].cp_iban == OTHER_IBAN and st.entries[0].cp_name == "Erika Muster"
+
+
+def test_several_reports_rejected():
+    xml = mk([dict(amount=100)]).decode("utf-8")
+    start, end = xml.index("<Rpt>"), xml.index("</Rpt>") + len("</Rpt>")
+    doubled = xml[:end] + xml[start:end] + xml[end:]
+    with pytest.raises(CamtError, match="Mehrere Berichte in einer Datei werden nicht unterstützt."):
+        parse_camt052(doubled.encode("utf-8"))

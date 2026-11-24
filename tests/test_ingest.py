@@ -17,7 +17,7 @@ def day_files(opening=10000):
         DAYS[0]: [dict(amount=1700, name="Max Muster", cp_iban=OTHER_IBAN, purpose="Beitrag", ref="R1"),
                   dict(amount=-500, name="Laden", cp_iban=OTHER_IBAN, purpose="Material", ref="R2")],
         DAYS[1]: [dict(amount=1000, name="Erika Beispiel", cp_iban=OTHER_IBAN, purpose="Beitrag", ref="R3")],
-        DAYS[2]: [dict(amount=0, name="Null", purpose="Nullbuchung", ref="R4"),
+        DAYS[2]: [dict(amount=1, name="Cent", purpose="Centbuchung", ref="R4"),
                   dict(amount=-12345, name="Hauptverein", cp_iban=OTHER_IBAN, purpose="Umlage", ref="R5")],
     }
     files, bal = {}, opening
@@ -54,7 +54,7 @@ def test_stored_values_and_batch_row(conn, tmp_path):
     rows = conn.execute(
         'select amount_cents, booking_date, bank_ref, dedupe_key, category_id, member_id, batch_id '
         'from "transaction" order by id').fetchall()
-    assert [x["amount_cents"] for x in rows] == [1700, -500, 1000, 0, -12345]
+    assert [x["amount_cents"] for x in rows] == [1700, -500, 1000, 1, -12345]
     assert all(type(x["amount_cents"]) is int for x in rows)
     assert rows[0]["booking_date"] == "2025-01-06"
     assert rows[0]["dedupe_key"] == "R1"

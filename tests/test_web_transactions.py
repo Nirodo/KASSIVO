@@ -649,3 +649,11 @@ def test_learn_cascade_skipped_when_ambiguous(client, db):
 def test_unknown_note_codes_show_nothing(client, q):
     t = client.get(f"/unmatched?{q}").text
     assert "automatisch zugeordnet." not in t and "<script>" not in t.split("<main>")[1]
+
+
+@pytest.mark.parametrize("raw", ["sNaN", "1E999999", "0.00"])
+def test_import_bad_amount_is_422_not_500(client, db, raw):
+    data = make_camt(IBAN, 0, [dict(E_ERIKA, amount_raw=raw)], "2026-03-01", with_balances=False)
+    r = client.post("/import", files={"file": ("x.xml", data, "application/xml")})
+    assert r.status_code == 422 and "Es wurde nichts importiert" in r.text
+    assert db.execute('select count(*) from "transaction"').fetchone()[0] == 0

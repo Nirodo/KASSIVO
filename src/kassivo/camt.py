@@ -2,10 +2,12 @@
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 NS = "urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"
 _N = {"c": NS}
+MAX_EUR = 10**9  # obere Grenze je Betrag; schützt vor riesigen Exponenten
+E_AMOUNT = "ungültiger Betrag"
 
 
 class CamtError(ValueError):
@@ -38,17 +40,27 @@ def _text(el, path: str) -> str | None:
     return found.text.strip() or None
 
 
-def _cents(text: str | None, sign_ind: str | None) -> int:
-    """XML-Dezimalzahl (Punkt) in Cent, ohne float. DBIT negativ."""
+def _cents(text: str | None, sign_ind: str | None, allow_zero: bool = False) -> int:
+    """XML-Dezimalzahl (Punkt) in Cent, ohne float. DBIT negativ.
+
+    Der Text ist ohne Vorzeichen (das Vorzeichen steht in CdtDbtInd) und liegt
+    in 0 < Betrag <= 10**9 EUR; bei Salden ist 0 erlaubt. NaN, Unendlich und
+    Überläufe werden zu CamtError mit fester Meldung (nie der Eingabetext).
+    """
     if text is None or sign_ind not in ("CRDT", "DBIT"):
         raise CamtError("Betrag oder Soll/Haben-Kennzeichen fehlt")
+    text = text.strip()
+    if text[:1] in ("+", "-"):
+        raise CamtError(E_AMOUNT)
     try:
-        d = Decimal(text.strip())
-    except InvalidOperation:
-        raise CamtError("ungültiger Betrag") from None
-    cents = d * 100
-    if not d.is_finite() or cents != cents.to_integral_value():
-        raise CamtError("ungültiger Betrag")
+        d = Decimal(text)
+        if not d.is_finite() or not (0 <= d <= MAX_EUR) or (d == 0 and not allow_zero):
+            raise CamtError(E_AMOUNT)
+        cents = d * 100
+        if cents != cents.to_integral_value():
+            raise CamtError(E_AMOUNT)
+    except (ArithmeticError, OverflowError):  # InvalidOperation, sNaN-Vergleich, Überlauf
+        raise CamtError(E_AMOUNT) from None
     cents = int(cents)
     return -cents if sign_ind == "DBIT" else cents
 
@@ -65,7 +77,7 @@ def _date(text: str | None) -> date | None:
 def _balance(rpt, code: str) -> int | None:
     for bal in rpt.findall("c:Bal", _N):
         if _text(bal, "c:Tp/c:CdOrPrtry/c:Cd") == code:
-            return _cents(_text(bal, "c:Amt"), _text(bal, "c:CdtDbtInd"))
+            return _cents(_text(bal, "c:Amt"), _text(bal, "c:CdtDbtInd"), allow_zero=True)
     return None
 
 
@@ -75,11 +87,13 @@ def _entry(ntry) -> ParsedTx:
     if booking is None:
         raise CamtError("Buchungsdatum fehlt")
     txs = ntry.findall("c:NtryDtls/c:TxDtls", _N)
-    first = txs[0] if txs else None
+    # Sammelbuchung (mehrere TxDtls): keine Gegenpartei, damit sie nie dem
+    # ersten Zahler automatisch zugeordnet wird.
+    only = txs[0] if len(txs) == 1 else None
     side, acct = ("Dbtr", "DbtrAcct") if ind == "CRDT" else ("Cdtr", "CdtrAcct")
     base = f"c:RltdPties/c:{side}"
-    name = _text(first, f"{base}/c:Pty/c:Nm") or _text(first, f"{base}/c:Nm")
-    iban = _text(first, f"c:RltdPties/c:{acct}/c:Id/c:IBAN")
+    name = _text(only, f"{base}/c:Pty/c:Nm") or _text(only, f"{base}/c:Nm")
+    iban = _text(only, f"c:RltdPties/c:{acct}/c:Id/c:IBAN")
     parts = [
         u.text.strip()
         for tx in txs
@@ -107,9 +121,12 @@ def parse_camt052(xml: bytes) -> ParsedStatement:
         raise CamtError(f"kein gültiges XML: {e}") from None
     if root.tag != f"{{{NS}}}Document":
         raise CamtError("kein camt.052.001.08-Dokument")
-    rpt = root.find("c:BkToCstmrAcctRpt/c:Rpt", _N)
-    if rpt is None:
+    rpts = root.findall("c:BkToCstmrAcctRpt/c:Rpt", _N)
+    if not rpts:
         raise CamtError("Rpt fehlt")
+    if len(rpts) > 1:
+        raise CamtError("Mehrere Berichte in einer Datei werden nicht unterstützt.")
+    rpt = rpts[0]
     iban = _text(rpt, "c:Acct/c:Id/c:IBAN")
     if iban is None:
         raise CamtError("IBAN fehlt")
