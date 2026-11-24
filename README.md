@@ -76,27 +76,36 @@ Ist der Port 8000 schon belegt (zum Beispiel weil KASSIVO bereits läuft), melde
 | Sicherungen | immer `<DB-Ordner>/backups`, also neben der Datenbank |
 | Adresse und Port | fest `127.0.0.1` und `8000`, nicht einstellbar |
 
-Der DB-Ordner wird beim Start angelegt, falls er fehlt. Einen anderen Ort wählen Sie so:
+Der DB-Ordner wird beim Start angelegt, falls er fehlt. Einen anderen Ort wählen Sie so, je nach Fenster:
+
+Eingabeaufforderung (cmd):
 
 ```
 set KASSIVO_DB=D:\Kasse\kassivo.db
 python -m kassivo
 ```
 
-In PowerShell: `$env:KASSIVO_DB = "D:\Kasse\kassivo.db"`. Unter Linux oder macOS: `KASSIVO_DB=/pfad/zur/kassivo.db python -m kassivo`. Mit verschiedenen Pfaden führen Sie mehrere getrennte Kassen.
+PowerShell:
+
+```powershell
+$env:KASSIVO_DB = "D:\Kasse\kassivo.db"
+python -m kassivo
+```
+
+Der cmd-Befehl `set` setzt in PowerShell keine Umgebungsvariable. KASSIVO startet dann ohne Fehlermeldung mit dem Standardpfad. Die Variable gilt nur für das Fenster, in dem Sie sie gesetzt haben. Dauerhaft setzen Sie sie in cmd mit `setx KASSIVO_DB "D:\Kasse\kassivo.db"`, das wirkt erst in neuen Fenstern. Sonst startet ein späterer Start mit einer anderen Datenbank (siehe Wiki, Fehlerbehebung, Frage 3). Unter Linux oder macOS: `KASSIVO_DB=/pfad/zur/kassivo.db python -m kassivo`. Mit verschiedenen Pfaden führen Sie mehrere getrennte Kassen.
 
 **Warnung zu Cloud-Ordnern:** Die Datenbank und die Sicherungen enthalten Namen, Adressen und IBANs. Sie gehören nicht in einen Ordner, der mit OneDrive, Dropbox, Google Drive oder iCloud synchronisiert wird.
 
-**Vorhandene Datenbank umziehen:** Wer schon mit einer älteren Version gearbeitet hat, findet die Datenbank in `data/kassivo.db` im Projektordner. KASSIVO beenden, `data/kassivo.db` (und `data/backups/`, falls vorhanden) an den neuen Ort kopieren, zum Beispiel nach `%LOCALAPPDATA%\KASSIVO\`, KASSIVO starten und prüfen, dass der angezeigte Pfad stimmt und die Daten da sind. Danach die alte Kopie im Projektordner löschen, damit sie nicht weiter synchronisiert wird.
+**Vorhandene Datenbank umziehen:** Wer schon mit dem Entwicklungsstand vor 1.0.0 gearbeitet hat, findet die Datenbank in `data/kassivo.db` im Projektordner. KASSIVO beenden, `data/kassivo.db` (und `data/backups/`, falls vorhanden) an den neuen Ort kopieren, zum Beispiel nach `%LOCALAPPDATA%\KASSIVO\`, KASSIVO starten und prüfen, dass der angezeigte Pfad stimmt und die Daten da sind. Danach die alte Kopie im Projektordner löschen, damit sie nicht weiter synchronisiert wird.
 
 ## Empfohlener Ablauf
 
 Ausführlicher im Wiki unter "Erste Schritte" (`/wiki/start`).
 
-1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Am besten den ersten vollen Monat wählen, den der Kontoexport abdeckt: Beginnt der Export mitten im Monat, fehlen frühere Zahlungen dieses Monats und er erschiene als überfällig. Wird der Prüfungsstart später geändert, berechnet KASSIVO offene Vorschläge neu; bestätigte Verteilungen bleiben unverändert.
+1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Am besten den ersten vollen Monat wählen, den der Kontoexport abdeckt: Beginnt der Export mitten im Monat, fehlen frühere Zahlungen dieses Monats und er erschiene als überfällig. Zahlungen, die vor dem Prüfungsstart-Monat gebucht sind (zum Beispiel am 20.03. bei Prüfungsstart 2026-04), bekommen einen Vorschlag für den Prüfungsstart-Monat. Bestätigen Sie ihn nicht blind: Sonst gilt der April als bezahlt, und die echte Aprilzahlung wird für den Mai vorgeschlagen. Ändern Sie den Monat auf der Seite "Verteilung" oder heben Sie die Verteilung auf. Wird der Prüfungsstart später geändert, berechnet KASSIVO offene Vorschläge neu; bestätigte Verteilungen bleiben unverändert.
 2. **Mitglieder und Beiträge anlegen** (Mitglieder, Einstellungen).
 3. **Kontoexport importieren** (Import).
-4. **"Unklar" zuordnen**: jede Zahlung einem Mitglied zuordnen, mit "Absender merken". Weitere unklare Zahlungen derselben IBAN werden dann gleich mit zugeordnet. Der Knopf "Unklare automatisch zuordnen" wendet Gelerntes erneut auf die ganze Liste an. Zahlt eine IBAN für mehrere Mitglieder (z. B. ein Elternteil für zwei Kinder), wird sie nicht automatisch zugeordnet.
+4. **"Unklar" zuordnen**: jede Zahlung einem Mitglied zuordnen, mit "Absender merken". Weitere unklare Zahlungen derselben IBAN werden dann gleich mit zugeordnet. Der Knopf "Unklare automatisch zuordnen" wendet Gelerntes erneut auf die ganze Liste an, auch auf Zahlungen, die Sie mit "— keins —" auf Unklar zurückgesetzt haben. Zahlt eine IBAN für mehrere Mitglieder (z. B. ein Elternteil für zwei Kinder), wird sie nicht automatisch zugeordnet.
 5. **"Offene Vorschläge" prüfen und bestätigen** (Link in Buchungen und Unklar): Verteilungen, die KASSIVO nur vorschlägt, zählen erst nach der Bestätigung als bezahlt.
 6. **Beitragsübersicht, Prognose und Report ansehen.**
 
@@ -112,7 +121,7 @@ Unterstützt ist genau ein Format: `camt.052.001.08`, im Online-Banking "XML CAM
 4. Auf neue Buchungen wendet KASSIVO die Kategorien-Regeln und die automatische Zuordnung an. Die Ergebnisseite zählt Neu, Duplikate, kategorisiert, zugeordnet und die offenen Vorschläge.
 5. Umsätze, die keinem Mitglied sicher zugeordnet werden können, erscheinen in der Liste "Unklar" und können dort von Hand zugeordnet werden.
 
-Grenzen: Eine Datei darf höchstens 100 MB groß sein. In einer ZIP-Datei liest KASSIVO höchstens 5000 XML-Dateien, jede höchstens 20 MB, zusammen höchstens 200 MB. Eine XML-Datei darf genau einen Bericht enthalten. Findet KASSIVO in irgendeiner Datei einen Fehler, bricht der ganze Import ab und legt nichts an (zum Beispiel bei falschem Format oder bei einem Betrag von 0,00). Importiert werden nur Einträge mit dem Status "gebucht"; Sammelbuchungen kommen ohne Gegenpartei herein und werden nie automatisch zugeordnet.
+Grenzen: Eine Datei darf höchstens 100 MB groß sein. In einer ZIP-Datei liest KASSIVO höchstens 5000 XML-Dateien, jede höchstens 20 MB, zusammen höchstens 200 MB. Eine XML-Datei darf genau einen Bericht enthalten. Findet KASSIVO in irgendeiner Datei einen Fehler, bricht der ganze Import ab und legt nichts an (zum Beispiel bei falschem Format oder bei einem Betrag von 0,00). Ein Eintrag mit 0,00 € lässt sich nicht überspringen: Lässt man den Tag im Export weg, fehlen alle Zahlungen dieses Tages für immer, weil es keine Buchung von Hand gibt. Klären Sie den Tag mit der Bank. Die Duplikaterkennung hat bekannte Grenzen (siehe "Bekannte Einschränkungen"). Importiert werden nur Einträge mit dem Status "gebucht"; Sammelbuchungen kommen ohne Gegenpartei herein und werden nie automatisch zugeordnet.
 
 ## Regeln im Überblick
 
@@ -149,7 +158,7 @@ Eine Buchung hat höchstens eine Kategorie. Regeln prüfen, ob ein Feld (Verwend
 ## Berichte
 
 - **Beitragsübersicht** (`/dues`): Raster Mitglieder mal zwölf Monate mit Bezahlt, Teilweise, Offen, Überfällig und "—" (kein Beitrag fällig). Monate mit unbestätigtem Vorschlag tragen die Markierung "Vorschlag". Ein Klick auf den Namen öffnet die Zahlungshistorie.
-- **Prognose** (`/forecast`): offene Beiträge vom Prüfungsstart bis zu einem gewählten Datum, höchstens 50 Jahre in der Zukunft. Nur Mitgliedsbeiträge zählen, keine wiederkehrenden Ausgaben.
+- **Prognose** (`/forecast`): offene Beiträge vom Prüfungsstart bis zu einem gewählten Datum (es zählt der ganze Monat des Datums: mit 10.03. rechnet die Prognose den gesamten März mit), höchstens 50 Jahre in der Zukunft. Nur Mitgliedsbeiträge zählen, keine wiederkehrenden Ausgaben.
 - **Jahresreport** (`/reports`): Einnahmen, Ausgaben, Saldo, Diagramme (Chart.js) und Tabellen. Die Beiträge je Mitglied rechnet der Report nach Beitragsmonat, nicht nach Buchungsdatum.
 - Die Liste "Buchungen" zeigt 100 Buchungen je Seite und lässt sich nach Jahr, Kategorie, Art und Suchtext filtern.
 
@@ -178,6 +187,7 @@ KASSIVO ist für den Betrieb durch eine Person auf dem eigenen Rechner gebaut.
 - **Content-Security-Policy:** Die Seiten laden nur eigene Dateien (`default-src 'self'`) und lassen sich nicht einbetten (`frame-ancestors 'none'`). Dazu kommen `X-Content-Type-Options: nosniff` und `Referrer-Policy: same-origin`. Es gibt kein Inline-JavaScript.
 - **Uploads:** Größengrenzen (siehe Import), Dateityp-Prüfung am Inhalt, ZIP-Dateien werden nie entpackt, XML mit DOCTYPE oder ENTITY wird abgelehnt. Der Dateiname des Browsers wird nie verwendet.
 - IBANs erscheinen in Listen und Meldungen gekürzt.
+- **Konsolenausgabe:** Das Konsolenfenster protokolliert jede Anfrage mit ihrer Adresse (Uvicorn-Zugriffsprotokoll), auch Suchtexte wie `/transactions?q=Name`. Konsolenausgaben nie ungeprüft in Issues oder Nachrichten einfügen, solche Zeilen vorher entfernen.
 
 **Nicht geschützt:** Es gibt keine Anmeldung. Wer an Ihrem Rechner angemeldet ist und `http://127.0.0.1:8000` öffnet, sieht und ändert alle Daten, solange KASSIVO läuft. Die Datenbank ist nicht verschlüsselt. Schützen Sie den Rechner (Benutzerkonto, Bildschirmsperre, Festplattenverschlüsselung), betreiben Sie KASSIVO nicht auf einem gemeinsam genutzten Rechner oder Server und legen Sie Datenbank und Sicherungen nicht in einen Cloud-Ordner.
 
@@ -248,7 +258,7 @@ Bis zum ersten Release (1.0.0) wurde auf `feature/kassivo-v1` gearbeitet. Danach
 - Nur noch Branches `feat/<thema>` (neue Funktion) und `fix/<thema>` (Fehlerbehebung), jeweils von `main`. Keine Commits direkt auf `main`.
 - Änderungen kommen über Pull Requests in `main`. Jede Änderung hat ein GitHub-Issue, auf das der Pull Request verweist.
 - Versionierung nach SemVer: `X.0.0` Major-Release, `0.X.0` Minor-Release (neue Funktion), `0.0.X` Bugfix. Jedes Release bekommt einen Tag `vX.Y.Z` und ein GitHub-Release mit Notizen. Packages (GitHub Packages) sind vorerst nicht vorgesehen.
-- Commit-Nachrichten sind deutsch und beginnen mit einer Art: `feat:`, `fix:` oder `docs:`.
+- Commit-Nachrichten sind deutsch und beginnen mit einer Art: `feat:`, `fix:`, `docs:` oder `chore:`.
 - Tests zuerst: Erst der Test, dann der Code. Vor einem Pull Request muss `pytest` grün sein.
 - Echte Bankdaten kommen in keinen Commit, keinen Pull Request, kein Issue und kein Release. Beispiele nutzen erfundene Namen und offensichtlich falsche IBANs wie `XX00 FAKE 0000 0000 01`.
 
@@ -259,7 +269,10 @@ Der Entwurf des Programms steht in `docs/superpowers/specs/2026-11-24-kassivo-de
 - Nur Datei-Import im Format camt.052.001.08. Keine Direktabfrage der Bank (FinTS, finAPI), kein C24-Adapter.
 - Ein Nutzer, ein Rechner, keine Anmeldung.
 - Einträge mit 0,00 € brechen den Import der ganzen Datei ab. Mehr als ein Bericht pro Datei geht nicht.
-- Eine gelernte IBAN lässt sich nicht vergessen.
+- Eine gelernte IBAN lässt sich nicht vergessen. Eine einmal mehrdeutig gewordene IBAN bleibt es, und eine falsch gemerkte IBAN wird nie für das richtige Mitglied neu gelernt. "— keins —" setzt eine Zahlung nur vorübergehend auf Unklar: "Unklare automatisch zuordnen" ordnet sie über die gemerkte IBAN wieder zu.
+- Duplikaterkennung: Eine Buchung mit derselben Bankreferenz, aber anderem Betrag oder Datum, wird still als Duplikat verworfen. Eine zweite gleiche Zahlung ohne Bankreferenz am selben Tag wird verworfen, wenn sie in einer späteren Datei kommt (die laufende Nummer beginnt je Datei neu). Der Import speichert die Buchungen vor Regeln und automatischer Zuordnung: Scheitern diese, bleiben die Buchungen unkategorisiert und unzugeordnet, ein erneuter Import zählt sie als Duplikate. Abhilfe: "Regeln anwenden" und "Unklare automatisch zuordnen". Bei einem Betrag von 0,00 gilt: Lässt man den Tag im Export weg, fehlen seine Zahlungen für immer.
+- Barzahlungen und eigene Ausgaben lassen sich nicht von Hand buchen. Der Monat bleibt überfällig, es gibt in 1.0.0 keine Abhilfe.
+- Zwei offene Vorschläge desselben Mitglieds können denselben Monat treffen (nur der Hinweis "Monat bereits bezahlt"). Ein Austritt vor dem Eintritt wird akzeptiert. Die Textfelder der Mitglieder haben keine Längenbegrenzung.
 - Die Prognose betrachtet nur Mitgliedsbeiträge, keine wiederkehrenden Ausgaben.
 - Eine Datenbank ist eine Kasse (keine Mehrmandanten).
 - Buchungen, Mitglieder, Kategorien und Regeln lassen sich nicht löschen. Buchungen lassen sich nicht von Hand anlegen. Korrekturen laufen über Zuordnung und Verteilung.

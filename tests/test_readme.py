@@ -103,3 +103,11 @@ def test_readme_links_resolve():
         if target.startswith(("http://", "https://")):
             continue
         assert (ROOT / target).exists(), target
+
+
+@pytest.mark.parametrize("needle", [
+    "Eingabeaufforderung (cmd)", "set KASSIVO_DB=", "$env:KASSIVO_DB", "setx KASSIVO_DB",
+    "Entwicklungsstand vor 1.0.0", "`chore:`", "Uvicorn-Zugriffsprotokoll", "Bankreferenz",
+])
+def test_readme_documents_shell_variants_and_limits(needle):
+    assert needle in README, needle
