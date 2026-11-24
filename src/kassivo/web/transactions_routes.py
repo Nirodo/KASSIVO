@@ -147,7 +147,9 @@ async def transactions(request: Request, conn=Depends(get_conn)):
 @router.get("/unmatched")
 async def unmatched(request: Request, conn=Depends(get_conn)):
     return render(request, "unmatched.html", rows=[_cp(r) for r in matching.unmatched(conn)],
-                  members=list_members(conn), next_url="/unmatched")
+                  members=list_members(conn), next_url="/unmatched",
+                  cats=conn.execute("select id, name from category where kind in ('in', 'both')"
+                                    " order by name, id").fetchall())
 
 
 @router.post("/unmatched/auto")

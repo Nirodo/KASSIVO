@@ -458,3 +458,15 @@ def test_glossary_links_resolve(pages):
             assert frag in ids, frag
     for slug in ("verteilung", "mitglieder", "beitragsuebersicht"):
         assert "/wiki/begriffe#soll" in pages[slug], slug
+
+
+@pytest.mark.parametrize("slug,words", [
+    ("zuordnung", ["Zinsen für Guthaben", "Kein Mitglied nötig", "Als erledigt kategorisieren"]),
+    ("kategorien", ["Zinsen für Guthaben", "Als erledigt kategorisieren"]),
+    ("begriffe", ["Kein Mitglied nötig"]),
+    ("faq", ["Zinsen", "Kein Mitglied nötig"]),
+])
+def test_unmatched_category_docs_issue_28(pages, slug, words):
+    text = html.unescape(re.sub(r"<[^>]+>", " ", pages[slug]))
+    for w in words:
+        assert w in text, (slug, w)

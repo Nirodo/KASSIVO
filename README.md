@@ -3,7 +3,7 @@ KASSIVO ist die moderne Lösung zur einfachen und übersichtlichen Verwaltung vo
 
 ## Überblick
 
-KASSIVO 1.1.0 ist ein lokales Kassenprogramm für eine Person an einem Rechner. Es verwaltet Mitglieder und ihre monatlichen Beiträge, liest Kontoumsätze aus Exportdateien der Bank ein, ordnet sie Mitgliedern und Kategorien zu und zeigt, wer seinen Beitrag bezahlt hat. Die Oberfläche läuft als Webseite im Browser, aber nur auf dem eigenen Rechner (`http://127.0.0.1:8000`). Die Daten liegen in einer SQLite-Datei auf dem eigenen Rechner.
+KASSIVO 1.1.1 ist ein lokales Kassenprogramm für eine Person an einem Rechner. Es verwaltet Mitglieder und ihre monatlichen Beiträge, liest Kontoumsätze aus Exportdateien der Bank ein, ordnet sie Mitgliedern und Kategorien zu und zeigt, wer seinen Beitrag bezahlt hat. Die Oberfläche läuft als Webseite im Browser, aber nur auf dem eigenen Rechner (`http://127.0.0.1:8000`). Die Daten liegen in einer SQLite-Datei auf dem eigenen Rechner.
 
 Eine ausführliche Anleitung steckt im Programm: der Menüpunkt "Wiki" (`/wiki`) erklärt jede Funktion mit Schritten und Beispielen. Das Wiki ist nur zum Lesen und braucht kein Internet.
 
@@ -14,7 +14,7 @@ Kontoumsätze kommen per Datei-Import (CAMT V8, Sparkasse). Eine direkte Bankabf
 - **Mitglieder** (Wiki: "Mitglieder"): Anlegen, Stammdaten ändern, Mitgliedsart Aktiv oder Passiv mit Gültigkeitsmonat wechseln, Eintritt und Austritt, IBAN des Mitglieds. Neue Mitglieder zahlen ab dem Monat nach dem Eintritt, der Austrittsmonat ist noch voll zu zahlen.
 - **Beiträge und Prüfungsstart** (Wiki: "Beiträge und Prüfungsstart"): Beitrag je Mitgliedsart mit Gültig-ab-Monat. Eine Änderung wirkt nur ab diesem Monat. Der Prüfungsstart legt fest, ab wann Beiträge geprüft werden.
 - **Import** (Wiki: "Kontoexport importieren"): ZIP mit Tagesdateien oder einzelne XML-Datei im Format `camt.052.001.08`. Bereits importierte Umsätze erkennt KASSIVO als Duplikate, ein mehrfacher Import ist sicher.
-- **Zuordnung** (Wiki: "Zahlungen zuordnen"): Zahlungseingänge ordnet KASSIVO über die Absender-IBAN automatisch Mitgliedern zu, lernt dabei aus Ihren Zuordnungen ("Absender merken") und sammelt alles Unklare in der Liste "Unklar".
+- **Zuordnung** (Wiki: "Zahlungen zuordnen"): Zahlungseingänge ordnet KASSIVO über die Absender-IBAN automatisch Mitgliedern zu, lernt dabei aus Ihren Zuordnungen ("Absender merken") und sammelt alles Unklare in der Liste "Unklar". Zahlungen, die kein Mitglied brauchen (zum Beispiel Zinsen der Bank), verlassen "Unklar", sobald Sie ihnen eine Kategorie außer "Beiträge" geben ("Kein Mitglied nötig", "Als erledigt kategorisieren"), oder eine Regel kategorisiert sie schon beim Import.
 - **Verteilung** (Wiki: "Verteilung auf Beitragsmonate"): Jede Zahlung wird auf Beitragsmonate verteilt. Nur genau passende Zahlungen bestätigt KASSIVO selbst, alles andere ist ein Vorschlag, den Sie prüfen und bestätigen.
 - **Kategorien und Regeln** (Wiki: "Kategorien und Regeln"): Regeln nach Zweck, Name oder IBAN der Gegenpartei mit Priorität und Betragsgrenzen ordnen Buchungen Kategorien zu.
 - **Beitragsübersicht** (Wiki: "Beitragsübersicht"): Raster Mitglieder mal Monate mit den Status Bezahlt, Teilweise, Offen, Überfällig, dazu die Zahlungshistorie je Mitglied.
