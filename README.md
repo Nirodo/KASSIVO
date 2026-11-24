@@ -51,6 +51,10 @@ pip install -e ".[dev]"
 
 ## Start
 
+Unter Windows genügt ein Doppelklick auf `start.bat` im Projektordner. Die Datei startet den Server mit der virtuellen Umgebung `.venv` und öffnet den Browser auf http://127.0.0.1:8000. Das Fenster bleibt offen, solange KASSIVO läuft. Zum Beenden schließen Sie das Fenster oder drücken `Strg+C`. Aus einer Eingabeaufforderung oder PowerShell rufen Sie sie mit `.\start.bat` auf; ohne `.\` findet `cmd` den Namen nicht, weil `start` dort ein eingebauter Befehl ist. Mit `.\start.bat nobrowser` startet nur der Server. Fehlt `.venv`, zeigt die Datei die nötigen Installationsschritte.
+
+Von Hand starten Sie so:
+
 ```
 python -m kassivo
 ```
