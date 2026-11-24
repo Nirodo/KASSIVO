@@ -169,6 +169,13 @@ def test_vendor_integrity():
     assert "4.4.1" in text
 
 
+def test_vendor_license_file():
+    lic = STATIC / "vendor" / "LICENSE.chartjs.txt"
+    text = lic.read_text(encoding="utf-8")
+    assert "MIT License" in text and "Chart.js Contributors" in text
+    assert "LICENSE.chartjs.txt" in (STATIC / "vendor" / "README.md").read_text(encoding="utf-8")
+
+
 def test_reports_js_safe():
     js = (STATIC / "reports.js").read_text(encoding="utf-8")
     assert "innerHTML" not in js and "outerHTML" not in js
