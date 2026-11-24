@@ -257,3 +257,56 @@ def test_error_during_write_rolls_back(conn, tmp_path, monkeypatch):
     assert tx_count(conn) == 0
     assert conn.execute("select count(*) from import_batch").fetchone()[0] == 0
     assert not conn.in_transaction
+
+
+def _sizes():
+    files = day_files()
+    return files, [len(d) for d in files.values()]
+
+
+def test_zip_declared_total_over_cap_raises(conn, tmp_path, monkeypatch):
+    files, sizes = _sizes()
+    monkeypatch.setattr(ingest, "MAX_TOTAL_BYTES", sum(sizes) // 2)
+    p = write_zip(tmp_path, files)
+    opened = []
+    real_open = zipfile.ZipFile.open
+    monkeypatch.setattr(zipfile.ZipFile, "open", lambda self, *a, **k: opened.append(1) or real_open(self, *a, **k))
+    with pytest.raises(CamtError, match="insgesamt zu groß"):
+        import_path(conn, p)
+    assert opened == []  # Abbruch vor dem Lesen eines Eintrags
+    assert tx_count(conn) == 0
+
+
+def test_zip_entries_pass_each_but_sum_over_cap_raises(conn, tmp_path, monkeypatch):
+    files, sizes = _sizes()
+    monkeypatch.setattr(ingest, "MAX_XML_BYTES", max(sizes))
+    monkeypatch.setattr(ingest, "MAX_TOTAL_BYTES", sum(sizes) - 1)
+    with pytest.raises(CamtError, match="insgesamt zu groß") as ei:
+        import_path(conn, write_zip(tmp_path, files))
+    assert IBAN not in str(ei.value)
+    assert tx_count(conn) == 0
+
+
+def test_folder_sum_over_cap_raises(conn, tmp_path, monkeypatch):
+    files, sizes = _sizes()
+    folder = tmp_path / "ordner"
+    folder.mkdir()
+    for n, d in files.items():
+        (folder / n).write_bytes(d)
+    monkeypatch.setattr(ingest, "MAX_XML_BYTES", max(sizes))
+    monkeypatch.setattr(ingest, "MAX_TOTAL_BYTES", sum(sizes) - 1)
+    with pytest.raises(CamtError, match="insgesamt zu groß"):
+        import_path(conn, folder)
+    assert tx_count(conn) == 0
+
+
+def test_zip_and_folder_at_cap_still_import(conn, tmp_path, monkeypatch):
+    files, sizes = _sizes()
+    monkeypatch.setattr(ingest, "MAX_XML_BYTES", max(sizes))
+    monkeypatch.setattr(ingest, "MAX_TOTAL_BYTES", sum(sizes))
+    assert import_path(conn, write_zip(tmp_path, files)).new == 5
+    folder = tmp_path / "ordner"
+    folder.mkdir()
+    for n, d in files.items():
+        (folder / n).write_bytes(d)
+    assert import_path(conn, folder).duplicates == 5

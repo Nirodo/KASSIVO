@@ -12,8 +12,10 @@ from pathlib import Path
 from kassivo.camt import CamtError, ParsedStatement, parse_camt052
 
 MAX_XML_BYTES = 20 * 1024 * 1024
+MAX_TOTAL_BYTES = 200 * 1024 * 1024
 MAX_FILES = 5000
 NO_XML = "Keine XML-Dateien gefunden"
+TOO_BIG_TOTAL = "Import insgesamt zu groß"
 
 
 @dataclass
@@ -47,7 +49,9 @@ def _read_zip(path: Path) -> list[tuple[str, bytes]]:
     with z:
         infos = [i for i in z.infolist() if not i.is_dir() and _is_xml(i.filename)]
         _check_count(len(infos))
-        out = []
+        if sum(i.file_size for i in infos) > MAX_TOTAL_BYTES:
+            raise CamtError(TOO_BIG_TOTAL)
+        out, total = [], 0
         for info in infos:
             if info.file_size > MAX_XML_BYTES:
                 raise CamtError(f"{info.filename}: Datei zu groß")
@@ -58,6 +62,9 @@ def _read_zip(path: Path) -> list[tuple[str, bytes]]:
                 raise CamtError(f"{info.filename}: nicht lesbar") from None
             if len(data) > MAX_XML_BYTES:
                 raise CamtError(f"{info.filename}: Datei zu groß")
+            total += len(data)
+            if total > MAX_TOTAL_BYTES:  # Header können lügen: tatsächlich gelesene Bytes zählen
+                raise CamtError(TOO_BIG_TOTAL)
             out.append((info.filename, data))
     return out
 
@@ -72,7 +79,14 @@ def _collect(path: Path) -> list[tuple[str, bytes]]:
     if path.is_dir():
         files = sorted(p for p in path.iterdir() if p.is_file() and _is_xml(p.name))
         _check_count(len(files))
-        found = [_read_file(p) for p in files]
+        if sum(p.stat().st_size for p in files) > MAX_TOTAL_BYTES:
+            raise CamtError(TOO_BIG_TOTAL)
+        found, total = [], 0
+        for p in files:
+            found.append(_read_file(p))
+            total += len(found[-1][1])
+            if total > MAX_TOTAL_BYTES:  # Datei kann seit stat() gewachsen sein
+                raise CamtError(TOO_BIG_TOTAL)
     elif _is_xml(path.name):
         found = [_read_file(path)]
     else:
