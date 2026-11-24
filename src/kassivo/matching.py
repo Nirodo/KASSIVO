@@ -8,13 +8,9 @@ Nach jeder neuen Zuordnung legt dues.propose_allocations die Verteilung an,
 im selben Commit wie die Zuordnung (alles oder nichts).
 """
 from kassivo import dues
+from kassivo.iban import normalize_iban
 
 FEE_CATEGORY = "Beiträge"
-
-
-def normalize_iban(iban: str | None) -> str:
-    """Ohne jeden Leerraum, Großbuchstaben. None oder leer ergibt ''."""
-    return "".join((iban or "").split()).upper()
 
 
 def _set_fee_category_if_empty(conn, tx_id: int) -> None:

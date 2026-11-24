@@ -34,3 +34,12 @@ def test_add_months_year_bounds():
 def test_month_range_terminates_at_max_year():
     assert month_range("9999-11", "9999-12") == ["9999-11", "9999-12"]
     assert month_range("2026-12", "2026-11") == []
+
+
+def test_valid_month():
+    from kassivo.months import valid_month
+
+    for ok in ("2026-01", "2026-12"):
+        assert valid_month(ok)
+    for bad in ("2026-13", "2026-00", "26-01", "2026-1", "٢٠٢٦-٠١", "", " 2026-01", "2026-01 ", "2026-01\n"):
+        assert not valid_month(bad)

@@ -83,3 +83,14 @@ def test_update_converts_dates(conn):
     m = create_member(conn, "Max", "Aktiv", date(2026, 3, 1))
     update_member(conn, m, austritt=date(2026, 10, 12))
     assert conn.execute("select austritt from member where id=?", (m,)).fetchone()[0] == "2026-10-12"
+
+
+def test_iban_normalized_on_store(conn):
+    m = create_member(conn, "Max", "Aktiv", date(2026, 1, 1), iban=" de00 1111 2222 ")
+    assert conn.execute("select iban from member where id=?", (m,)).fetchone()[0] == "DE0011112222"
+    update_member(conn, m, iban="de99 3333")
+    assert conn.execute("select iban from member where id=?", (m,)).fetchone()[0] == "DE993333"
+    update_member(conn, m, iban="  ")
+    assert conn.execute("select iban from member where id=?", (m,)).fetchone()[0] is None
+    m2 = create_member(conn, "Eva", "Aktiv", date(2026, 1, 1), iban="")
+    assert conn.execute("select iban from member where id=?", (m2,)).fetchone()[0] is None

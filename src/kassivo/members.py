@@ -1,5 +1,6 @@
 from datetime import date
 
+from kassivo.iban import normalize_iban
 from kassivo.fees import _type_id, fee_at
 from kassivo.months import add_months, month_of
 
@@ -15,6 +16,7 @@ def create_member(
     fee_start: str | None = None,
 ) -> int:
     type_id = _type_id(conn, type_name)
+    iban = normalize_iban(iban) or None
     if fee_start is None:
         fee_start = add_months(month_of(eintritt), 1)
     cur = conn.execute(
@@ -40,6 +42,8 @@ def update_member(conn, member_id: int, **fields) -> None:
         raise ValueError(f"Unbekannte Felder: {sorted(bad)}")
     if not fields:
         return
+    if "iban" in fields:
+        fields["iban"] = normalize_iban(fields["iban"]) or None
     for k in ("eintritt", "austritt"):
         if isinstance(fields.get(k), date):
             fields[k] = fields[k].isoformat()

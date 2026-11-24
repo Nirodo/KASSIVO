@@ -1,4 +1,5 @@
 import calendar
+import re
 from datetime import date
 
 
@@ -33,3 +34,10 @@ def month_range(a: str, b: str) -> list[str]:
 def month_end(m: str) -> date:
     y, mo = _split(m)
     return date(y, mo, calendar.monthrange(y, mo)[1])
+
+
+_MONTH_RE = re.compile(r"\d{4}-(0[1-9]|1[0-2])", re.ASCII)
+
+
+def valid_month(text: str) -> bool:
+    return bool(_MONTH_RE.fullmatch(text))
