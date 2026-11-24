@@ -2,7 +2,8 @@
 
 Beträge sind int-Cent. Als bezahlt zählen nur Verteilungen mit
 status='confirmed'. Vorschläge ('proposed') bestätigt der Nutzer, außer ein
-Eingang deckt genau den frühesten offenen Monat. Buchungen werden nie
+Eingang deckt genau den frühesten offenen Monat und dieser ist sein
+Buchungsmonat. Buchungen werden nie
 geändert, nur ihre Verteilungen.
 
 Dieses Modul importiert matching nicht (matching ruft propose_allocations).
@@ -33,11 +34,21 @@ def _valid_month(m) -> bool:
 
 
 def get_check_start(conn) -> str | None:
+    """Gespeicherter Prüfungsstart, sonst der Monat der ältesten Buchung.
+
+    Verworfen: Januar des ältesten Buchungsjahres. Das zog bei langjährigen
+    Mitgliedern Monate vor dem ersten Import in die Prüfung.
+    """
     stored = get_setting(conn, CHECK_START_KEY)
     if stored:
         return stored
     row = conn.execute('select min(booking_date) from "transaction"').fetchone()
-    return f"{row[0][:4]}-01" if row[0] else None
+    return row[0][:7] if row[0] else None
+
+
+def check_start_is_set(conn) -> bool:
+    """True nur, wenn der Nutzer den Prüfungsstart ausdrücklich gespeichert hat."""
+    return bool(get_setting(conn, CHECK_START_KEY))
 
 
 def set_check_start(conn, month: str) -> None:
@@ -116,7 +127,7 @@ def _compute(conn, tx) -> tuple[list[tuple[str, int]], bool]:
     limit = add_months(max(start, booking_month), MAX_MONTHS_AHEAD)
 
     allocs: dict[str, int] = {}
-    first_shortfall = None
+    first_shortfall = first_month = None
     remaining = amount
     for month in month_range(start, limit):
         if remaining == 0:
@@ -126,7 +137,7 @@ def _compute(conn, tx) -> tuple[list[tuple[str, int]], bool]:
         if shortfall <= 0:
             continue
         if first_shortfall is None:
-            first_shortfall = shortfall
+            first_shortfall, first_month = shortfall, month
         take = min(shortfall, remaining)
         allocs[month] = take
         remaining -= take
@@ -134,10 +145,15 @@ def _compute(conn, tx) -> tuple[list[tuple[str, int]], bool]:
         last = max(allocs) if allocs else booking_month
         allocs[last] = allocs.get(last, 0) + remaining
     result = sorted(allocs.items())
+    # Nur eine Zahlung im eigenen Fälligkeitsmonat bestätigt sich selbst.
+    # Rückstände, Vorauszahlungen und Zahlungen aus dem Vormonat bestätigt
+    # der Nutzer (Spec: "Das Verteilen bestätigt der Nutzer").
     exact = (
         len(result) == 1
         and result[0][1] == amount
         and first_shortfall == amount
+        and first_month == booking_month
+        and result[0][0] == booking_month
     )
     return result, exact
 

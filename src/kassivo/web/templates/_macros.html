@@ -36,6 +36,10 @@
   <p>Es wurde nichts gespeichert.</p></div>{% endif %}
 {% endmacro %}
 
+{% macro check_start_notice(is_set) %}
+{% if not is_set %}<p class="alert" role="status"><strong>Hinweis:</strong> Prüfungsstart ist noch nicht festgelegt – bitte vor dem ersten Import festlegen. <a href="/settings/fees">Prüfungsstart festlegen</a></p>{% endif %}
+{% endmacro %}
+
 {% macro money(cents) %}<td class="num">{{ cents | eur }}</td>{% endmacro %}
 
 {% macro member_options(members, selected) %}

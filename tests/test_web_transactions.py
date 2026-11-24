@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from kassivo.db import connect
-from kassivo.dues import month_status
+from kassivo.dues import month_status, set_check_start
 from kassivo.members import create_member, leave_member
 from kassivo.web.app import create_app
 from tests.helpers import IBAN, OTHER_IBAN, make_camt, make_zip
@@ -270,6 +270,7 @@ def test_next_redirect_safe(client, db, nxt, expected):
 def _two(client, db):
     """Spende 25,00 (Vorschlag 02: 17,00 / 03: 8,00) einem Mitglied zugeordnet."""
     _upload(client, [E_SPENDE])
+    set_check_start(db, "2026-01")  # Standard wäre 2026-03 (älteste Buchung)
     m = _member(db)
     tx = _tx_id(db, "Spende Sommerfest")
     _assign(client, tx, m)
@@ -338,10 +339,13 @@ def test_allocate_outgoing_or_unassigned_rejected(client, db):
 
 def test_stale_proposal_warning_and_repropose(client, db):
     _upload(client, [E_ERIKA, E_SPENDE])
+    set_check_start(db, "2026-01")
     m = _member(db)
     b, a = _tx_id(db, "Spende Sommerfest"), _tx_id(db, "Beitrag")
-    _assign(client, b, m)            # Vorschlag 01 + 02
-    _assign(client, a, m)            # 17,00 deckt 01 exakt -> bestätigt
+    _assign(client, b, m)            # Vorschlag 02 + 03
+    _assign(client, a, m)            # 17,00 im März für Februar: nur Vorschlag
+    assert _alloc(db, a)[0]["status"] == "proposed"
+    client.post(f"/transactions/{a}/allocate", data={"month_0": "2026-02", "amount_0": "17,00"})
     assert _alloc(db, a)[0]["status"] == "confirmed"
     assert "Monat bereits bezahlt" in client.get(f"/transactions/{b}/allocate").text
     assert "Monat bereits bezahlt" not in client.get(f"/transactions/{a}/allocate").text

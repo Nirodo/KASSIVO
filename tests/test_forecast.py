@@ -56,6 +56,7 @@ def test_one_paid_reduces_due(conn):
 
 
 def test_unpaid_past_month_is_overdue(conn):
+    set_check_start(conn, "2026-01")  # Standard wäre der Monat der ältesten Buchung
     a, p = _two(conn, eintritt=date(2026, 9, 10))  # Beitrag ab 2026-10
     _alloc(conn, p, "2026-10", 1000)
     f = forecast(conn, NOV_END, TODAY)
@@ -89,6 +90,7 @@ def test_partial_current_month(conn):
 
 
 def test_partial_past_month_is_overdue_remainder(conn):
+    set_check_start(conn, "2026-01")
     a, p = _two(conn, eintritt=date(2026, 9, 10))
     _alloc(conn, a, "2026-10", 1000)
     _alloc(conn, p, "2026-10", 1000)

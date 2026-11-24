@@ -32,7 +32,7 @@
 </section>
 <section>
   <h2>Prüfungsstart</h2>
-  <p>Ab diesem Monat werden Beiträge geprüft. Aktuell: {{ check_start or "nicht gesetzt" }}.</p>
+  <p>Ab diesem Monat werden Beiträge geprüft. Aktuell: {% if check_start_set %}{{ check_start }}{% elif check_start %}nicht gesetzt (abgeleitet: {{ check_start }}){% else %}nicht gesetzt{% endif %}.</p>
   <form method="post" action="/settings/fees">
     <input type="hidden" name="form" value="check_start">
     {% if form == "check_start" %}{{ summary(errors) }}{% endif %}

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
-from kassivo.dues import get_check_start, set_check_start
+from kassivo.dues import check_start_is_set, get_check_start, set_check_start
 from kassivo.fees import fee_at, set_fee
 from kassivo.money import parse_cents
 from kassivo.web.common import (
@@ -23,7 +23,8 @@ def _page(request, conn, status=200, errors=None, values=None, form=""):
         request, "settings_fees.html", status, errors=errors or {}, values=values or {},
         form=form, types=types, month=month, history=history,
         current=[(t, fee_at(conn, t, month)) for t in types],
-        check_start=get_check_start(conn), ok=request.query_params.get("ok") == "1",
+        check_start=get_check_start(conn), check_start_set=check_start_is_set(conn),
+        ok=request.query_params.get("ok") == "1",
     )
 
 

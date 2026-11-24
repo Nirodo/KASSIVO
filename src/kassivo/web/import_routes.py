@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Request, UploadFile
 
 from kassivo import categories, matching
 from kassivo.camt import CamtError
+from kassivo.dues import check_start_is_set
 from kassivo.ingest import import_path
 from kassivo.web.common import get_conn, render
 
@@ -24,13 +25,14 @@ def _sniff(head: bytes) -> str | None:
     return None
 
 
-def _form(request, status=200, error=None):
-    return render(request, "import.html", status, error=error)
+def _form(request, conn, status=200, error=None):
+    return render(request, "import.html", status, error=error,
+                  check_start_set=check_start_is_set(conn))
 
 
 @router.get("/import")
-async def import_form(request: Request):
-    return _form(request)
+async def import_form(request: Request, conn=Depends(get_conn)):
+    return _form(request, conn)
 
 
 @router.post("/import")
@@ -38,7 +40,7 @@ async def import_submit(
     request: Request, file: UploadFile | None = File(None), conn=Depends(get_conn),
 ):
     if file is None:
-        return _form(request, 422, "Bitte eine Datei auswählen.")
+        return _form(request, conn, 422, "Bitte eine Datei auswählen.")
     with tempfile.TemporaryDirectory() as tmp:
         raw = Path(tmp) / "upload.bin"
         total, head = 0, b""
@@ -48,16 +50,16 @@ async def import_submit(
                     head = chunk[:1024]
                 total += len(chunk)
                 if total > MAX_UPLOAD_BYTES:
-                    return _form(request, 413, "Die Datei ist zu groß (Grenze 100 MB). Es wurde nichts importiert.")
+                    return _form(request, conn, 413, "Die Datei ist zu groß (Grenze 100 MB). Es wurde nichts importiert.")
                 out.write(chunk)
         kind = _sniff(head)
         if kind is None:
-            return _form(request, 422, "Dateityp nicht erkannt. Erwartet wird eine ZIP- oder XML-Datei.")
+            return _form(request, conn, 422, "Dateityp nicht erkannt. Erwartet wird eine ZIP- oder XML-Datei.")
         path = raw.rename(raw.with_name(f"upload.{kind}"))
         try:
             result = import_path(conn, path)
         except CamtError as e:
-            return _form(request, 422, f"{e}. Es wurde nichts importiert.")
+            return _form(request, conn, 422, f"{e}. Es wurde nichts importiert.")
         categorized = categories.apply_rules(conn, result.new_tx_ids)
         assigned = matching.auto_assign(conn, result.new_tx_ids)
     return render(request, "import_result.html", result=result,

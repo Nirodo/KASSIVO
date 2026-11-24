@@ -3,7 +3,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from kassivo.dues import dues_grid, month_status, payment_history
+from kassivo.dues import check_start_is_set, dues_grid, month_status, payment_history
 from kassivo.forecast import forecast
 from kassivo.members import type_at
 from kassivo.months import add_months, month_end, month_of
@@ -26,7 +26,8 @@ async def dues_view(request: Request, year: str | None = None,
          "paid": sum(r["months"][i].paid for r in grid)}
         for i in range(12)
     ]
-    return render(request, "dues.html", year=y, grid=grid, totals=totals, **year_nav(y))
+    return render(request, "dues.html", year=y, grid=grid, totals=totals,
+                  check_start_set=check_start_is_set(conn), **year_nav(y))
 
 
 @router.get("/members/{member_id:int}/history")

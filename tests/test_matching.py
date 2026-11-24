@@ -5,7 +5,7 @@ import pytest
 
 from kassivo import dues
 from kassivo.categories import create_category
-from kassivo.dues import month_status
+from kassivo.dues import month_status, set_check_start
 from kassivo.matching import assign_member, auto_assign, unmatched
 from kassivo.members import create_member
 
@@ -349,12 +349,20 @@ def test_assign_from_none_deletes_stale_proposed(conn):
 # --- Vorschläge beim Zuordnen (Task 7) -------------------------------------
 
 def test_assign_exact_amount_confirms_earliest_due_month(conn):
-    m = _member(conn)  # fee_start 2025-02, Prüfungsstart Default 2026-01
+    m = _member(conn)  # fee_start 2025-02, Prüfungsstart Default 2026-03
     t = _tx(conn, 1700, MOM, day="2026-03-04")
     assign_member(conn, t, m)
-    assert _full(conn, t) == [(m, "2026-01", 1700, "confirmed")]
-    st = month_status(conn, m, "2026-01", date(2026, 3, 4))
+    assert _full(conn, t) == [(m, "2026-03", 1700, "confirmed")]
+    st = month_status(conn, m, "2026-03", date(2026, 3, 4))
     assert st.status == "PAID"
+
+
+def test_assign_exact_amount_for_earlier_month_stays_proposed(conn):
+    set_check_start(conn, "2026-01")
+    m = _member(conn)
+    t = _tx(conn, 1700, MOM, day="2026-03-04")
+    assign_member(conn, t, m)
+    assert _full(conn, t) == [(m, "2026-01", 1700, "proposed")]
 
 
 def test_assign_double_amount_two_proposed_not_paid(conn):

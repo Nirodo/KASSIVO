@@ -7,11 +7,12 @@ import pytest
 
 from kassivo.db import set_setting
 from kassivo.dues import (
-    MonthStatus, clear_allocations, confirm_allocations, dues_grid, get_check_start, month_status,
+    MonthStatus, check_start_is_set, clear_allocations, confirm_allocations, dues_grid, get_check_start, month_status,
     payment_history, propose_allocations, set_check_start,
 )
 from kassivo.fees import set_fee
-from kassivo.matching import assign_member, unmatched
+from kassivo.matching import assign_member, auto_assign, unmatched
+from kassivo.reports import year_summary
 from kassivo.members import create_member, leave_member
 
 MOM = "DE22222222222222222222"
@@ -189,6 +190,7 @@ def test_rest_of_partly_paid_month_is_exact(conn):
 
 
 def test_catch_up_skips_paid_months(conn):
+    set_check_start(conn, "2026-01")  # Standard wäre der Monat der ältesten Buchung
     m = _anna(conn)
     t1 = _tx(conn, 1700, day="2026-03-02", member_id=m)
     confirm_allocations(conn, t1, [("2026-03", 1700)])
@@ -376,7 +378,7 @@ def test_get_check_start_default(conn):
     assert get_check_start(conn) is None
     _tx(conn, -500, day="2026-02-01")
     _tx(conn, 1700, day="2025-07-03")
-    assert get_check_start(conn) == "2025-01"
+    assert get_check_start(conn) == "2025-07"  # Monat der ältesten Buchung
     set_check_start(conn, "2026-03")
     assert get_check_start(conn) == "2026-03"
 
@@ -549,3 +551,69 @@ def test_clear_failure_keeps_rows_and_no_open_transaction(conn):
         clear_allocations(conn, t)
     assert not conn.in_transaction
     assert len(_rows(conn, t)) == 2
+
+
+# --- C1: Auto-Bestätigung nur im Buchungsmonat ------------------------------
+
+FAKE = "XX00FAKE0000000001"
+
+
+def _long_member_13_payments(conn):
+    """Mitglied seit 2015, je 17 EUR von Dez 2024 bis Dez 2025 (erfunden)."""
+    m = create_member(conn, "Test Person", "Aktiv", date(2015, 3, 1), iban=FAKE)
+    ids = [_tx(conn, 1700, day="2024-12-30", cp_iban=FAKE)]
+    ids += [_tx(conn, 1700, day=f"2025-{i:02d}-05", cp_iban=FAKE) for i in range(1, 13)]
+    return m, ids
+
+
+def test_long_member_payments_never_confirmed_into_other_months(conn):
+    m, ids = _long_member_13_payments(conn)
+    assert auto_assign(conn, ids) == 13
+    rows = conn.execute(
+        'select t.booking_date, a.month, a.status from allocation a'
+        ' join "transaction" t on t.id=a.tx_id').fetchall()
+    for r in rows:
+        if r["status"] == "confirmed":
+            assert r["month"] == r["booking_date"][:7]
+    # Prüfungsstart ist der Monat der ältesten Buchung: 2024-12
+    confirmed = {r["month"] for r in rows if r["status"] == "confirmed"}
+    assert confirmed == {"2024-12"} | {f"2025-{i:02d}" for i in range(1, 13)}
+    grid = dues_grid(conn, 2025, date(2026, 1, 10))[0]["months"]
+    assert {s.status for s in grid} == {"PAID"}
+    rep = year_summary(conn, 2024)
+    assert rep["by_member"] == [{"name": "Test Person", "paid_cents": 1700}]
+
+
+def test_arrears_with_explicit_old_check_start_stay_proposed(conn):
+    set_check_start(conn, "2024-01")
+    m, ids = _long_member_13_payments(conn)
+    auto_assign(conn, ids)
+    statuses = {r["status"] for r in conn.execute("select status from allocation")}
+    assert statuses == {"proposed"}  # Rückstände verteilt der Nutzer
+    grid = dues_grid(conn, 2025, date(2026, 1, 10))[0]["months"]
+    assert all(s.paid == 0 for s in grid)
+    assert year_summary(conn, 2024)["by_member"] == []
+
+
+def test_payment_in_month_before_due_month_stays_proposed(conn):
+    set_check_start(conn, "2026-01")
+    m = _anna(conn)
+    t = _tx(conn, 1700, day="2025-12-28", member_id=m)
+    assert propose_allocations(conn, t) == [("2026-01", 1700)]
+    assert _rows(conn, t) == [("2026-01", 1700, "proposed", m)]
+
+
+def test_payment_in_own_month_auto_confirms(conn):
+    set_check_start(conn, "2026-01")
+    m = _anna(conn)
+    t = _tx(conn, 1700, day="2026-01-28", member_id=m)
+    propose_allocations(conn, t)
+    assert _rows(conn, t) == [("2026-01", 1700, "confirmed", m)]
+
+
+def test_check_start_is_set(conn):
+    assert check_start_is_set(conn) is False
+    _tx(conn, 1700, day="2025-07-03")
+    assert check_start_is_set(conn) is False  # nur abgeleitet
+    set_check_start(conn, "2025-01")
+    assert check_start_is_set(conn) is True

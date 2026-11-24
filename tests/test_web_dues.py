@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from kassivo.db import connect
-from kassivo.dues import confirm_allocations
+from kassivo.dues import confirm_allocations, set_check_start
 from kassivo.members import create_member
 from kassivo.web.app import create_app
 from kassivo.web.common import get_today
@@ -82,6 +82,7 @@ def test_dues_future_month_open(client, db):
 def test_dues_totals_and_nav(client, db):
     a = _erika(db)
     create_member(db, "Paul Passiv", "Passiv", date(2026, 1, 15))
+    set_check_start(db, "2026-01")
     tx = _tx(db, a, 1700)
     confirm_allocations(db, tx, [("2026-02", 1700)])
     html = client.get("/dues?year=2026").text
@@ -232,3 +233,36 @@ def test_new_pages_headers_and_no_external(client, db, path):
 @pytest.mark.parametrize("path", ["/dues", "/forecast", "/members/1/history"])
 def test_new_pages_reject_bad_host(client, path):
     assert client.get(path, headers={"host": "evil.example"}).status_code == 400
+
+
+# --- C1: Hinweis, solange der Prüfungsstart nicht festgelegt ist --------------
+
+CHECK_NOTE = "Prüfungsstart ist noch nicht festgelegt – bitte vor dem ersten Import festlegen."
+
+
+@pytest.mark.parametrize("path", ["/dues", "/import"])
+def test_check_start_notice_until_set(client, db, path):
+    html = client.get(path).text
+    assert CHECK_NOTE in _text(html)
+    assert 'href="/settings/fees"' in html.split("<main>")[1]
+    set_check_start(db, "2026-01")
+    assert CHECK_NOTE not in _text(client.get(path).text)
+
+
+def test_settings_check_start_text_none(client):
+    t = _text(client.get("/settings/fees").text)
+    assert "Aktuell: nicht gesetzt." in t
+    assert "abgeleitet" not in t
+
+
+def test_settings_check_start_text_derived(client, db):
+    _tx(db, None, 1700, day="2025-07-03")
+    t = _text(client.get("/settings/fees").text)
+    assert "Aktuell: nicht gesetzt (abgeleitet: 2025-07)." in t
+
+
+def test_settings_check_start_text_set(client, db):
+    _tx(db, None, 1700, day="2025-07-03")
+    set_check_start(db, "2026-03")
+    t = _text(client.get("/settings/fees").text)
+    assert "Aktuell: 2026-03." in t and "nicht gesetzt" not in t
