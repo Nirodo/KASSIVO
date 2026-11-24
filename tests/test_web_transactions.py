@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from kassivo.db import connect
 from kassivo.dues import month_status, set_check_start
 from kassivo.members import create_member, leave_member
-from kassivo.web.app import create_app
+from tests.helpers import make_app
 from tests.helpers import IBAN, OTHER_IBAN, make_camt, make_zip
 
 THIRD_IBAN = "DE22222222222222222222"
@@ -22,7 +22,7 @@ def db_path(tmp_path):
 
 @pytest.fixture
 def client(db_path):
-    return TestClient(create_app(db_path), follow_redirects=False)
+    return TestClient(make_app(db_path), follow_redirects=False)
 
 
 @pytest.fixture

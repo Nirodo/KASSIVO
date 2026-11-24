@@ -82,3 +82,18 @@ def make_zip(files: dict[str, bytes]) -> bytes:
         for n, d in files.items():
             z.writestr(n, d)
     return buf.getvalue()
+
+
+TEST_HOSTS = frozenset({"testserver"})
+
+
+def make_app(db_path):
+    """Einziger Weg der Tests zur App: erlaubt zusätzlich den Host 'testserver'."""
+    from kassivo.web.app import create_app
+    return create_app(db_path, extra_hosts=TEST_HOSTS)
+
+
+def make_client(db_path, **kw):
+    from fastapi.testclient import TestClient
+    kw.setdefault("follow_redirects", False)
+    return TestClient(make_app(db_path), **kw)

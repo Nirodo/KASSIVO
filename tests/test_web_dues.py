@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from kassivo.db import connect
 from kassivo.dues import confirm_allocations, set_check_start
 from kassivo.members import create_member
-from kassivo.web.app import create_app
+from tests.helpers import make_app
 from kassivo.web.common import get_today
 
 TODAY = date(2026, 11, 24)
@@ -21,7 +21,7 @@ def db_path(tmp_path):
 
 @pytest.fixture
 def client(db_path):
-    app = create_app(db_path)
+    app = make_app(db_path)
     app.dependency_overrides[get_today] = lambda: TODAY
     return TestClient(app, follow_redirects=False)
 

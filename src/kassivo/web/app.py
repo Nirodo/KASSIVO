@@ -13,7 +13,7 @@ from kassivo.web import (
 )
 from kassivo.web.common import HERE, render
 
-ALLOWED_HOSTS = {"127.0.0.1", "localhost", "testserver"}
+ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost"})
 UNSAFE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
 SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
@@ -26,14 +26,16 @@ def _hostname(host: str) -> str:
     return host.rsplit(":", 1)[0] if ":" in host else host
 
 
-def create_app(db_path) -> FastAPI:
+def create_app(db_path, extra_hosts=()) -> FastAPI:
+    """extra_hosts: zusätzliche Hostnamen, nur für Tests ("testserver")."""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db_path = Path(db_path)
+    allowed = ALLOWED_HOSTS | frozenset(extra_hosts)
 
     @app.middleware("http")
     async def security(request: Request, call_next):
         host = request.headers.get("host", "")
-        if _hostname(host) not in ALLOWED_HOSTS:
+        if _hostname(host) not in allowed:
             resp = PlainTextResponse("Ungültiger Host.", status_code=400)
         else:
             origin = request.headers.get("origin")

@@ -8,7 +8,7 @@ from kassivo.db import connect
 from kassivo.dues import get_check_start
 from kassivo.fees import fee_at
 from kassivo.members import create_member, leave_member, list_members, type_at, update_member
-from kassivo.web.app import create_app
+from tests.helpers import make_app
 from tests.helpers import IBAN, OTHER_IBAN, make_camt, make_zip
 
 
@@ -19,7 +19,7 @@ def db_path(tmp_path):
 
 @pytest.fixture
 def client(db_path):
-    return TestClient(create_app(db_path), follow_redirects=False)
+    return TestClient(make_app(db_path), follow_redirects=False)
 
 
 @pytest.fixture
@@ -391,7 +391,7 @@ def test_fee_upper_limit_accepted(client, db):
 
 
 def test_unhandled_error_is_safe_page(db_path):
-    app = create_app(db_path)
+    app = make_app(db_path)
 
     @app.get("/boom")
     async def boom():

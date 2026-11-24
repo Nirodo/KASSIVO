@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from kassivo.backup import backup_db, list_backups
 from kassivo.db import connect
-from kassivo.web.app import create_app
+from tests.helpers import make_app
 
 ROOT = Path(__file__).resolve().parent.parent
 NAME_RE = re.compile(r"^kassivo-\d{8}-\d{6}(-\d+)?\.db$")
@@ -133,7 +133,7 @@ def db_path(tmp_path):
 
 @pytest.fixture
 def client(db_path):
-    return TestClient(create_app(db_path), follow_redirects=False)
+    return TestClient(make_app(db_path), follow_redirects=False)
 
 
 def _dir(db_path):
@@ -211,7 +211,7 @@ def test_bad_host(client, db_path):
 
 def test_memory_db_422(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    c = TestClient(create_app(":memory:"), follow_redirects=False)
+    c = TestClient(make_app(":memory:"), follow_redirects=False)
     r = c.post("/backup")
     assert r.status_code == 422
     assert "Sicherung nur bei dateibasierter Datenbank möglich." in r.text
@@ -238,7 +238,7 @@ def test_failure_gives_500_page_without_leftovers(db_path, monkeypatch):
     def boom(conn, target):
         target.write_text("halb")
         raise sqlite3.OperationalError("kaputt")
-    c = TestClient(create_app(db_path), raise_server_exceptions=False)
+    c = TestClient(make_app(db_path), raise_server_exceptions=False)
     monkeypatch.setattr("kassivo.backup._copy", boom)
     assert c.post("/backup").status_code == 500
     assert list(_dir(db_path).iterdir()) == []
