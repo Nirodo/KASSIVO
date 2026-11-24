@@ -10,8 +10,14 @@ credentials*.json
 # Echte Bankdaten (Exporte, Beispieldateien) - nie ins Repo
 *.zip
 *.ZIP
-*camt*
-*CAMT*
+*camt052*
+*camt053*
+*camt52*
+*camt53*
+*CAMT52*
+*CAMT53*
+*.xml
+*.XML
 *MT940*
 *mt940*
 samples/
@@ -59,3 +65,4 @@ desktop.ini
 
 # Claude Code lokal
 .claude/settings.local.json
+.superpowers/
