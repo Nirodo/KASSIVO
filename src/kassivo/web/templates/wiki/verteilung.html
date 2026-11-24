@@ -7,7 +7,7 @@
 <p>KASSIVO bestätigt eine Zahlung nur, wenn beides stimmt:</p>
 <ul>
   <li>Der Betrag deckt <strong>genau</strong> den Beitrag, der im frühesten offenen Monat noch fehlt, und nicht mehr.</li>
-  <li>Der <strong>Buchungsmonat</strong> der Zahlung ist dieser Beitragsmonat.</li>
+  <li>Der <a href="/wiki/begriffe#buchungsmonat">Buchungsmonat</a> der Zahlung ist dieser <a href="/wiki/begriffe#beitragsmonat">Beitragsmonat</a>.</li>
 </ul>
 <p>Alles andere ist ein Vorschlag und braucht Ihre Bestätigung: Mehrmonatszahlungen, Teilzahlungen, Rückstände, Vorauszahlungen und Zahlungen, die schon im Vormonat gebucht sind.</p>
 
@@ -15,7 +15,7 @@
 <ol class="steps">
   <li>Öffnen Sie <a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>. Der Link steht in „Buchungen“, „Unklar“ und nach dem Import. Er zeigt alle Zahlungen mit unbestätigtem Vorschlag.</li>
   <li>Wählen Sie bei der Zahlung „Verteilung“. Die Seite „Verteilung“ zeigt oben die Buchung und die „Aktuelle Verteilung“ mit dem Zustand je Monat.</li>
-  <li>Prüfen Sie unter „Verteilung bearbeiten“ die Zeilen aus Monat (JJJJ-MM) und Betrag (zum Beispiel <code>17,00</code>). Sie können Monate und Beträge ändern. Leere Zeilen werden ignoriert, es stehen immer ein paar freie Zeilen bereit. Die Spalte „Beitragsstatus des Mitglieds“ zeigt je Monat Soll und bisher Bezahltes.</li>
+  <li>Prüfen Sie unter „Verteilung bearbeiten“ die Zeilen aus Monat (JJJJ-MM) und Betrag (zum Beispiel <code>17,00</code>). Sie können Monate und Beträge ändern. Leere Zeilen werden ignoriert, es stehen immer ein paar freie Zeilen bereit. Die Spalte „Beitragsstatus des Mitglieds“ zeigt je Monat <a href="/wiki/begriffe#soll">Soll</a> und bisher Bezahltes.</li>
   <li>Kontrollieren Sie die Zeile „Summe der Zeilen“. Die Summe muss dem Buchungsbetrag entsprechen. Passt sie, steht dort „Die Summe passt.“ Sonst steht dort die Differenz.</li>
   <li>Wählen Sie „Verteilung bestätigen“. Die Zahlung zählt jetzt als bezahlt.</li>
 </ol>
@@ -49,7 +49,7 @@
 <h2>Gut zu wissen</h2>
 <ul>
   <li><strong>Nur bestätigte Verteilungen zählen als bezahlt.</strong> Beitragsübersicht, Prognose und Report rechnen nur mit ihnen. Ein Monat mit Vorschlag sieht deshalb weiter „Offen“ oder „Überfällig“ aus, trägt aber die Markierung „Vorschlag“. Das ist die häufigste Ursache für einen scheinbar fehlenden Beitrag.</li>
-  <li><strong>Wie KASSIVO rechnet:</strong> Es beginnt beim späteren von Prüfungsstart und „Zahlt ab“-Monat des Mitglieds und füllt die Monate der Reihe nach, in denen noch etwas fehlt (Soll minus bestätigt Bezahltes). Ein Rest ohne offenen Monat geht in den zuletzt verteilten Monat. So entspricht die Summe immer dem Betrag. Der Vorschlag reicht höchstens 24 Monate über den späteren von Startmonat und Buchungsmonat hinaus.</li>
+  <li><strong>Wie KASSIVO rechnet:</strong> Es beginnt beim späteren von Prüfungsstart und „Zahlt ab“-Monat des Mitglieds und füllt die Monate der Reihe nach, in denen noch etwas fehlt (Soll minus bestätigt Bezahltes). Ein Rest ohne offenen Monat geht in den zuletzt verteilten Monat. Gibt es keinen, geht er in den Buchungsmonat. So entspricht die Summe immer dem Betrag. Der Vorschlag reicht höchstens 24 Monate über den späteren von Startmonat und Buchungsmonat hinaus.</li>
   <li><strong>Warnung „Monat bereits bezahlt“:</strong> Sie erscheint in der Zeile eines Vorschlags, wenn der Monat inzwischen durch bestätigte Zahlungen voll bezahlt ist. Prüfen Sie dann den Monat. Sonst zahlen Sie doppelt.</li>
   <li><strong>Prüfungsstart ändern</strong> berechnet offene Vorschläge neu und lässt bestätigte unverändert.</li>
   <li>Beträge je Zeile: 0,01 € bis 100.000,00 €. Ein Monat darf nur einmal vorkommen.</li>

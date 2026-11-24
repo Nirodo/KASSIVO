@@ -79,6 +79,21 @@ def test_faq_has_at_least_ten_questions(pages):
     ("import", ["camt.052.001.08", "Duplikat", "Es wurde nichts importiert"]),
     ("zuordnung", ["mehrdeutig", "Absender merken", "ausgetreten", "Unklar"]),
     ("backup", ["journal", "kassivo.db", "backups"]),
+    # Hinweise zu Nebenwirkungen und Grenzen (geschlossene Dokumentationslücken)
+    ("beitraege", ["Vorschlag", "Prüfungsstart", "Verteilung aufheben", "1.500"]),
+    ("start", ["Offene Vorschläge", "$env:KASSIVO_DB", "setx", "Eingabeaufforderung (cmd)"]),
+    ("zuordnung", ["Verteilung aufheben", "frühesten", "— keins —", "nie für das richtige Mitglied"]),
+    ("faq", ["mehrdeutig", "— keins —", "Bankreferenz"]),
+    ("import", ["Bankreferenz", "später", "Regeln anwenden", "Unklare automatisch zuordnen", "für immer"]),
+    ("grenzen", ["Bankreferenz", "für immer", "Barzahlungen", "mehrdeutig", "Längenbegrenzung",
+                 "Monat bereits bezahlt", "Austritt vor dem Eintritt"]),
+    ("begriffe", ["Buchungsmonat", "Beitragsmonat", "Soll"]),
+    ("prognose", ["ganze Monat des Datums"]),
+    ("verteilung", ["Gibt es keinen, geht er in den Buchungsmonat"]),
+    ("mitglieder", ["Überfällig"]),
+    ("beitragsuebersicht", ["Überzahlungen"]),
+    ("kategorien", ["17.00"]),
+    ("sicherheit", ["/transactions?q=", "Konsolenausgabe"]),
     ("grenzen", ["FinTS", "0,00", "C24", "finAPI"]),
     ("beitraege", ["Prüfungsstart", "Gültig ab Monat", "neu berechnet"]),
     ("kategorien", ["Priorität", "Ohne Kategorie", "Überschreiben", "Hauptverein"]),
@@ -326,3 +341,120 @@ def test_forecast_example():
     assert (f.overdue_cents, f.due_cents) == (1700, 1700)
     f = forecast(conn, date(2026, 6, 30), today)
     assert (f.overdue_cents, f.due_cents) == (1700, 6800)
+
+
+# --- Dokumentierte Nebenwirkungen und Grenzen laufen so, wie das Wiki sie beschreibt ------
+
+def test_parse_cents_matches_wiki_amount_format():
+    from kassivo.money import parse_cents
+    assert parse_cents("1.500") == 150000 and parse_cents("17,00") == 1700
+    with pytest.raises(ValueError):
+        parse_cents("17.00")
+
+
+def test_payment_before_check_start_is_proposed_for_start_month():
+    conn = connect(":memory:")
+    conn.execute("insert into account(iban, label) values('XX00FAKE0000000099', 't')")
+    dues.set_check_start(conn, "2026-04")
+    mid = create_member(conn, "Max Mustermann", "Aktiv", date(2025, 12, 10))
+    tx = _pay(conn, mid, "2026-03-20", 1700)
+    dues.propose_allocations(conn, tx)
+    assert _rows(conn, tx) == [("2026-04", 1700, "proposed")]
+    dues.confirm_allocations(conn, tx, [("2026-04", 1700)])
+    april = _pay(conn, mid, "2026-04-10", 1700)
+    dues.propose_allocations(conn, april)
+    assert _rows(conn, april) == [("2026-05", 1700, "proposed")]
+
+
+def test_sibling_reassignment_flow():
+    from kassivo import matching
+    conn, erika = _setup()
+    hans = create_member(conn, "Hans Musterfrau", "Aktiv", date(2025, 12, 10))
+    first = _pay(conn, erika, "2026-01-10", 1700)
+    dues.propose_allocations(conn, first)
+    tx = _pay(conn, None, "2026-02-05", 1700)
+    conn.execute('update "transaction" set cp_iban=? where id=?', ("XX00FAKE0000000002", tx))
+    matching.assign_member(conn, tx, erika)
+    assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]
+    with pytest.raises(ValueError, match="hat bestätigte Verteilung: Verteilung zuerst aufheben"):
+        matching.assign_member(conn, tx, hans)
+    dues.clear_allocations(conn, tx)
+    matching.assign_member(conn, tx, hans)
+    assert _rows(conn, tx) == [("2026-01", 1700, "proposed")]  # frühester Fehlbetrag
+    assert matching.iban_is_ambiguous(conn, "XX00FAKE0000000002")
+
+
+def test_keins_is_reassigned_by_auto_assign_and_ambiguity_is_permanent():
+    from kassivo import matching
+    conn, mid = _setup()
+    other = create_member(conn, "Erika Musterfrau", "Aktiv", date(2025, 12, 10))
+    iban = "XX00FAKE0000000002"
+    tx = _pay(conn, None, "2026-01-05", 1700)
+    conn.execute('update "transaction" set cp_iban=? where id=?', (iban, tx))
+    matching.assign_member(conn, tx, mid)
+    dues.clear_allocations(conn, tx)
+    matching.assign_member(conn, tx, None)
+    assert matching.auto_assign(conn, [tx]) == 1  # "— keins —" hält nicht
+    dues.clear_allocations(conn, tx)
+    matching.assign_member(conn, tx, None)
+    matching.assign_member(conn, tx, other)  # mit "Absender merken": jetzt mehrdeutig
+    assert matching.iban_is_ambiguous(conn, iban)
+    dues.clear_allocations(conn, tx)
+    matching.assign_member(conn, tx, None)
+    matching.assign_member(conn, tx, other)  # nie für das richtige Mitglied neu gelernt
+    assert matching.iban_is_ambiguous(conn, iban)
+
+
+def test_dedupe_limits_described_in_wiki(tmp_path):
+    from tests.helpers import IBAN, make_camt
+    conn = connect(":memory:")
+
+    def imp(name, entries, day):
+        f = tmp_path / name
+        f.write_bytes(make_camt(IBAN, 0, entries, day))
+        return ingest.import_path(conn, f)
+
+    imp("a.xml", [{"amount": 1700, "ref": "REF9", "purpose": "A"}], "2026-03-05")
+    r = imp("b.xml", [{"amount": 2500, "ref": "REF9", "purpose": "B"}], "2026-03-06")
+    assert (r.new, r.duplicates) == (0, 1)  # gleiche Bankreferenz, anderer Betrag
+    imp("c.xml", [{"amount": 1700, "ref": "", "purpose": "Z"}], "2026-04-02")
+    r = imp("d.xml", [{"amount": 1700, "ref": "", "purpose": "Z"}], "2026-04-02")
+    assert (r.new, r.duplicates) == (0, 1)  # laufende Nummer je Datei neu
+    r = imp("e.xml", [{"amount": 1700, "ref": "", "purpose": "Y"}] * 2, "2026-05-02")
+    assert (r.new, r.duplicates) == (2, 0)  # in derselben Datei bleiben beide
+
+
+def test_zero_amount_message_is_quoted_exactly(tmp_path):
+    from kassivo.camt import CamtError
+    from tests.helpers import IBAN, make_camt
+    f = tmp_path / "a.xml"
+    f.write_bytes(make_camt(IBAN, 0, [{"amount_raw": "0.00", "amount": 1, "ref": "R0"}], "2026-03-05"))
+    with pytest.raises(CamtError, match="a.xml: ungültiger Betrag"):
+        ingest.import_path(connect(":memory:"), f)
+
+
+def test_dues_footer_counts_paid_in_dash_cells():
+    conn, mid = _setup()
+    leave_member(conn, mid, date(2026, 2, 10))
+    tx = _pay(conn, mid, "2026-04-01", 1700)
+    conn.execute("insert into allocation(tx_id, member_id, month, cents, status)"
+                 " values(?,?,?,?,'confirmed')", (tx, mid, "2026-04", 1700))
+    conn.commit()
+    st = dues.month_status(conn, mid, "2026-04", date(2026, 6, 1))
+    assert (st.status, st.expected, st.paid) == ("NONE", 0, 1700)
+
+
+def test_forecast_counts_whole_month_of_date():
+    conn, mid = _setup()
+    f = forecast(conn, date(2026, 3, 10), date(2026, 3, 15))
+    assert f.overdue_cents + f.due_cents == 3 * 1700  # Januar bis März
+
+
+def test_glossary_links_resolve(pages):
+    ids = set(re.findall(r'<dt id="([a-z]+)">', pages["begriffe"]))
+    assert {"buchungsmonat", "beitragsmonat", "soll"} <= ids
+    for page in pages.values():
+        for frag in re.findall(r'href="/wiki/begriffe#([a-z]+)"', page):
+            assert frag in ids, frag
+    for slug in ("verteilung", "mitglieder", "beitragsuebersicht"):
+        assert "/wiki/begriffe#soll" in pages[slug], slug

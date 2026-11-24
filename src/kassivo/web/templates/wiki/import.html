@@ -35,6 +35,12 @@
   <li>KASSIVO erkennt Duplikate je Konto an der Bankreferenz der Buchung. Hat eine Buchung keine, bildet es einen Fingerabdruck aus Buchungsdatum, Betrag, Gegenpartei-IBAN und Zweck. Zwei sonst gleiche Buchungen in derselben Datei zählen dabei getrennt.</li>
   <li>Ein mehrfacher Import derselben Datei ist deshalb sicher.</li>
 </ul>
+<p>Die Erkennung hat drei bekannte Grenzen. Sie treffen selten zu, sind aber möglich:</p>
+<ul>
+  <li><strong>Gleiche Bankreferenz, anderer Inhalt:</strong> Hat eine neue Buchung dieselbe Bankreferenz wie eine frühere, aber einen anderen Betrag oder ein anderes Datum, verwirft KASSIVO sie still als Duplikat. Sie erscheint nur in der Zahl „Duplikate“.</li>
+  <li><strong>Gleiche Zahlung ohne Bankreferenz in einer späteren Datei:</strong> Die laufende Nummer, die zwei sonst gleiche Buchungen unterscheidet, beginnt in jeder Datei neu. Kommt dieselbe Zahlung (gleiches Datum, gleicher Betrag, gleiche IBAN, gleicher Zweck, keine Bankreferenz) ein zweites Mal in einer <em>späteren</em> Datei, verwirft KASSIVO sie als Duplikat. In derselben Datei bleiben beide erhalten.</li>
+  <li><strong>Fehler nach dem Import:</strong> KASSIVO speichert die Buchungen, bevor es Regeln und automatische Zuordnung anwendet. Scheitert einer dieser Schritte, bleiben die Buchungen ohne Kategorie und ohne Mitglied, und ein erneuter Import zählt sie als Duplikate. Wählen Sie dann „Regeln anwenden“ (<a href="/wiki/kategorien">Kategorien und Regeln</a>) und „Unklare automatisch zuordnen“ (<a href="/wiki/zuordnung">Zahlungen zuordnen</a>).</li>
+</ul>
 <h3>Grenzen</h3>
 <ul>
   <li>Eine hochgeladene Datei darf höchstens 100 MB groß sein.</li>
@@ -73,7 +79,7 @@
 <ul>
   <li><strong>Nur gebuchte Umsätze:</strong> KASSIVO übernimmt Einträge mit dem Status „gebucht“ (BOOK) und überspringt alle anderen.</li>
   <li><strong>Sammelbuchungen</strong> (eine Buchung mit mehreren Einzelposten) importiert KASSIVO ohne Gegenpartei. Sie werden daher nie automatisch einem Mitglied zugeordnet und stehen, wenn es Eingänge sind, in „Unklar“.</li>
-  <li><strong>Einträge mit 0,00 €</strong> machen den Import der ganzen Datei unmöglich („ungültiger Betrag“). Nur bei den Salden ist 0,00 erlaubt.</li>
+  <li><strong>Einträge mit 0,00 €</strong> machen den Import der ganzen Datei unmöglich. KASSIVO meldet dann zum Beispiel „2026-03-05.xml: ungültiger Betrag“. Nur bei den Salden ist 0,00 erlaubt. Lassen Sie den Tag nicht einfach aus dem Export weg: Dann fehlen alle Zahlungen dieses Tages für immer, denn Buchungen von Hand gibt es nicht. Die betroffenen Monate erscheinen überfällig, obwohl bezahlt wurde. Klären Sie den Tag mit der Bank, zum Beispiel einen Export ohne die 0,00-Buchung. Oder Sie nehmen die Lücke hin, bis eine spätere Version solche Einträge mit einer Warnung überspringt.</li>
   <li>Echte Bankdateien gehören nie in Git, Issues oder Pull Requests.</li>
 </ul>
 <div class="callout callout-warn">

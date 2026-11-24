@@ -10,7 +10,12 @@
   <li>zwei Mitgliedsarten: <strong>Aktiv</strong> mit 17,00 € und <strong>Passiv</strong> mit 10,00 € pro Monat,</li>
   <li>drei Kategorien: <strong>Beiträge</strong> (Einnahmen), <strong>Hauptverein</strong> (Ausgaben) und <strong>Sonstiges</strong> (beides).</li>
 </ul>
-<p>Die Datenbank liegt standardmäßig unter Windows in <code>%LOCALAPPDATA%\KASSIVO\kassivo.db</code>, unter Linux und macOS in <code>~/.local/share/kassivo/kassivo.db</code>. Mit der Umgebungsvariable <code>KASSIVO_DB</code> wählen Sie einen anderen Ort.</p>
+<p>Die Datenbank liegt standardmäßig unter Windows in <code>%LOCALAPPDATA%\KASSIVO\kassivo.db</code>, unter Linux und macOS in <code>~/.local/share/kassivo/kassivo.db</code>. Mit der Umgebungsvariable <code>KASSIVO_DB</code> wählen Sie einen anderen Ort. Setzen Sie sie vor dem Start im selben Fenster, je nach Programm so:</p>
+<ul>
+  <li><strong>Eingabeaufforderung (cmd):</strong> <code>set KASSIVO_DB=D:\Kasse\kassivo.db</code></li>
+  <li><strong>PowerShell:</strong> <code>$env:KASSIVO_DB = "D:\Kasse\kassivo.db"</code> (der cmd-Befehl <code>set</code> setzt in PowerShell keine Umgebungsvariable, KASSIVO startet dann ohne Fehlermeldung mit dem Standardpfad)</li>
+</ul>
+<p>Die Variable gilt nur für dieses Fenster. Dauerhaft setzen Sie sie in cmd mit <code>setx KASSIVO_DB "D:\Kasse\kassivo.db"</code>. Das wirkt erst in neuen Fenstern. Sonst startet ein späterer Start mit einer anderen Datenbank (siehe <a href="/wiki/faq">Fehlerbehebung</a>, Frage 3).</p>
 
 <h2>So geht's</h2>
 <ol class="steps">
@@ -24,7 +29,7 @@
 
 <h2>Beispiele</h2>
 <div class="callout callout-example">
-  <p><strong>Beispiel:</strong> Der Kontoexport beginnt am 15.03.2026. Frühere Zahlungen von März fehlen. Wählen Sie deshalb <code>2026-04</code> als Prüfungsstart. Würden Sie <code>2026-03</code> wählen, erschiene der März bei vielen Mitgliedern als überfällig, obwohl sie früher im Monat gezahlt haben.</p>
+  <p><strong>Beispiel:</strong> Der Kontoexport beginnt am 15.03.2026. Frühere Zahlungen von März fehlen. Wählen Sie deshalb <code>2026-04</code> als Prüfungsstart. Würden Sie <code>2026-03</code> wählen, erschiene der März bei vielen Mitgliedern als überfällig, obwohl sie früher im Monat gezahlt haben. Zahlungen aus dem März, die im Export stehen, bekommen einen Vorschlag für den April. Prüfen Sie sie in „Offene Vorschläge“, bevor Sie bestätigen (Näheres unter <a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>).</p>
 </div>
 <div class="callout callout-example">
   <p><strong>Beispiel:</strong> Max Mustermann (Art Aktiv, Eintritt 10.01.2026) zahlt ab 2026-02. Der Prüfungsstart ist <code>2026-02</code>. Am 03.02.2026 geht 17,00 € von <code>XX00 FAKE 0000 0000 01</code> ein. Steht diese IBAN in seinem Mitgliedsdatensatz, ordnet KASSIVO die Zahlung beim Import selbst zu und bestätigt sie, weil sie genau den Februar deckt.</p>

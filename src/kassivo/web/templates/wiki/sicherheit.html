@@ -23,7 +23,7 @@
 <h2>So geht's</h2>
 <ol class="steps">
   <li>Prüfen Sie beim Start die Zeile „Datenbank:“. Der Pfad sollte auf einem lokalen Laufwerk liegen und nicht in einem Cloud-Ordner (OneDrive, Dropbox, Google Drive, iCloud). Sonst zeigt KASSIVO eine Warnung.</li>
-  <li>Wählen Sie bei Bedarf mit der Umgebungsvariable <code>KASSIVO_DB</code> einen lokalen Ort.</li>
+  <li>Wählen Sie bei Bedarf mit der Umgebungsvariable <code>KASSIVO_DB</code> einen lokalen Ort (cmd: <code>set KASSIVO_DB=...</code>, PowerShell: <code>$env:KASSIVO_DB = "..."</code>, Einzelheiten unter <a href="/wiki/start">Erste Schritte</a>).</li>
   <li>Legen Sie Sicherungen nur an Orten ab, die Sie kontrollieren (<a href="/wiki/backup">Sicherung und Wiederherstellung</a>).</li>
   <li>Löschen Sie Exportdateien aus dem Online-Banking, wenn Sie sie importiert haben, oder bewahren Sie sie sicher auf.</li>
 </ol>
@@ -36,6 +36,7 @@
 <h2>Gut zu wissen</h2>
 <ul>
   <li><strong>Echte Bankdateien gehören nicht in Git.</strong> Das gilt auch für Issues, Pull Requests und Releases. Die <code>.gitignore</code> des Projekts schließt ZIP-, XML-, CSV- und Datenbankdateien aus. Wer an KASSIVO mitarbeitet, nutzt nur erfundene Beispieldaten.</li>
+  <li><strong>Konsolenausgabe:</strong> Das Konsolenfenster, in dem KASSIVO läuft, protokolliert jede Anfrage mit ihrer Adresse (Uvicorn-Zugriffsprotokoll). Dort stehen auch Suchtexte, zum Beispiel <code>/transactions?q=Name</code>. Fügen Sie Konsolenausgaben nie ungeprüft in Issues oder Nachrichten ein. Entfernen Sie zuerst solche Zeilen.</li>
   <li>Beispiele in diesem Wiki nutzen erfundene Namen und IBANs wie <code>XX00 FAKE 0000 0000 01</code>.</li>
   <li>Die Datenbank liegt standardmäßig unter Windows in <code>%LOCALAPPDATA%\KASSIVO\kassivo.db</code>, sonst in <code>~/.local/share/kassivo/kassivo.db</code>.</li>
 </ul>

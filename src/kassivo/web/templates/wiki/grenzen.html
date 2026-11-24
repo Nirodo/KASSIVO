@@ -14,13 +14,19 @@
 <ul>
   <li><strong>Nur Dateiimport.</strong> KASSIVO liest nur Dateien im Format camt.052.001.08 („XML CAMT V8, gebuchte Umsätze“). Eine direkte Bankabfrage (FinTS, finAPI) gibt es noch nicht. Einen Adapter für C24 auch nicht.</li>
   <li><strong>Einträge mit 0,00 €</strong> brechen den Import der ganzen Datei ab („ungültiger Betrag“). Der Import ist alles oder nichts. Mehr als ein Bericht pro Datei geht ebenfalls nicht.</li>
+  <li><strong>Duplikaterkennung mit Grenzen.</strong> Selten, aber möglich: Eine Buchung mit derselben Bankreferenz wie eine frühere, aber anderem Betrag oder Datum, wird still als Duplikat verworfen. Eine zweite gleiche Zahlung ohne Bankreferenz am selben Tag wird verworfen, wenn sie in einer späteren Datei kommt (die laufende Nummer beginnt je Datei neu). Beides sehen Sie nur an der Zahl „Duplikate“.</li>
+  <li><strong>Import und Folgeschritte sind getrennt.</strong> KASSIVO speichert die Buchungen, bevor Regeln und automatische Zuordnung laufen. Scheitert einer dieser Schritte, bleiben die Buchungen ohne Kategorie und ohne Mitglied, und ein erneuter Import zählt sie als Duplikate. Abhilfe: „Regeln anwenden“ (Kategorien) und „Unklare automatisch zuordnen“.</li>
 </ul>
 <h3>Zuordnung und Daten</h3>
 <ul>
-  <li><strong>Gelernte IBANs</strong> lassen sich nicht wieder vergessen. Eine IBAN wird nur mehrdeutig, wenn sie einem zweiten Mitglied zugeordnet wird.</li>
+  <li><strong>Gelernte IBANs</strong> lassen sich nicht wieder vergessen. Eine IBAN wird nur mehrdeutig, wenn sie einem zweiten Mitglied zugeordnet wird. Eine einmal mehrdeutig gewordene IBAN bleibt es: Sie wird nie für das richtige Mitglied neu gelernt und lässt sich nicht „vergessen“.</li>
+  <li><strong>„— keins —“ ist nicht endgültig.</strong> Eine Zahlung, die Sie auf „Unklar“ zurücksetzen, ordnet KASSIVO über die gemerkte IBAN wieder zu, sobald Sie „Unklare automatisch zuordnen“ wählen oder bei einer anderen Zahlung derselben IBAN „Absender merken“ benutzen.</li>
+  <li><strong>Zwei offene Vorschläge desselben Mitglieds können denselben Monat treffen.</strong> KASSIVO weist nur mit dem Hinweis „Monat bereits bezahlt“ darauf hin, sobald ein Monat durch bestätigte Zahlungen voll bezahlt ist.</li>
+  <li><strong>Ein Austritt vor dem Eintritt wird akzeptiert.</strong> KASSIVO prüft die Reihenfolge der beiden Daten nicht. Achten Sie beim Eintragen selbst darauf.</li>
+  <li><strong>Keine Längenbegrenzung</strong> bei den Textfeldern der Mitglieder (Name, Adresse, E-Mail, Telefon).</li>
   <li><strong>Kein Löschen:</strong> Buchungen, Mitglieder, Kategorien und Regeln lassen sich in der Oberfläche nicht löschen. Kategorien und Regeln lassen sich auch nicht ändern. Eintritt und „Zahlt ab Monat“ lassen sich nach dem Anlegen nicht mehr ändern. Korrekturen laufen über Zuordnung, Verteilung, Austritt und Mitgliedsart.</li>
-  <li><strong>Eine Kasse je Datenbank.</strong> Mehrere Mandanten oder Vereine in einer Datenbank gibt es nicht. Für eine zweite Kasse nutzen Sie eine zweite Datenbank (<code>KASSIVO_DB</code>).</li>
-  <li><strong>Keine Buchungen von Hand:</strong> Buchungen entstehen nur durch den Import. Barzahlungen lassen sich nicht eintragen.</li>
+  <li><strong>Eine Kasse je Datenbank.</strong> Mehrere Mandanten oder Vereine in einer Datenbank gibt es nicht. Für eine zweite Kasse nutzen Sie eine zweite Datenbank (<code>KASSIVO_DB</code>, siehe <a href="/wiki/start">Erste Schritte</a>).</li>
+  <li><strong>Keine Buchungen von Hand:</strong> Buchungen entstehen nur durch den Import. Barzahlungen und eigene Ausgaben lassen sich nicht eintragen. Der Monat einer Barzahlung bleibt überfällig, und es gibt in 1.0.0 keine Abhilfe.</li>
   <li>Beträge sind nur in Euro.</li>
 </ul>
 <h3>Auswertung</h3>
@@ -41,7 +47,7 @@
 
 <h2>Beispiele</h2>
 <div class="callout callout-example">
-  <p><strong>Beispiel:</strong> Eine Datei enthält eine Buchung mit 0,00 €, etwa eine Bankinformation. KASSIVO lehnt die ganze Datei ab und importiert nichts. Eine ZIP-Datei mit dieser Tagesdatei lässt sich dann gar nicht importieren. Exportieren Sie die Zeiträume so, dass der betroffene Tag fehlt, und melden Sie den Fall als Issue (ohne echte Bankdaten).</p>
+  <p><strong>Beispiel:</strong> Eine Datei enthält eine Buchung mit 0,00 €, etwa eine Bankinformation. KASSIVO lehnt die ganze Datei ab und importiert nichts. Eine ZIP-Datei mit dieser Tagesdatei lässt sich dann gar nicht importieren. Lassen Sie den Tag nicht einfach aus dem Export weg: Alle Zahlungen dieses Tages fehlen dann für immer, weil es keine Buchung von Hand gibt, und die betroffenen Monate erscheinen überfällig, obwohl bezahlt wurde. Klären Sie den Tag mit der Bank (zum Beispiel ein erneuter Export ohne die 0,00-Buchung) oder nehmen Sie die Lücke hin, bis eine spätere Version solche Einträge mit einer Warnung überspringt. Melden Sie den Fall als Issue (ohne echte Bankdaten).</p>
 </div>
 
 <h2>Gut zu wissen</h2>
