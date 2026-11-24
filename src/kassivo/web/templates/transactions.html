@@ -3,6 +3,7 @@
 {% import "_txrow.html" as row %}
 {% block title %}Buchungen{% endblock %}
 {% block content %}
+<p><a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> (Zahlungen, deren Verteilung auf Bestätigung wartet) · <a href="/unmatched">Unklar</a></p>
 <form method="get" action="/transactions" class="filter" role="search">
   <div class="field"><label for="year">Jahr (JJJJ oder „all“)</label>
     <input id="year" name="year" value="{{ f.year }}" maxlength="4"></div>
@@ -20,6 +21,7 @@
     </select></div>
   <div class="field"><label for="q">Suche in Gegenpartei und Zweck</label>
     <input id="q" name="q" type="search" value="{{ f.q }}" maxlength="200"></div>
+  <div class="field"><label class="check"><input type="checkbox" name="proposed" value="1"{% if f.proposed == "1" %} checked{% endif %}> Nur offene Vorschläge</label></div>
   <button type="submit">Filtern</button>
 </form>
 <div class="sums" aria-label="Summen der gefilterten Buchungen">

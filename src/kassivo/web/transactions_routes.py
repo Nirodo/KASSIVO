@@ -63,7 +63,9 @@ def _parse_filters(params) -> tuple[dict, str | None]:
     q = params.get("q", "").strip()
     kind = params.get("kind", "").strip()
     page = params.get("page", "").strip() or "1"
-    f = {"year": year, "category": category, "q": q, "kind": kind, "page": 1}
+    proposed = params.get("proposed", "").strip()
+    f = {"year": year, "category": category, "q": q, "kind": kind, "proposed": proposed,
+         "page": 1}
     if year != "all" and not (re.fullmatch(r"[0-9]{4}", year)
                               and MIN_YEAR <= int(year) <= MAX_YEAR):
         return f, f"Jahr muss „all“ oder eine Zahl von {MIN_YEAR} bis {MAX_YEAR} sein."
@@ -71,6 +73,8 @@ def _parse_filters(params) -> tuple[dict, str | None]:
         return f, "Ungültige Kategorie im Filter."
     if kind not in ("", "in", "out"):
         return f, "Art muss Einnahme, Ausgabe oder leer sein."
+    if proposed not in ("", "1"):
+        return f, "Filter für offene Vorschläge muss 1 oder leer sein."
     if len(q) > MAX_Q:
         return f, f"Der Suchtext darf höchstens {MAX_Q} Zeichen lang sein."
     if not re.fullmatch(r"[0-9]{1,6}", page) or not 1 <= int(page) <= MAX_PAGE:
@@ -94,6 +98,9 @@ def _where(f: dict) -> tuple[str, list]:
         parts.append("t.amount_cents > 0")
     elif f["kind"] == "out":
         parts.append("t.amount_cents < 0")
+    if f["proposed"] == "1":
+        parts.append("exists (select 1 from allocation a"
+                     " where a.tx_id = t.id and a.status = 'proposed')")
     if f["q"]:
         parts.append("(instr(cf(t.cp_name), ?) > 0 or instr(cf(t.purpose), ?) > 0)")
         params += [f["q"].casefold()] * 2
@@ -121,7 +128,7 @@ async def transactions(request: Request, conn=Depends(get_conn)):
         f" left join member m on m.id = t.member_id{where}"
         " order by t.booking_date desc, t.id desc limit ? offset ?",
         params + [PAGE_SIZE, (f["page"] - 1) * PAGE_SIZE]).fetchall()
-    base = {k: f[k] for k in ("year", "category", "q", "kind") if f[k]}
+    base = {k: f[k] for k in ("year", "category", "q", "kind", "proposed") if f[k]}
 
     def page_url(p: int) -> str:
         return "/transactions?" + urlencode({**base, "page": p})

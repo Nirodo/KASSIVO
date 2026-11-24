@@ -266,3 +266,31 @@ def test_settings_check_start_text_set(client, db):
     set_check_start(db, "2026-03")
     t = _text(client.get("/settings/fees").text)
     assert "Aktuell: 2026-03." in t and "nicht gesetzt" not in t
+
+
+# --- I4: Vorschlag in der Beitragsübersicht -----------------------------------
+
+def test_dues_marks_proposed_cells(client, db):
+    from kassivo.dues import propose_allocations
+    m = _erika(db)
+    set_check_start(db, "2026-01")
+    tx = _tx(db, m, 3400, day="2026-02-05")
+    propose_allocations(db, tx)  # 02 + 03 als Vorschlag
+    html = client.get("/dues?year=2026").text
+    row = html.split("Erika Muster</a></th>")[1].split("</tr>")[0]
+    cells = re.findall(r"<td[^>]*>.*?</td>", row, re.S)
+    assert len(cells) == 12
+    marked = [i for i, c in enumerate(cells) if "Vorschlag" in c]
+    assert marked == [1, 2]
+    assert all("status-proposal" in cells[i] for i in marked)
+    assert "status-proposal" not in cells[0]
+    legend = html.split('class="legend"')[1].split("</p>")[0]
+    assert "Vorschlag" in legend
+
+
+def test_dues_no_proposal_word_without_proposals(client, db):
+    m = _erika(db)
+    tx = _tx(db, m, 1700)
+    confirm_allocations(db, tx, [("2026-02", 1700)])
+    html = client.get("/dues?year=2026").text
+    assert "status-proposal" not in html.split('class="legend"')[1].split("</table>")[0].split("</p>", 1)[1]

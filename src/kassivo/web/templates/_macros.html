@@ -72,14 +72,16 @@
 
 {% set STATUS_WORDS = {"PAID": "Bezahlt", "PARTIAL": "Teilweise", "OPEN": "Offen", "OVERDUE": "Überfällig", "NONE": "—"} %}
 
-{% macro status_cell(st) %}
-<td class="status status-{{ st.status | lower }}"><span class="status-word">{{ STATUS_WORDS[st.status] }}</span>
-  {%- if st.expected > 0 %}<br><span class="status-amount">{{ (st.paid | eur)[:-2] }} / {{ st.expected | eur }}</span>{% endif %}</td>
+{% macro status_cell(st, proposal=false) %}
+<td class="status status-{{ st.status | lower }}{% if proposal %} status-proposal{% endif %}"><span class="status-word">{{ STATUS_WORDS[st.status] }}</span>
+  {%- if st.expected > 0 %}<br><span class="status-amount">{{ (st.paid | eur)[:-2] }} / {{ st.expected | eur }}</span>{% endif %}
+  {%- if proposal %}<br><span class="status-note">Vorschlag</span>{% endif %}</td>
 {% endmacro %}
 
-{% macro legend() %}
+{% macro legend(with_proposal=false) %}
 <p class="legend">Legende:
   {% for key in ["PAID", "PARTIAL", "OPEN", "OVERDUE", "NONE"] %}<span class="status status-{{ key | lower }}">{{ STATUS_WORDS[key] }}</span>{% if key == "NONE" %} = kein Beitrag fällig{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}
+  {%- if with_proposal %} · <span class="status status-proposal"><span class="status-note">Vorschlag</span></span> = Verteilung wartet auf Bestätigung (<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>){% endif %}
 </p>
 {% endmacro %}
 

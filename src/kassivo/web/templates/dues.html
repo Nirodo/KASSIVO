@@ -4,7 +4,7 @@
 {% block content %}
 {{ check_start_notice(check_start_set) }}
 {{ year_nav("/dues", year, prev, next) }}
-{{ legend() }}
+{{ legend(with_proposal=true) }}
 {% if grid %}
 <div class="table-wrap">
 <table class="grid">
@@ -13,7 +13,7 @@
   <tbody>
   {% for r in grid %}
   <tr><th scope="row"><a href="/members/{{ r.member_id }}/history?year={{ year }}">{{ r.name }}</a></th>
-    {% for st in r.months %}{{ status_cell(st) }}{% endfor %}</tr>
+    {% for st in r.months %}{{ status_cell(st, (r.member_id, st.month) in proposals) }}{% endfor %}</tr>
   {% endfor %}
   </tbody>
   <tfoot><tr><th scope="row">Summe (bezahlt / erwartet)</th>

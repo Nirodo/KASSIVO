@@ -236,6 +236,25 @@ def dues_grid(conn, year: int, today: date) -> list[dict]:
     ]
 
 
+def proposed_months(conn, year: int) -> set[tuple[int, str]]:
+    """(Mitglied, Monat) mit mindestens einem Vorschlag im Jahr. Nur lesend."""
+    return {
+        (r["member_id"], r["month"])
+        for r in conn.execute(
+            "select distinct member_id, month from allocation"
+            " where status='proposed' and month >= ? and month <= ?",
+            (f"{year:04d}-01", f"{year:04d}-12"),
+        )
+    }
+
+
+def proposed_tx_count(conn) -> int:
+    """Zahl der Buchungen mit mindestens einem offenen Vorschlag."""
+    return conn.execute(
+        "select count(distinct tx_id) from allocation where status='proposed'"
+    ).fetchone()[0]
+
+
 def payment_history(conn, member_id: int) -> list[dict]:
     txs = conn.execute(
         'select id, booking_date, amount_cents, cp_name, purpose from "transaction"'

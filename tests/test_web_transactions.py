@@ -494,3 +494,59 @@ def test_siblings_web_second_child_learn_leaves_feb_unmatched(client, db):
     assert "Automatisch zugeordnet: 0" in r.text
     un = client.get("/unmatched").text
     assert "Feb 1" in un and "Feb 2" in un
+
+
+# --- I4: offene Vorschläge finden ---------------------------------------------
+
+def test_import_result_shows_open_proposals(client, db):
+    _upload(client, [E_SPENDE])
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    _assign(client, _tx_id(db, "Spende Sommerfest"), m)  # 25,00 -> Vorschlag
+    r = _upload(client, [E_KIOSK], day="2026-03-02")
+    assert "1 Vorschläge zur Bestätigung (offene Vorschläge insgesamt)" in r.text
+    assert 'href="/transactions?year=all&amp;proposed=1"' in r.text
+
+
+def test_transactions_filter_proposed(client, db):
+    _upload(client, [E_ERIKA, E_SPENDE, E_KIOSK])
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    spende = _tx_id(db, "Spende Sommerfest")
+    _assign(client, spende, m)                       # Vorschlag
+    t = client.get("/transactions?year=all&proposed=1").text
+    assert "Spende Sommerfest" in t
+    assert "Material" not in t and ">Beitrag<" not in t
+    assert "Buchungen: <strong>1</strong>" in t
+    t_all = client.get("/transactions?year=all").text
+    assert "Material" in t_all
+
+
+@pytest.mark.parametrize("bad", ["2", "yes", "0", "1 or 1=1"])
+def test_transactions_filter_proposed_invalid(client, bad):
+    r = client.get("/transactions", params={"proposed": bad})
+    assert r.status_code == 422
+
+
+def test_proposed_filter_kept_in_page_links(client, db):
+    from urllib.parse import parse_qs, urlsplit
+    import kassivo.web.transactions_routes as tr
+    _upload(client, [E_SPENDE])
+    m = _member(db)
+    _assign(client, _tx_id(db, "Spende Sommerfest"), m)
+    old = tr.PAGE_SIZE
+    try:
+        tr.PAGE_SIZE = 1
+        _upload(client, [dict(E_SPENDE, ref="R9", purpose="Spende 2")])
+        _assign(client, _tx_id(db, "Spende 2"), m)
+        t = client.get("/transactions?year=all&proposed=1").text
+        nxt = re.search(r'href="(/transactions\?[^"]*page=2[^"]*)"', t)[1].replace("&amp;", "&")
+        assert parse_qs(urlsplit(nxt).query)["proposed"] == ["1"]
+    finally:
+        tr.PAGE_SIZE = old
+
+
+def test_open_proposals_links(client):
+    for path in ("/unmatched", "/transactions"):
+        t = client.get(path).text
+        assert 'href="/transactions?year=all&amp;proposed=1"' in t and "Offene Vorschläge" in t

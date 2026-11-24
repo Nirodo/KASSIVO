@@ -8,7 +8,7 @@ import pytest
 from kassivo.db import set_setting
 from kassivo.dues import (
     MonthStatus, check_start_is_set, clear_allocations, confirm_allocations, dues_grid, get_check_start, month_status,
-    payment_history, propose_allocations, set_check_start,
+    payment_history, propose_allocations, proposed_months, proposed_tx_count, set_check_start,
 )
 from kassivo.fees import set_fee
 from kassivo.matching import assign_member, auto_assign, unmatched
@@ -617,3 +617,19 @@ def test_check_start_is_set(conn):
     assert check_start_is_set(conn) is False  # nur abgeleitet
     set_check_start(conn, "2025-01")
     assert check_start_is_set(conn) is True
+
+
+# --- I4: Vorschläge sichtbar machen -----------------------------------------
+
+def test_proposed_months_and_count(conn):
+    m = _anna(conn)
+    t = _tx(conn, 3400, member_id=m)
+    propose_allocations(conn, t)  # 01 + 02 proposed
+    t2 = _tx(conn, 1700, day="2027-01-05", member_id=m)
+    conn.execute("insert into allocation(tx_id, member_id, month, cents, status)"
+                 " values(?,?,?,?, 'confirmed')", (t2, m, "2027-01", 1700))
+    assert proposed_months(conn, 2026) == {(m, "2026-01"), (m, "2026-02")}
+    assert proposed_months(conn, 2027) == set()
+    assert proposed_tx_count(conn) == 1
+    confirm_allocations(conn, t, [("2026-01", 1700), ("2026-02", 1700)])
+    assert proposed_months(conn, 2026) == set() and proposed_tx_count(conn) == 0
