@@ -260,7 +260,8 @@ def test_readme_not_stale():
     for s in ("python -m kassivo", "127.0.0.1", "<DB-Ordner>/backups", "CAMT",
               "KASSIVO_DB", "%LOCALAPPDATA%", "OneDrive", "Vorhandene Datenbank umziehen",
               "## Empfohlener Ablauf", "Prüfungsstart festlegen", "Absender merken",
-              "Offene Vorschläge", "außerhalb des Fälligkeitsmonats", "3.15", ">=3.10"):
+              "Offene Vorschläge", "außerhalb des Fälligkeitsmonats", "3.15", ">=3.10",
+              "ersten vollen Monat", "bestätigte Verteilungen bleiben unverändert"):
         assert s in t
 
 

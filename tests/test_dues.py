@@ -633,3 +633,81 @@ def test_proposed_months_and_count(conn):
     assert proposed_tx_count(conn) == 1
     confirm_allocations(conn, t, [("2026-01", 1700), ("2026-02", 1700)])
     assert proposed_months(conn, 2026) == set() and proposed_tx_count(conn) == 0
+
+
+# --- Fix-Runde 2 (N2): Prüfungsstart berechnet offene Vorschläge neu ------------
+
+def _sim3a(conn):
+    """Export beginnt Mitte Juli: abgeleiteter Start 2025-07, Zahlungen ab August."""
+    m = create_member(conn, "P", "Aktiv", date(2015, 3, 1), iban="XX00FAKE0000000001")
+    _tx(conn, -500, day="2025-07-15", cp_iban="XX00FAKEOTHER")
+    ids = [_tx(conn, 1700, day=f"2025-{i:02d}-02", cp_iban="XX00FAKE0000000001")
+           for i in range(8, 13)]
+    assert get_check_start(conn) == "2025-07"
+    assert auto_assign(conn, ids) == 5
+    return m, ids
+
+
+def _all_allocs(conn):
+    return [tuple(r) for r in conn.execute(
+        "select id, tx_id, member_id, month, cents, status from allocation order by id")]
+
+
+def test_repropose_pending_after_check_start_end_to_end(conn):
+    from kassivo.dues import repropose_pending
+    m, ids = _sim3a(conn)
+    today = date(2026, 1, 10)
+    assert all(r[2] == "proposed" for t in ids for r in _rows(conn, t))
+    set_check_start(conn, "2025-08")
+    assert repropose_pending(conn) == 5
+    assert not conn.in_transaction
+    for i, t in enumerate(ids, start=8):
+        assert _rows(conn, t) == [(f"2025-{i:02d}", 1700, "confirmed", m)]
+    months = dues_grid(conn, 2025, today)[0]["months"]
+    assert [s.status for s in months[7:]] == ["PAID"] * 5
+    assert months[6].status == "NONE"
+
+
+def test_repropose_pending_leaves_confirmed_untouched_and_counts(conn):
+    from kassivo.dues import repropose_pending
+    m, ids = _sim3a(conn)
+    confirm_allocations(conn, ids[0], [("2025-08", 1700)])
+    # eine Buchung mit bestätigter und (künstlich) zusätzlich offener Zeile
+    conn.execute("insert into allocation(tx_id, member_id, month, cents, status)"
+                 " values(?,?,?,?, 'proposed')", (ids[1], m, "2025-07", 1700))
+    confirm_rows = conn.execute(
+        "select id from allocation where tx_id=?", (ids[1],)).fetchall()
+    conn.execute("update allocation set status='confirmed' where id=?",
+                 (confirm_rows[0][0],))
+    conn.commit()
+    keep = [r for r in _all_allocs(conn) if r[1] in (ids[0], ids[1])]
+    set_check_start(conn, "2025-08")
+    assert repropose_pending(conn) == 3
+    assert [r for r in _all_allocs(conn) if r[1] in (ids[0], ids[1])] == keep
+
+
+def test_repropose_pending_nothing_open(conn):
+    from kassivo.dues import repropose_pending
+    assert repropose_pending(conn) == 0
+    assert not conn.in_transaction
+
+
+def test_repropose_pending_atomic_on_error(conn, monkeypatch):
+    from kassivo import dues
+    m, ids = _sim3a(conn)
+    set_check_start(conn, "2025-08")
+    before = _all_allocs(conn)
+    real, calls = dues.propose_allocations, []
+
+    def flaky(c, tx_id, *, commit=True):
+        calls.append(tx_id)
+        if len(calls) == 3:
+            raise RuntimeError("Testfehler")
+        return real(c, tx_id, commit=commit)
+
+    monkeypatch.setattr(dues, "propose_allocations", flaky)
+    with pytest.raises(RuntimeError):
+        dues.repropose_pending(conn)
+    assert calls[:2] == ids[:2]  # chronologisch
+    assert _all_allocs(conn) == before
+    assert not conn.in_transaction

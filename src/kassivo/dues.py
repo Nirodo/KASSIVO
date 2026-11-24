@@ -179,6 +179,36 @@ def propose_allocations(conn, tx_id: int, *, commit: bool = True) -> list[tuple[
     return allocs
 
 
+def repropose_pending(conn) -> int:
+    """Offene Vorschläge neu berechnen, z. B. nach geändertem Prüfungsstart.
+
+    Betrifft nur Zahlungseingänge mit Mitglied, mindestens einem Vorschlag und
+    ohne bestätigte Zeile; Bestätigtes bleibt unangetastet. Älteste zuerst,
+    damit frühere Zahlungen frühere Monate füllen. Alles oder nichts in einem
+    Commit. Gibt die Zahl neu berechneter Buchungen zurück.
+
+    Verworfen: das in set_check_start erledigen (Einstellung bliebe nicht
+    rein) und alle Buchungen neu vorschlagen (Buchungen ohne Vorschlag hat
+    der Nutzer bewusst geleert).
+    """
+    ids = [r["id"] for r in conn.execute(
+        'select t.id from "transaction" t'
+        " where t.amount_cents > 0 and t.member_id is not null"
+        " and exists(select 1 from allocation a where a.tx_id=t.id and a.status='proposed')"
+        " and not exists(select 1 from allocation a where a.tx_id=t.id"
+        " and a.status='confirmed')"
+        " order by t.booking_date, t.id"
+    )]
+    try:
+        for tx_id in ids:
+            propose_allocations(conn, tx_id, commit=False)
+    except Exception:
+        conn.rollback()
+        raise
+    conn.commit()
+    return len(ids)
+
+
 def confirm_allocations(conn, tx_id: int, allocs: list[tuple[str, int]]) -> None:
     tx = _incoming_tx(conn, tx_id)
     if not allocs:

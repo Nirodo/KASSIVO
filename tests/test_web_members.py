@@ -412,3 +412,46 @@ def test_unhandled_error_is_safe_page(db_path):
     assert r.headers["content-security-policy"] == "default-src 'self'; frame-ancestors 'none'"
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["referrer-policy"] == "same-origin"
+
+
+# --- Fix-Runde 2 (N2): Prüfungsstart berechnet offene Vorschläge neu ------------
+
+def _sim3a(db):
+    from kassivo.matching import auto_assign
+    create_member(db, "P", "Aktiv", date(2015, 3, 1), iban=OTHER_IBAN)
+    db.execute("insert or ignore into account(id, iban) values(1, 'DE00TEST')")
+    db.execute('insert into "transaction"(account_id, booking_date, amount_cents, cp_iban,'
+               " dedupe_key) values(1, '2025-07-15', -500, ?, 'out')", (IBAN,))
+    ids = [db.execute('insert into "transaction"(account_id, booking_date, amount_cents,'
+                      " cp_iban, dedupe_key) values(1,?,1700,?,?)",
+                      (f"2025-{i:02d}-02", OTHER_IBAN, f"r{i}")).lastrowid
+           for i in range(8, 13)]
+    db.commit()
+    assert auto_assign(db, ids) == 5
+    return ids
+
+
+def _statuses(db, ids):
+    return [r[0] for r in db.execute(
+        "select status from allocation where tx_id in (%s) order by tx_id"
+        % ",".join("?" * len(ids)), ids)]
+
+
+def test_check_start_reproposes_open_proposals(client, db):
+    ids = _sim3a(db)
+    assert _statuses(db, ids) == ["proposed"] * 5
+    r = client.post("/settings/fees", data={"form": "check_start", "check_start": "2025-08"})
+    assert r.status_code == 303
+    assert r.headers["location"] == "/settings/fees?note=reproposed&n=5"
+    assert _statuses(db, ids) == ["confirmed"] * 5
+    t = client.get(r.headers["location"]).text
+    assert "Prüfungsstart gespeichert. 5 offene Vorschläge wurden neu berechnet." in t
+
+
+def test_check_start_foreign_origin_changes_nothing(client, db):
+    ids = _sim3a(db)
+    r = client.post("/settings/fees", data={"form": "check_start", "check_start": "2025-08"},
+                    headers={"origin": "http://evil.example"})
+    assert r.status_code == 403
+    assert get_check_start(db) == "2025-07"
+    assert _statuses(db, ids) == ["proposed"] * 5
