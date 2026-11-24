@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from kassivo.web import (
-    categories_routes, dues_routes, import_routes, members_routes, reports_routes,
+    backup_routes, categories_routes, dues_routes, import_routes, members_routes, reports_routes,
     settings_routes, transactions_routes,
 )
 from kassivo.web.common import HERE, render
@@ -71,4 +71,5 @@ def create_app(db_path) -> FastAPI:
     app.include_router(categories_routes.router)
     app.include_router(dues_routes.router)
     app.include_router(reports_routes.router)
+    app.include_router(backup_routes.router)
     return app

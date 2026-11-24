@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Backup{% endblock %}
+{% block content %}
+{% if created %}<p class="notice" role="status"><strong>Sicherung erstellt:</strong> {{ created }}</p>{% endif %}
+{% if error %}<p class="alert" role="alert"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
+<section>
+  <p>Die Sicherung ist eine Kopie der gesamten Datenbank im Ordner „backups“ neben der Datenbankdatei. Sie enthält personenbezogene Daten und bleibt auf diesem Rechner.</p>
+  <form method="post" action="/backup">
+    <button type="submit">Sicherung erstellen</button>
+  </form>
+</section>
+<section>
+  <h2>Vorhandene Sicherungen</h2>
+  {% if backups %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Datei</th><th>Erstellt</th><th>Größe</th></tr></thead>
+    <tbody>
+    {% for b in backups %}<tr><td>{{ b.name }}</td><td>{{ b.stamp }}</td><td class="num">{{ b.size }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p>Noch keine Sicherung vorhanden.</p>{% endif %}
+</section>
+{% endblock %}
