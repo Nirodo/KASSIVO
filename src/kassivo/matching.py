@@ -3,7 +3,11 @@
 Eine Buchung wird nie geändert, nur member_id und category_id. Alle Prüfungen
 laufen vor dem ersten Schreiben: bei ValueError bleibt die DB unverändert.
 IBANs erscheinen nie in Fehlermeldungen.
+
+Nach jeder neuen Zuordnung legt dues.propose_allocations die Verteilung an,
+im selben Commit wie die Zuordnung (alles oder nichts).
 """
+from kassivo import dues
 
 FEE_CATEGORY = "Beiträge"
 
@@ -42,24 +46,32 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
             f"Buchung {tx_id} hat bestätigte Verteilung: Verteilung zuerst aufheben"
         )
 
-    conn.execute(
-        'update "transaction" set member_id=? where id=?', (member_id, tx_id)
-    )
-    if member_id != tx["member_id"]:
-        # Vorschläge gehören zum alten Mitglied und wären jetzt falsch
+    try:
         conn.execute(
-            "delete from allocation where tx_id=? and status='proposed'", (tx_id,)
+            'update "transaction" set member_id=? where id=?', (member_id, tx_id)
         )
-    if member_id is not None:
-        _set_fee_category_if_empty(conn, tx_id)
-        iban = normalize_iban(tx["cp_iban"])
-        if learn and iban:
-            # letzte manuelle Zuordnung gewinnt
+        changed = member_id != tx["member_id"]
+        if changed:
+            # Vorschläge gehören zum alten Mitglied und wären jetzt falsch
             conn.execute(
-                "insert into member_iban(iban, member_id) values(?,?)"
-                " on conflict(iban) do update set member_id=excluded.member_id",
-                (iban, member_id),
+                "delete from allocation where tx_id=? and status='proposed'",
+                (tx_id,),
             )
+        if member_id is not None:
+            _set_fee_category_if_empty(conn, tx_id)
+            iban = normalize_iban(tx["cp_iban"])
+            if learn and iban:
+                # letzte manuelle Zuordnung gewinnt
+                conn.execute(
+                    "insert into member_iban(iban, member_id) values(?,?)"
+                    " on conflict(iban) do update set member_id=excluded.member_id",
+                    (iban, member_id),
+                )
+            if changed:
+                dues.propose_allocations(conn, tx_id, commit=False)
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
 
 
@@ -91,25 +103,33 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
         for r in conn.execute("select id, austritt from member where austritt is not null")
     }
     assigned = 0
+    # älteste zuerst, damit frühere Zahlungen frühere Monate füllen
     rows = conn.execute(
         'select id, cp_iban, booking_date from "transaction"'
         " where amount_cents > 0 and member_id is null and cp_iban is not null"
+        " order by booking_date, id"
     ).fetchall()
-    for tx in rows:
-        if tx["id"] not in wanted:
-            continue
-        member_id = lookup.get(normalize_iban(tx["cp_iban"]))
-        if member_id is None:  # unbekannt oder mehrdeutig
-            continue
-        left = austritt.get(member_id)
-        if left and tx["booking_date"] > left:
-            # ausgetreten: bleibt in "Unklar", kein Rückgriff auf member.iban
-            continue
-        conn.execute(
-            'update "transaction" set member_id=? where id=?', (member_id, tx["id"])
-        )
-        _set_fee_category_if_empty(conn, tx["id"])
-        assigned += 1
+    try:
+        for tx in rows:
+            if tx["id"] not in wanted:
+                continue
+            member_id = lookup.get(normalize_iban(tx["cp_iban"]))
+            if member_id is None:  # unbekannt oder mehrdeutig
+                continue
+            left = austritt.get(member_id)
+            if left and tx["booking_date"] > left:
+                # ausgetreten: bleibt in "Unklar", kein Rückgriff auf member.iban
+                continue
+            conn.execute(
+                'update "transaction" set member_id=? where id=?',
+                (member_id, tx["id"]),
+            )
+            _set_fee_category_if_empty(conn, tx["id"])
+            dues.propose_allocations(conn, tx["id"], commit=False)
+            assigned += 1
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
     return assigned
 

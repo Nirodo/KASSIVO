@@ -3,7 +3,9 @@ from datetime import date
 
 import pytest
 
+from kassivo import dues
 from kassivo.categories import create_category
+from kassivo.dues import month_status
 from kassivo.matching import assign_member, auto_assign, unmatched
 from kassivo.members import create_member
 
@@ -240,20 +242,36 @@ def _allocs(conn, tx_id):
         "select status from allocation where tx_id=? order by id", (tx_id,))]
 
 
+def _clear(conn, tx_id):
+    # assign_member legt seit Task 7 selbst Vorschläge an. Tests mit
+    # handgebauten Zeilen starten danach von einem leeren Stand.
+    conn.execute("delete from allocation where tx_id=?", (tx_id,))
+
+
+def _full(conn, tx_id):
+    return [
+        (r["member_id"], r["month"], r["cents"], r["status"])
+        for r in conn.execute(
+            "select member_id, month, cents, status from allocation"
+            " where tx_id=? order by month, id", (tx_id,))
+    ]
+
+
 def test_unassign_keeps_category_and_learned_iban(conn):
     m = _member(conn)
-    t = _tx(conn, 1700, MOM)
+    t = _tx(conn, 1000, MOM)  # Teilzahlung: nur Vorschlag, nichts bestätigt
     assign_member(conn, t, m)
     assign_member(conn, t, None)
     assert _row(conn, t)["member_id"] is None
     assert _row(conn, t)["category_id"] == _beitraege(conn)
     assert _learned(conn) == {MOM: m}
     assert t in _ids(unmatched(conn))
+    assert _allocs(conn, t) == []
 
 
 def test_unassign_deletes_proposed_allocations(conn):
     m = _member(conn)
-    t = _tx(conn, 1700, MOM)
+    t = _tx(conn, 1000, MOM)
     assign_member(conn, t, m)
     _alloc(conn, t, m, "proposed")
     _alloc(conn, t, m, "proposed")
@@ -265,6 +283,7 @@ def test_confirmed_allocation_blocks_unassign(conn):
     m = _member(conn)
     t = _tx(conn, 1700, MOM)
     assign_member(conn, t, m)
+    _clear(conn, t)
     _alloc(conn, t, m, "proposed")
     _alloc(conn, t, m, "confirmed")
     with pytest.raises(ValueError, match="Verteilung zuerst aufheben"):
@@ -288,6 +307,7 @@ def test_reassign_same_member_keeps_allocations(conn):
     m = _member(conn)
     t = _tx(conn, 1700, MOM)
     assign_member(conn, t, m)
+    _clear(conn, t)
     _alloc(conn, t, m, "proposed")
     _alloc(conn, t, m, "confirmed")
     assign_member(conn, t, m)
@@ -297,18 +317,20 @@ def test_reassign_same_member_keeps_allocations(conn):
 
 def test_reassign_other_member_deletes_proposed(conn):
     a, b = _member(conn, "A"), _member(conn, "B")
-    t = _tx(conn, 1700, MOM)
+    t = _tx(conn, 1000, MOM)
     assign_member(conn, t, a)
     _alloc(conn, t, a, "proposed")
     assign_member(conn, t, b)
     assert _row(conn, t)["member_id"] == b
-    assert _allocs(conn, t) == []
+    # alte Vorschläge von A weg, neuer Vorschlag für B
+    assert _full(conn, t) == [(b, "2026-01", 1000, "proposed")]
 
 
 def test_reassign_other_member_confirmed_still_raises(conn):
     a, b = _member(conn, "A"), _member(conn, "B")
     t = _tx(conn, 1700, MOM)
     assign_member(conn, t, a)
+    _clear(conn, t)
     _alloc(conn, t, a, "proposed")
     _alloc(conn, t, a, "confirmed")
     with pytest.raises(ValueError, match="Verteilung zuerst aufheben"):
@@ -321,7 +343,101 @@ def test_assign_from_none_deletes_stale_proposed(conn):
     t = _tx(conn, 1700, MOM)
     _alloc(conn, t, a, "proposed")
     assign_member(conn, t, b)
+    assert _full(conn, t) == [(b, "2026-01", 1700, "confirmed")]
+
+
+# --- Vorschläge beim Zuordnen (Task 7) -------------------------------------
+
+def test_assign_exact_amount_confirms_earliest_due_month(conn):
+    m = _member(conn)  # fee_start 2025-02, Prüfungsstart Default 2026-01
+    t = _tx(conn, 1700, MOM, day="2026-03-04")
+    assign_member(conn, t, m)
+    assert _full(conn, t) == [(m, "2026-01", 1700, "confirmed")]
+    st = month_status(conn, m, "2026-01", date(2026, 3, 4))
+    assert st.status == "PAID"
+
+
+def test_assign_double_amount_two_proposed_not_paid(conn):
+    m = _member(conn)
+    t = _tx(conn, 3400, MOM)
+    assign_member(conn, t, m)
+    assert _full(conn, t) == [
+        (m, "2026-01", 1700, "proposed"), (m, "2026-02", 1700, "proposed")]
+    today = date(2026, 1, 15)
+    assert month_status(conn, m, "2026-01", today).status == "OPEN"
+    assert month_status(conn, m, "2026-02", today).status == "OPEN"
+
+
+def test_reassign_proposals_follow_new_member(conn):
+    a, b = _member(conn, "A"), _member(conn, "B")
+    t = _tx(conn, 3400, MOM)
+    assign_member(conn, t, a)
+    assign_member(conn, t, b)
+    assert _full(conn, t) == [
+        (b, "2026-01", 1700, "proposed"), (b, "2026-02", 1700, "proposed")]
+
+
+def test_reassign_same_member_does_not_repropose(conn):
+    m = _member(conn)
+    t = _tx(conn, 3400, MOM)
+    assign_member(conn, t, m)
+    ids = [r["id"] for r in conn.execute(
+        "select id from allocation where tx_id=?", (t,))]
+    assign_member(conn, t, m)
+    assert [r["id"] for r in conn.execute(
+        "select id from allocation where tx_id=?", (t,))] == ids
+
+
+def test_assign_propose_error_changes_nothing(conn, monkeypatch):
+    m = _member(conn)
+    t = _tx(conn, 1700, MOM)
+    conn.commit()
+
+    def boom(*a, **k):
+        raise ValueError("kaputt")
+
+    monkeypatch.setattr(dues, "propose_allocations", boom)
+    with pytest.raises(ValueError):
+        assign_member(conn, t, m)
+    assert _row(conn, t)["member_id"] is None
+    assert _row(conn, t)["category_id"] is None
+    assert _learned(conn) == {}
     assert _allocs(conn, t) == []
+
+
+def test_auto_assign_creates_proposals(conn):
+    m = _member(conn, iban=KID)
+    t1 = _tx(conn, 1700, KID, day="2026-01-03")
+    t2 = _tx(conn, 3400, KID, day="2026-02-03")
+    assert auto_assign(conn, [t1, t2]) == 2
+    conn.rollback()  # alles ist schon committet
+    assert _full(conn, t1) == [(m, "2026-01", 1700, "confirmed")]
+    assert _full(conn, t2) == [
+        (m, "2026-02", 1700, "proposed"), (m, "2026-03", 1700, "proposed")]
+
+
+def test_auto_assign_oldest_booking_first(conn):
+    m = _member(conn, iban=KID)
+    late = _tx(conn, 1700, KID, day="2026-02-03")
+    early = _tx(conn, 1700, KID, day="2026-01-03")
+    assert auto_assign(conn, [late, early]) == 2
+    assert _full(conn, early) == [(m, "2026-01", 1700, "confirmed")]
+    assert _full(conn, late) == [(m, "2026-02", 1700, "confirmed")]
+
+
+def test_auto_assign_propose_error_changes_nothing(conn, monkeypatch):
+    _member(conn, iban=KID)
+    t = _tx(conn, 1700, KID)
+    conn.commit()
+
+    def boom(*a, **k):
+        raise ValueError("kaputt")
+
+    monkeypatch.setattr(dues, "propose_allocations", boom)
+    with pytest.raises(ValueError):
+        auto_assign(conn, [t])
+    assert _row(conn, t)["member_id"] is None
+    assert _row(conn, t)["category_id"] is None
 
 
 def _leave(conn, member_id, day):
