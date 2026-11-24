@@ -111,3 +111,7 @@ def test_readme_links_resolve():
 ])
 def test_readme_documents_shell_variants_and_limits(needle):
     assert needle in README, needle
+
+
+def test_readme_mentions_category_clears_unmatched():
+    assert "Kein Mitglied nötig" in README

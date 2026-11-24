@@ -643,3 +643,58 @@ def test_learn_false_writes_nothing_even_with_member_iban(conn):
     assign_member(conn, t1, a, learn=False)
     assign_member(conn, t2, b, learn=False)
     assert _learned(conn) == {}
+
+
+# --- Issue #28: kategorisierte Eingänge ohne Mitglied sind erledigt -------------
+
+def _cat_tx(conn, category_id, amount=1700, iban=None):
+    from kassivo.categories import set_category
+    t = _tx(conn, amount, iban)
+    set_category(conn, t, category_id)
+    return t
+
+
+def test_unmatched_hides_categorized_non_member_booking(conn):
+    zins = create_category(conn, "Zinsen", "in")
+    done = _cat_tx(conn, zins)
+    plain = _tx(conn, 646)
+    beitrag = _cat_tx(conn, _beitraege(conn))
+    ids = _ids(unmatched(conn))
+    assert done not in ids
+    assert plain in ids and beitrag in ids
+
+
+def test_unmatched_outgoing_and_member_assigned_never(conn):
+    m = _member(conn)
+    out = _tx(conn, -500)
+    assigned = _tx(conn, 1700, MOM)
+    assign_member(conn, assigned, m)
+    ids = _ids(unmatched(conn))
+    assert out not in ids and assigned not in ids
+
+
+def test_unmatched_newest_first(conn):
+    old = _tx(conn, 100, day="2026-01-01")
+    new = _tx(conn, 100, day="2026-09-30")
+    assert _ids(unmatched(conn)) == [new, old]
+
+
+def test_unmatched_returns_after_category_removed(conn):
+    from kassivo.categories import set_category
+    zins = create_category(conn, "Zinsen", "in")
+    t = _cat_tx(conn, zins)
+    assert t not in _ids(unmatched(conn))
+    set_category(conn, t, None)
+    assert t in _ids(unmatched(conn))
+
+
+def test_auto_assign_skips_categorized_non_member(conn):
+    m = _member(conn, iban=KID)
+    zins = create_category(conn, "Zinsen", "in")
+    done = _cat_tx(conn, zins, iban=KID)
+    plain = _tx(conn, 1700, KID)
+    beitrag = _cat_tx(conn, _beitraege(conn), iban=KID)
+    assert auto_assign(conn, [done, plain, beitrag]) == 2
+    assert _row(conn, done)["member_id"] is None
+    assert _row(conn, plain)["member_id"] == m
+    assert _row(conn, beitrag)["member_id"] == m

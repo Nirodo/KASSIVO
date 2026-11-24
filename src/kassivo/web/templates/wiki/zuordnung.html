@@ -31,7 +31,13 @@
   <li>Meldet KASSIVO „… hat bestätigte Verteilung: Verteilung zuerst aufheben“, öffnen Sie über „Verteilung“ die Verteilungsseite, haken Sie „Ich bestätige, dass die Verteilung aufgehoben wird“ an und wählen Sie „Verteilung aufheben“. Danach klappt das Umhängen.</li>
 </ol>
 
+<h3>Zahlungen, die kein Mitglied brauchen</h3>
+<p>Nicht jeder Zahlungseingang gehört zu einem Mitglied, zum Beispiel die Zinsen der Bank. Solche Zahlungen bleiben nicht in „Unklar“, sobald sie eine Kategorie haben, die nicht „Beiträge“ ist. Setzen Sie die Kategorie direkt in <a href="/unmatched">Unklar</a>: Wählen Sie in der Spalte „Kein Mitglied nötig“ die Kategorie und dann „Als erledigt kategorisieren“. Die Zahlung verschwindet aus der Liste. „Unklare automatisch zuordnen“ ordnet sie auch nicht mehr einem Mitglied zu. Nehmen Sie die Kategorie unter <a href="/transactions">Buchungen</a> wieder weg („Ohne Kategorie“), steht die Zahlung wieder in „Unklar“.</p>
+
 <h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Zinsen der Bank. Die Quartalsabrechnung vom 30.09.2026 hat keine Gegenpartei und den Zweck „Abrechnung 30.09.2026 … Zinsen für Guthaben 8,77+ … Kapitalertragsteuer 2,19- … Abrechnung 6,46+“. Legen Sie einmal die Kategorie „Zinsen“ mit der Art „Einnahmen“ an und eine Regel mit dem Feld „Verwendungszweck“ und „Enthält“ <code>Zinsen für Guthaben</code> (siehe <a href="/wiki/kategorien">Kategorien und Regeln</a>). Dann kategorisiert KASSIVO die Abrechnung schon beim Import, und sie erscheint nie in „Unklar“. Für vorhandene Buchungen wählen Sie in „Unklar“ die Kategorie „Zinsen“ und „Als erledigt kategorisieren“, oder Sie wählen unter „Kategorien“ „Regeln anwenden“.</p>
+</div>
 <div class="callout callout-example">
   <p><strong>Beispiel:</strong> Max Mustermann hat im Datensatz die IBAN <code>XX00 FAKE 0000 0000 01</code>. Seine Zahlung vom 03.02.2026 über 17,00 € kommt von dieser IBAN. Beim Import ordnet KASSIVO sie ihm zu. Er taucht nie in „Unklar“ auf.</p>
 </div>

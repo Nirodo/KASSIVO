@@ -103,6 +103,14 @@ def _iban_lookup(conn) -> dict[str, int | None]:
     return lookup
 
 
+# Ein Eingang ohne Mitglied ist erledigt, sobald er eine andere Kategorie als
+# "Beiträge" hat (zum Beispiel Zinsen): er braucht dann kein Mitglied.
+_NEEDS_MEMBER = (
+    "(category_id is null or category_id in"
+    " (select id from category where name = 'Beiträge'))"
+)
+
+
 def iban_is_ambiguous(conn, iban: str | None) -> bool:
     """True, wenn auto_assign die IBAN als mehrdeutig überspringt."""
     iban = normalize_iban(iban)
@@ -124,6 +132,7 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
     rows = conn.execute(
         'select id, cp_iban, booking_date from "transaction"'
         " where amount_cents > 0 and member_id is null and cp_iban is not null"
+        " and "+_NEEDS_MEMBER+
         " order by booking_date, id"
     ).fetchall()
     try:
@@ -154,5 +163,6 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
 def unmatched(conn) -> list:
     return conn.execute(
         'select * from "transaction" where amount_cents > 0 and member_id is null'
+        " and "+_NEEDS_MEMBER+
         " order by booking_date desc, id desc"
     ).fetchall()

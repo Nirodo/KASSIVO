@@ -718,3 +718,98 @@ def test_single_payer_learn_cascade_confirms_booking_months(client, db):
         tx = _tx_id(db, f"M {i}")
         assert _col(db, tx, "member_id") == m
         assert [tuple(x) for x in _alloc(db, tx)] == [(f"2026-0{i}", 1700, "confirmed")]
+
+
+# --- Issue #28: Unklar zeigt nur Eingänge, die ein Mitglied brauchen -------------
+
+E_ZINS = {"amount": 646, "purpose": "Abrechnung 30.09.2026 Zinsen für Guthaben 8,77+ "
+          "Kapitalertragsteuer 2,19- Abrechnung 6,46+", "ref": "Z1", "name": None}
+
+
+def _zins_cat(db, name="Zinsen"):
+    from kassivo.categories import create_category
+    cid = create_category(db, name, "in")
+    db.commit()
+    return cid
+
+
+def _categorize(client, tx, cat, **kw):
+    return client.post(f"/transactions/{tx}/category",
+                       data={"category_id": str(cat), "next": "/unmatched"}, **kw)
+
+
+def test_unmatched_zins_example_appears_first_and_disappears(client, db):
+    _upload(client, [dict(E_ERIKA, booking_date="2026-03-01", ref="E1"),
+                     dict(E_ZINS, booking_date="2026-09-30")])
+    tx = _tx_id(db, E_ZINS["purpose"])
+    page = client.get("/unmatched").text
+    assert page.index("Zinsen für Guthaben") < page.index("Erika Muster")
+    r = _categorize(client, tx, _zins_cat(db))
+    assert r.status_code == 303 and r.headers["location"] == "/unmatched"
+    page = client.get("/unmatched").text
+    assert "Zinsen für Guthaben" not in page and "Erika Muster" in page
+
+
+def test_unmatched_page_texts_and_category_form(client, db):
+    _upload(client, [E_ERIKA])
+    _zins_cat(db)
+    db.execute("insert into category(name, kind) values('Ausgabe XY', 'out')")
+    db.commit()
+    t = _text(client.get("/unmatched").text)
+    assert "Kein Mitglied nötig" in t and "Als erledigt kategorisieren" in t
+    assert ("Zahlungseingänge ohne Mitglied. Gehört die Zahlung zu einem Mitglied, ordnen Sie sie zu. "
+            "Zinsen, Spenden und ähnliche Posten brauchen kein Mitglied: Wählen Sie eine Kategorie, "
+            "dann verschwindet die Zahlung aus dieser Liste.") in t
+    assert "Zinsen" in t and "Ausgabe XY" not in t
+
+
+def test_unmatched_empty_state_unchanged(client, db):
+    assert "Alle Zahlungseingänge sind zugeordnet." in client.get("/unmatched").text
+
+
+def test_unmatched_escapes_names(client, db):
+    _upload(client, [dict(E_SPENDE, name="<b>Boese</b>")])
+    page = client.get("/unmatched").text
+    assert "<b>Boese" not in page and "&lt;b&gt;Boese" in page
+
+
+def test_unmatched_auto_ignores_categorized_non_member(client, db):
+    _upload(client, [dict(E_ERIKA, ref="A1", purpose="Beitrag A")])
+    tx = _tx_id(db, "Beitrag A")
+    _categorize(client, tx, _zins_cat(db))
+    _member(db, iban=OTHER_IBAN)
+    r = client.post("/unmatched/auto")
+    assert r.headers["location"] == "/unmatched?note=auto&n=0"
+    assert _col(db, tx, "member_id") is None
+
+
+def test_learn_cascade_ignores_categorized_non_member(client, db):
+    _upload(client, [dict(E_ERIKA, ref="A1", purpose="Beitrag A"),
+                     dict(E_ERIKA, ref="A2", purpose="Beitrag B"),
+                     dict(E_ERIKA, ref="A3", purpose="Zins C")])
+    done = _tx_id(db, "Zins C")
+    _categorize(client, done, _zins_cat(db))
+    m = _member(db)
+    r = _assign(client, _tx_id(db, "Beitrag A"), m)
+    assert r.headers["location"] == "/unmatched?note=learned&n=1" or "learned" in r.headers["location"]
+    assert _col(db, _tx_id(db, "Beitrag B"), "member_id") == m
+    assert _col(db, done, "member_id") is None
+
+
+def test_import_rule_keeps_interest_out_of_unmatched(client, db):
+    from kassivo.categories import add_rule
+    cid = _zins_cat(db)
+    add_rule(db, cid, "purpose", "Zinsen für Guthaben")
+    db.commit()
+    _upload(client, [E_ZINS])
+    tx = _tx_id(db, E_ZINS["purpose"])
+    assert _col(db, tx, "category_id") == cid
+    assert "Zinsen für Guthaben" not in client.get("/unmatched").text
+
+
+def test_category_post_foreign_origin_403(client, db):
+    _upload(client, [E_ERIKA])
+    tx = _tx_id(db, "Beitrag")
+    r = _categorize(client, tx, _zins_cat(db), headers={"origin": "https://evil.example"})
+    assert r.status_code == 403
+    assert _col(db, tx, "category_id") is None
