@@ -5,7 +5,7 @@ description: Legt fest, welches Modell ein Subagent in KASSIVO nutzt. Nutzen, be
 
 # Modellwahl für Agents
 
-Obergrenze ist Opus 4.8 mit der Modell-ID `claude-opus-4-8`. Andere Opus-Versionen und Fable werden nicht verwendet. Bei Sonnet und Haiku ist die Version egal.
+Obergrenze ist Opus 5.5 mit der Modell-ID `claude-opus-5-5`. Fable wird nicht verwendet. Bei Sonnet und Haiku ist die Version egal.
 
 | Aufgabe | Agent | Modell |
 |---|---|---|
@@ -15,6 +15,6 @@ Obergrenze ist Opus 4.8 mit der Modell-ID `claude-opus-4-8`. Andere Opus-Version
 | Review von Geld-, Bank- und Auth-Code | `kassivo-reviewer` | opus |
 
 Regeln:
-- Die Opus-Agents (`kassivo-architect`, `kassivo-reviewer`) tragen `model: claude-opus-4-8` im Frontmatter. Beim Start gebe ich für sie keinen `model`-Parameter an, weil der Alias `opus` auf eine neuere Version zeigen kann und das Frontmatter überschreiben würde. Nie `fable`.
+- Die Opus-Agents (`kassivo-architect`, `kassivo-reviewer`) tragen `model: claude-opus-5-5` im Frontmatter. Beim Start gebe ich `model: opus` an oder lasse den Parameter weg. Nie `fable`.
 - Im Zweifel ein Modell höher, wenn Geld, Bankdaten oder Rechte betroffen sind. Sonst das günstigste, das die Aufgabe schafft.
 - Agents werden nur gestartet, wenn der Nutzer es verlangt.

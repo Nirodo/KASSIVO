@@ -22,7 +22,7 @@ Planungsphase. Stack, Speicherung (DB oder anderes) und Bankanbieter sind noch n
 
 ## Agents und Modelle (`.claude/agents/`)
 
-Obergrenze ist Opus 4.8 (Modell-ID `claude-opus-4-8`). Fable und andere Opus-Versionen werden nicht verwendet. Bei Sonnet und Haiku ist die Version egal.
+Obergrenze ist Opus 5.5 (Modell-ID `claude-opus-5-5`). Fable wird nicht verwendet. Bei Sonnet und Haiku ist die Version egal.
 
 | Aufgabe | Agent | Modell |
 |---|---|---|
@@ -31,7 +31,7 @@ Obergrenze ist Opus 4.8 (Modell-ID `claude-opus-4-8`). Fable und andere Opus-Ver
 | Architektur, Bank, Auth, Geldlogik | `kassivo-architect` | opus |
 | Review kritischer Änderungen | `kassivo-reviewer` | opus |
 
-Agents nur starten, wenn der Nutzer es verlangt. Für `kassivo-architect` und `kassivo-reviewer` beim Start keinen `model`-Parameter setzen, damit `claude-opus-4-8` aus dem Frontmatter gilt (der Alias `opus` könnte auf eine neuere Version zeigen).
+Agents nur starten, wenn der Nutzer es verlangt. Für `kassivo-architect` und `kassivo-reviewer` gilt `claude-opus-5-5` aus dem Frontmatter.
 
 ## Harte Regeln
 

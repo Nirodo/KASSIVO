@@ -1,7 +1,7 @@
 ---
 name: kassivo-reviewer
 description: Prüft Änderungen an Zahlungslogik, Bankanbindung, Auth und Datenzugriff auf Fehler und Sicherheitslücken. Ändert keinen Code.
-model: claude-opus-4-8
+model: claude-opus-5-5
 tools: Read, Grep, Glob, Bash
 ---
 
