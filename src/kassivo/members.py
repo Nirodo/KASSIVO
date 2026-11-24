@@ -40,10 +40,26 @@ def update_member(conn, member_id: int, **fields) -> None:
         raise ValueError(f"Unbekannte Felder: {sorted(bad)}")
     if not fields:
         return
+    for k in ("eintritt", "austritt"):
+        if isinstance(fields.get(k), date):
+            fields[k] = fields[k].isoformat()
+    old_start = None
+    if "fee_start" in fields:
+        row = conn.execute(
+            "select fee_start from member where id=?", (member_id,)
+        ).fetchone()
+        old_start = row["fee_start"] if row else None
     sets = ", ".join(f"{k}=?" for k in fields)
     conn.execute(
         f"update member set {sets} where id=?", (*fields.values(), member_id)
     )
+    if old_start and fields["fee_start"] != old_start:
+        # erste Historie-Zeile folgt fee_start, nur wenn sie noch dort liegt
+        conn.execute(
+            "update member_type_history set valid_from=? "
+            "where member_id=? and valid_from=?",
+            (fields["fee_start"], member_id, old_start),
+        )
     conn.commit()
 
 
