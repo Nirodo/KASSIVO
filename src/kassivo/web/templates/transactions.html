@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "_txrow.html" as row %}
+{% block title %}Buchungen{% endblock %}
+{% block content %}
+<form method="get" action="/transactions" class="filter" role="search">
+  <div class="field"><label for="year">Jahr (JJJJ oder „all“)</label>
+    <input id="year" name="year" value="{{ f.year }}" maxlength="4"></div>
+  <div class="field"><label for="category">Kategorie</label>
+    <select id="category" name="category">
+      <option value="">Alle</option>
+      <option value="none"{% if f.category == "none" %} selected{% endif %}>Ohne Kategorie</option>
+      {% for c in cats %}<option value="{{ c['id'] }}"{% if f.category == c['id']|string %} selected{% endif %}>{{ c["name"] }}</option>{% endfor %}
+    </select></div>
+  <div class="field"><label for="kind">Art</label>
+    <select id="kind" name="kind">
+      <option value="">Alle</option>
+      <option value="in"{% if f.kind == "in" %} selected{% endif %}>Einnahmen</option>
+      <option value="out"{% if f.kind == "out" %} selected{% endif %}>Ausgaben</option>
+    </select></div>
+  <div class="field"><label for="q">Suche in Gegenpartei und Zweck</label>
+    <input id="q" name="q" type="search" value="{{ f.q }}" maxlength="200"></div>
+  <button type="submit">Filtern</button>
+</form>
+<div class="sums" aria-label="Summen der gefilterten Buchungen">
+  <p>Buchungen: <strong>{{ count }}</strong></p>
+  <p>Einnahmen: <strong>{{ income | eur }}</strong></p>
+  <p>Ausgaben: <strong>{{ expense | eur }}</strong></p>
+</div>
+{% if rows %}
+<div class="table-wrap">
+<table>
+  <caption>Buchungen, neueste zuerst (Seite {{ f.page }} von {{ pages }})</caption>
+  <thead><tr><th>Datum</th><th>Gegenpartei</th><th>Zweck</th><th class="num">Betrag</th><th>Kategorie</th><th>Mitglied</th><th>Verteilung</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    {{ row.tx_cells(r) }}
+    <td>{{ ui.category_form(r.tx["id"], r.tx["category_id"], cats, next_url) }}</td>
+    <td>{% if r.tx["amount_cents"] > 0 %}{{ r.tx["member_name"] or "—" }}
+      {{ ui.member_form(r.tx["id"], r.tx["member_id"], members, next_url) }}{% else %}—{% endif %}</td>
+    <td>{% if r.tx["member_id"] %}<a href="/transactions/{{ r.tx['id'] }}/allocate?next={{ next_url | urlencode }}">Verteilung<span class="visually-hidden"> für Buchung {{ r.tx["id"] }}</span></a>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>Keine Buchungen für diesen Filter.</p>
+{% endif %}
+<nav class="pager" aria-label="Seiten">
+  {% if prev_url %}<a href="{{ prev_url }}">Zurück</a>{% endif %}
+  <span>Seite {{ f.page }} von {{ pages }}</span>
+  {% if next_page_url %}<a href="{{ next_page_url }}">Weiter</a>{% endif %}
+</nav>
+{% endblock %}

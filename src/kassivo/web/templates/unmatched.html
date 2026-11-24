@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "_txrow.html" as row %}
+{% block title %}Unklar{% endblock %}
+{% block content %}
+{% if rows %}
+<p>Zahlungseingänge ohne Mitglied. Bitte zuordnen.</p>
+<div class="table-wrap">
+<table>
+  <caption>Nicht zugeordnete Zahlungseingänge</caption>
+  <thead><tr><th>Datum</th><th>Gegenpartei</th><th>Zweck</th><th class="num">Betrag</th><th>Mitglied zuordnen</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>{{ row.tx_cells(r) }}<td>{{ ui.member_form(r.tx["id"], None, members, next_url) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>Alle Zahlungseingänge sind zugeordnet.</p>
+{% endif %}
+{% endblock %}

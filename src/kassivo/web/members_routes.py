@@ -8,11 +8,10 @@ from kassivo.members import (
     create_member, leave_member, list_members, set_member_type, type_at, update_member,
 )
 from kassivo.web.common import (
-    E_DATE, E_MONTH, current_month, get_conn, parse_date, parse_month, render, type_names,
+    E_DATE, E_MONTH, check_id, current_month, get_conn, parse_date, parse_month, render, type_names,
 )
 
 router = APIRouter()
-MAX_ID = 2**63 - 1
 STAMM = ("name", "street", "zip", "city", "email", "phone", "iban")
 
 
@@ -21,8 +20,7 @@ def _stamm(name, street, zip_, city, email, phone, iban) -> dict:
 
 
 def _get(conn, member_id: int):
-    if not 1 <= member_id <= MAX_ID:
-        raise HTTPException(404)
+    check_id(member_id)
     row = conn.execute("select * from member where id=?", (member_id,)).fetchone()
     if row is None:
         raise HTTPException(404)

@@ -3,7 +3,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -59,3 +59,31 @@ def parse_month(text: str) -> str | None:
 
 def type_names(conn) -> list[str]:
     return [r["name"] for r in conn.execute("select name from membership_type order by id")]
+
+
+MAX_ID = 2**63 - 1
+MAX_CENTS = 10_000_000
+_NEXT_RE = re.compile(r"/(transactions|unmatched)([/?][!-~]*)?", re.ASCII)
+
+
+def check_id(value: int) -> int:
+    """EINE Prüfung für alle ID-Pfade: außerhalb 1..2**63-1 gibt es kein DB-Zugriff."""
+    if not 1 <= value <= MAX_ID:
+        raise HTTPException(404)
+    return value
+
+
+def parse_id(text: str) -> int | None:
+    """Ziffernfolge im int64-Bereich, sonst None."""
+    text = text.strip()
+    if not re.fullmatch(r"[0-9]{1,19}", text):
+        return None
+    value = int(text)
+    return value if 1 <= value <= MAX_ID else None
+
+
+def safe_next(text: str | None, default: str = "/transactions") -> str:
+    """Nur lokale Pfade unter /transactions oder /unmatched, nie ein Schema oder //."""
+    if text and _NEXT_RE.fullmatch(text) and "\\" not in text:
+        return text
+    return default

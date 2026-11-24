@@ -50,3 +50,12 @@ th { background: var(--panel); }
 section { margin-bottom: 2rem; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+label.check { display: inline-flex; gap: .35rem; align-items: center; font-weight: 400; margin: 0; }
+label.check input { width: auto; }
+.sums { display: flex; flex-wrap: wrap; gap: .5rem 2rem; margin: .5rem 0 1rem; }
+.pager { display: flex; gap: 1rem; margin: 1rem 0; }
+.warn { font-weight: 700; }
+form.filter { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; margin-bottom: 1rem; }
+form.filter .field { margin: 0; }
+caption { text-align: left; font-weight: 600; padding: .5rem 0; }

@@ -29,3 +29,38 @@
 {% macro month_field(name, label, values, errors, required=true, hint="Format JJJJ-MM, z. B. 2026-07") %}
 {{ field(name, label, values, errors, required=required, pattern="[0-9]{4}-(0[1-9]|1[0-2])", placeholder="JJJJ-MM", hint=hint) }}
 {% endmacro %}
+
+{% macro error_list(messages) %}
+{% if messages %}<div class="alert" role="alert"><strong>Fehler:</strong>
+  <ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
+  <p>Es wurde nichts gespeichert.</p></div>{% endif %}
+{% endmacro %}
+
+{% macro money(cents) %}<td class="num">{{ cents | eur }}</td>{% endmacro %}
+
+{% macro member_options(members, selected) %}
+<option value="">— keins —</option>
+{% for m in members %}<option value="{{ m['id'] }}"{% if m['id'] == selected %} selected{% endif %}>{{ m["name"] }}{% if m["austritt"] %} (ausgetreten){% endif %}</option>{% endfor %}
+{% endmacro %}
+
+{% macro member_form(tx_id, selected, members, next_url) %}
+<form method="post" action="/transactions/{{ tx_id }}/member" class="inline">
+  <input type="hidden" name="next" value="{{ next_url }}">
+  <label class="visually-hidden" for="member-{{ tx_id }}">Mitglied für Buchung {{ tx_id }}</label>
+  <select id="member-{{ tx_id }}" name="member_id">{{ member_options(members, selected) }}</select>
+  <label class="check"><input type="checkbox" name="learn" value="on" checked> Absender merken</label>
+  <button type="submit">Zuordnen</button>
+</form>
+{% endmacro %}
+
+{% macro category_form(tx_id, selected, cats, next_url) %}
+<form method="post" action="/transactions/{{ tx_id }}/category" class="inline">
+  <input type="hidden" name="next" value="{{ next_url }}">
+  <label class="visually-hidden" for="cat-{{ tx_id }}">Kategorie für Buchung {{ tx_id }}</label>
+  <select id="cat-{{ tx_id }}" name="category_id">
+    <option value="">Ohne Kategorie</option>
+    {% for c in cats %}<option value="{{ c['id'] }}"{% if c['id'] == selected %} selected{% endif %}>{{ c["name"] }}</option>{% endfor %}
+  </select>
+  <button type="submit">Setzen</button>
+</form>
+{% endmacro %}

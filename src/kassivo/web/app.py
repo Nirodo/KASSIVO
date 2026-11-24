@@ -7,7 +7,9 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from kassivo.web import import_routes, members_routes, settings_routes
+from kassivo.web import (
+    categories_routes, import_routes, members_routes, settings_routes, transactions_routes,
+)
 from kassivo.web.common import HERE, render
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "testserver"}
@@ -64,4 +66,6 @@ def create_app(db_path) -> FastAPI:
     app.include_router(members_routes.router)
     app.include_router(settings_routes.router)
     app.include_router(import_routes.router)
+    app.include_router(transactions_routes.router)
+    app.include_router(categories_routes.router)
     return app
