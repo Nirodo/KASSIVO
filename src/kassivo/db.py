@@ -18,8 +18,9 @@ create table if not exists member_type_history(
   type_id integer not null references membership_type(id),
   valid_from text not null,
   primary key(member_id, valid_from));
+-- member_id NULL: IBAN ist mehrdeutig (zahlt für mehrere Mitglieder)
 create table if not exists member_iban(
-  iban text primary key, member_id integer not null references member(id));
+  iban text primary key, member_id integer references member(id));
 create table if not exists category(
   id integer primary key, name text not null unique,
   kind text not null check(kind in ('in','out','both')));
@@ -67,6 +68,22 @@ def _seed(conn: sqlite3.Connection) -> None:
     )
 
 
+def _relax_member_iban(conn: sqlite3.Connection) -> None:
+    """Ältere Datenbanken: NOT NULL an member_iban.member_id entfernen (idempotent)."""
+    cols = {r["name"]: r["notnull"] for r in conn.execute("pragma table_info(member_iban)")}
+    if not cols.get("member_id"):
+        return
+    conn.executescript("""
+        begin;
+        create table member_iban_new(
+          iban text primary key, member_id integer references member(id));
+        insert into member_iban_new(iban, member_id) select iban, member_id from member_iban;
+        drop table member_iban;
+        alter table member_iban_new rename to member_iban;
+        commit;
+    """)
+
+
 def connect(path) -> sqlite3.Connection:
     if str(path) != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +91,7 @@ def connect(path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _relax_member_iban(conn)
     _seed(conn)
     conn.commit()
     return conn

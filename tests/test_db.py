@@ -31,3 +31,28 @@ def test_settings(conn):
     set_setting(conn, "x", "1")
     set_setting(conn, "x", "2")
     assert get_setting(conn, "x") == "2"
+
+
+def test_member_iban_allows_null_marker(conn):
+    conn.execute("insert into member_iban(iban, member_id) values('XX00', null)")
+    assert conn.execute("select member_id from member_iban").fetchone()[0] is None
+
+
+def test_old_not_null_member_iban_relaxed_idempotent(tmp_path):
+    import sqlite3
+    p = tmp_path / "alt.db"
+    old = sqlite3.connect(p)
+    old.execute("create table member(id integer primary key, name text not null)")
+    old.execute("insert into member(id, name) values(1, 'Erfunden')")
+    old.execute("create table member_iban(iban text primary key,"
+                " member_id integer not null references member(id))")
+    old.execute("insert into member_iban values('XX01', 1)")
+    old.commit()
+    old.close()
+    for _ in range(2):
+        c = connect(p)
+        c.execute("insert or replace into member_iban values('XX02', null)")
+        c.commit()
+        assert {tuple(r) for r in c.execute("select iban, member_id from member_iban")} == {
+            ("XX01", 1), ("XX02", None)}
+        c.close()

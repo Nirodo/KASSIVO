@@ -136,14 +136,73 @@ def test_ambiguous_iban_skipped(conn):
     assert _row(conn, t)["member_id"] is None
 
 
-def test_latest_manual_assignment_wins(conn):
+def test_second_member_makes_learned_iban_ambiguous(conn):
+    # ersetzt die alte Regel "letzte manuelle Zuordnung gewinnt"
     a, b = _member(conn, "A"), _member(conn, "B")
     t1, t2, t3 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
     assign_member(conn, t1, a)
     assign_member(conn, t2, b)
-    assert _learned(conn) == {MOM: b}
+    assert _learned(conn) == {MOM: None}  # mehrdeutig
+    assert auto_assign(conn, [t3]) == 0
+    assert _row(conn, t3)["member_id"] is None
+    assert t3 in _ids(unmatched(conn))
+
+
+def test_ambiguous_learned_iban_no_fall_through_to_member_iban(conn):
+    a, b = _member(conn, "A", iban=MOM), _member(conn, "B")
+    c = _member(conn, "C")
+    t1, t2, t3 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
+    assign_member(conn, t1, b)
+    assign_member(conn, t2, c)
+    assert _learned(conn) == {MOM: None}
+    assert auto_assign(conn, [t3]) == 0  # nicht auf member.iban von A
+
+
+def test_ambiguous_iban_stays_ambiguous_on_later_learn(conn):
+    a, b = _member(conn, "A"), _member(conn, "B")
+    t1, t2, t3, t4 = (_tx(conn, 1700, MOM) for _ in range(4))
+    assign_member(conn, t1, a)
+    assign_member(conn, t2, b)
+    assign_member(conn, t3, a)
+    assert _learned(conn) == {MOM: None}
+    assert auto_assign(conn, [t4]) == 0
+
+
+def test_same_member_again_keeps_mapping(conn):
+    a = _member(conn, "A")
+    t1, t2, t3 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
+    assign_member(conn, t1, a)
+    assign_member(conn, t2, a)
+    assert _learned(conn) == {MOM: a}
     assert auto_assign(conn, [t3]) == 1
-    assert _row(conn, t3)["member_id"] == b
+
+
+def test_learn_false_does_not_make_ambiguous(conn):
+    a, b = _member(conn, "A"), _member(conn, "B")
+    t1, t2, t3 = _tx(conn, 1700, MOM), _tx(conn, 1700, MOM), _tx(conn, 1700, MOM)
+    assign_member(conn, t1, a)
+    assign_member(conn, t2, b, learn=False)
+    assert _learned(conn) == {MOM: a}
+    assert auto_assign(conn, [t3]) == 1
+    assert _row(conn, t3)["member_id"] == a
+
+
+def test_siblings_one_parent_two_children_end_to_end(conn):
+    """Ein Elternteil zahlt für zwei Kinder: nach dem Lernen bleibt alles in Unklar."""
+    dues.set_check_start(conn, "2026-01")
+    a, b = _member(conn, "Kind A"), _member(conn, "Kind B")
+    t1 = _tx(conn, 1700, "XX00FAKEPARENT", day="2026-01-03")
+    t2 = _tx(conn, 1700, "XX00FAKEPARENT", day="2026-01-04")
+    conn.commit()
+    assign_member(conn, t1, a)
+    assign_member(conn, t2, b)
+    feb = [_tx(conn, 1700, "XX00FAKEPARENT", day="2026-02-03"),
+           _tx(conn, 1700, "XX00FAKEPARENT", day="2026-02-04")]
+    conn.commit()
+    assert auto_assign(conn, feb) == 0
+    assert set(feb) <= set(_ids(unmatched(conn)))
+    assert conn.execute(
+        "select count(*) from allocation where tx_id in (?,?)", feb).fetchone()[0] == 0
 
 
 def test_auto_assign_writes_nothing_to_member_iban(conn):

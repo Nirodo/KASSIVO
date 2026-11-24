@@ -462,3 +462,35 @@ def test_bad_ids_404(client, method, suffix, bad):
 def test_foreign_origin_403(client, path):
     r = client.post(path, data={}, headers={"origin": "https://evil.example"})
     assert r.status_code == 403
+
+
+# --- I1: "Absender merken" nur auf /unmatched vorbelegt ------------------------
+
+_LEARN = re.compile(r'<input type="checkbox" name="learn" value="on"( checked)?>')
+
+
+def test_learn_checkbox_checked_on_unmatched(client):
+    _upload(client, [E_ERIKA])
+    boxes = _LEARN.findall(client.get("/unmatched").text)
+    assert boxes and all(b == " checked" for b in boxes)
+
+
+def test_learn_checkbox_not_checked_on_transactions(client):
+    _upload(client, [E_ERIKA])
+    boxes = _LEARN.findall(client.get("/transactions?year=all").text)
+    assert boxes and all(b == "" for b in boxes)
+
+
+def test_siblings_web_second_child_learn_leaves_feb_unmatched(client, db):
+    set_check_start(db, "2026-01")
+    a, b = _member(db, "Kind A"), _member(db, "Kind B")
+    jan = [dict(E_ERIKA, ref="J1"), dict(E_ERIKA, ref="J2", purpose="Beitrag 2")]
+    _upload(client, jan, day="2026-01-05")
+    t1, t2 = _tx_id(db, "Beitrag"), _tx_id(db, "Beitrag 2")
+    _assign(client, t1, a)
+    _assign(client, t2, b)
+    feb = [dict(E_ERIKA, ref="F1", purpose="Feb 1"), dict(E_ERIKA, ref="F2", purpose="Feb 2")]
+    r = _upload(client, feb, day="2026-02-05")
+    assert "Automatisch zugeordnet: 0" in r.text
+    un = client.get("/unmatched").text
+    assert "Feb 1" in un and "Feb 2" in un

@@ -11,7 +11,7 @@
   <thead><tr><th>Datum</th><th>Gegenpartei</th><th>Zweck</th><th class="num">Betrag</th><th>Mitglied zuordnen</th></tr></thead>
   <tbody>
   {% for r in rows %}
-  <tr>{{ row.tx_cells(r) }}<td>{{ ui.member_form(r.tx["id"], None, members, next_url) }}</td></tr>
+  <tr>{{ row.tx_cells(r) }}<td>{{ ui.member_form(r.tx["id"], None, members, next_url, learn_checked=true) }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

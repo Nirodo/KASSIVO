@@ -57,10 +57,15 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
             _set_fee_category_if_empty(conn, tx_id)
             iban = normalize_iban(tx["cp_iban"])
             if learn and iban:
-                # letzte manuelle Zuordnung gewinnt
+                # Gelernt für ein anderes Mitglied (oder schon mehrdeutig):
+                # die IBAN wird mehrdeutig (NULL), auto_assign überspringt sie.
+                # Verworfen: "letzte Zuordnung gewinnt" (Geschwister-Fall
+                # ordnete still alle Zahlungen dem zuletzt gewählten Kind zu).
                 conn.execute(
                     "insert into member_iban(iban, member_id) values(?,?)"
-                    " on conflict(iban) do update set member_id=excluded.member_id",
+                    " on conflict(iban) do update set member_id=case"
+                    " when member_iban.member_id=excluded.member_id"
+                    " then member_iban.member_id else null end",
                     (iban, member_id),
                 )
             if changed:
@@ -72,7 +77,11 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
 
 
 def _iban_lookup(conn) -> dict[str, int | None]:
-    """IBAN -> Mitglied; None heißt mehrdeutig. member_iban hat Vorrang."""
+    """IBAN -> Mitglied; None heißt mehrdeutig. member_iban hat Vorrang.
+
+    Ein mehrdeutiger Eintrag in member_iban (member_id NULL) überdeckt
+    member.iban: kein Rückgriff auf die Stammdaten.
+    """
     by_member: dict[str, set[int]] = {}
     for r in conn.execute("select id, iban from member where iban is not null"):
         iban = normalize_iban(r["iban"])
