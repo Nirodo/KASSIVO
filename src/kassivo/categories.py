@@ -3,11 +3,18 @@
 KINDS = ("in", "out", "both")
 # feste Zuordnung Regelfeld -> Spalte; nie SQL aus dem Feldnamen bauen
 FIELD_COLUMNS = {"purpose": "purpose", "cp_name": "cp_name", "cp_iban": "cp_iban"}
+# Anzeigename für Buchungen ohne Kategorie; darf keine echte Kategorie heißen
+RESERVED_NAME = "Ohne Kategorie"
 
 
 def create_category(conn, name: str, kind: str) -> int:
     if kind not in KINDS:
         raise ValueError(f"kind muss in/out/both sein, nicht {kind!r}")
+    key = name.strip().casefold()
+    if key == RESERVED_NAME.casefold():
+        raise ValueError(f"Der Name {RESERVED_NAME!r} ist reserviert")
+    if any(r["name"].strip().casefold() == key for r in conn.execute("select name from category")):
+        raise ValueError("Eine Kategorie mit diesem Namen existiert bereits")
     cur = conn.execute("insert into category(name, kind) values(?,?)", (name, kind))
     return cur.lastrowid
 

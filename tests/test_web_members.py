@@ -399,6 +399,8 @@ def test_unhandled_error_is_safe_page(db_path):
 
     r = TestClient(app, raise_server_exceptions=False).get("/boom")
     assert r.status_code == 500
+    assert "Bitte prüfen Sie, ob die Änderung gespeichert wurde." in r.text
+    assert "Es wurde nichts gespeichert" not in r.text
     assert "geheimer-fehlertext" not in r.text and "Traceback" not in r.text
     assert r.headers["content-security-policy"] == "default-src 'self'; frame-ancestors 'none'"
     assert r.headers["x-content-type-options"] == "nosniff"

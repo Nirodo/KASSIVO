@@ -130,3 +130,17 @@ def test_invalid_inputs(conn):
     set_category(conn, t, c)
     set_category(conn, t, None)
     assert _cat(conn, t) is None
+
+
+@pytest.mark.parametrize("name", ["Ohne Kategorie", "ohne kategorie", "  OHNE KATEGORIE "])
+def test_reserved_name_rejected(conn, name):
+    with pytest.raises(ValueError):
+        create_category(conn, name, "both")
+
+
+def test_duplicate_name_is_value_error(conn):
+    create_category(conn, "Doppelt", "both")
+    with pytest.raises(ValueError):
+        create_category(conn, "Doppelt", "in")
+    with pytest.raises(ValueError):
+        create_category(conn, "beiträge", "in")  # Seed "Beiträge", Groß/klein egal

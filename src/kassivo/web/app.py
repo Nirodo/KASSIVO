@@ -46,7 +46,7 @@ def create_app(db_path) -> FastAPI:
     async def server_error(request: Request, exc: Exception):
         # läuft außerhalb der Middleware: Header selbst setzen
         resp = render(request, "error.html", 500,
-                      message="Interner Fehler. Es wurde nichts gespeichert.")
+                      message="Interner Fehler. Bitte prüfen Sie, ob die Änderung gespeichert wurde.")
         resp.headers.update(SECURITY_HEADERS)
         return resp
 
