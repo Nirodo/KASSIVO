@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import summary, field, select, month_field %}
+{% block title %}{% if member %}Mitglied bearbeiten{% else %}Mitglied anlegen{% endif %}{% endblock %}
+{% block content %}
+<p><a href="/members">Zurück zur Liste</a></p>
+{% if ok %}<p class="notice" role="status"><strong>Gespeichert.</strong></p>{% endif %}
+
+{% if not member %}
+<form method="post" action="/members/new">
+  {{ summary(errors) }}
+  {{ field("name", "Name", values, errors, required=true) }}
+  {{ select("type_name", "Art", types, values.get("type_name"), errors) }}
+  {{ field("eintritt", "Eintritt", values, errors, type="date", required=true) }}
+  {{ field("street", "Straße", values, errors) }}
+  {{ field("zip", "PLZ", values, errors) }}
+  {{ field("city", "Ort", values, errors) }}
+  {{ field("email", "E-Mail", values, errors, type="email") }}
+  {{ field("phone", "Telefon", values, errors, type="tel") }}
+  {{ field("iban", "IBAN", values, errors) }}
+  {{ month_field("fee_start", "Zahlt ab Monat", values, errors, required=false, hint="Leer lassen: der Monat nach dem Eintritt. Format JJJJ-MM.") }}
+  <button type="submit">Anlegen</button>
+</form>
+{% else %}
+<section>
+  <h2>Stammdaten</h2>
+  <p>Eintritt: {{ member["eintritt"] }}. Zahlt ab: {{ member["fee_start"] }}.
+     Status: {% if member["austritt"] %}Ausgetreten ({{ member["austritt"] }}){% else %}Aktiv{% endif %}.</p>
+  <form method="post" action="/members/{{ member['id'] }}">
+    {% if form == "stamm" %}{{ summary(errors) }}{% endif %}
+    {{ field("name", "Name", values, errors, required=true) }}
+    {{ field("street", "Straße", values, errors) }}
+    {{ field("zip", "PLZ", values, errors) }}
+    {{ field("city", "Ort", values, errors) }}
+    {{ field("email", "E-Mail", values, errors, type="email") }}
+    {{ field("phone", "Telefon", values, errors, type="tel") }}
+    {{ field("iban", "IBAN", values, errors) }}
+    <button type="submit">Speichern</button>
+  </form>
+</section>
+<section>
+  <h2>Mitgliedsart ändern</h2>
+  <p>Aktuelle Art: {{ current_type or "–" }}.</p>
+  <form method="post" action="/members/{{ member['id'] }}/type">
+    {% if form == "type" %}{{ summary(errors) }}{% endif %}
+    {{ select("type_name", "Neue Art", types, type_values.get("type_name") or current_type, errors if form == "type" else {}) }}
+    {{ month_field("valid_from", "Gültig ab Monat", type_values, errors if form == "type" else {}) }}
+    <button type="submit">Art ändern</button>
+  </form>
+</section>
+<section>
+  <h2>Austritt</h2>
+  <form method="post" action="/members/{{ member['id'] }}/leave">
+    {% if form == "leave" %}{{ summary(errors) }}{% endif %}
+    {{ field("austritt", "Austrittsdatum", {"austritt": leave_value or member["austritt"]}, errors if form == "leave" else {}, type="date", required=true) }}
+    <button type="submit">Austritt eintragen</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

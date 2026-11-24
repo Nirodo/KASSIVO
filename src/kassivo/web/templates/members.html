@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Mitglieder{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <form method="get" action="/members" role="search" class="inline">
+    <label for="q">Name suchen</label>
+    <input id="q" name="q" type="search" value="{{ q }}">
+    <button type="submit">Suchen</button>
+  </form>
+  <a class="button" href="/members/new">Mitglied anlegen</a>
+</div>
+{% if rows %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>Art</th><th>Eintritt</th><th>Status</th><th>IBAN</th><th><span class="visually-hidden">Aktion</span></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.m["name"] }}</td>
+    <td>{{ r.type }}</td>
+    <td>{{ r.m["eintritt"] }}</td>
+    <td>{% if r.m["austritt"] %}Ausgetreten ({{ r.m["austritt"] }}){% else %}Aktiv{% endif %}</td>
+    <td>{{ r.iban }}</td>
+    <td><a href="/members/{{ r.m['id'] }}">Bearbeiten<span class="visually-hidden">: {{ r.m["name"] }}</span></a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>Keine Mitglieder gefunden.</p>
+{% endif %}
+{% endblock %}

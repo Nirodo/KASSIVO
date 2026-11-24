@@ -1,0 +1,61 @@
+"""Gemeinsame Helfer der Web-Schicht: Templates, DB pro Anfrage, Eingabeprüfung."""
+import re
+from datetime import date
+from pathlib import Path
+
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+from kassivo.db import connect
+from kassivo.money import format_eur
+from kassivo.months import month_of, valid_month
+
+HERE = Path(__file__).parent
+templates = Jinja2Templates(directory=HERE / "templates")
+templates.env.filters["eur"] = format_eur
+
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
+MIN_YEAR, MAX_YEAR = 1900, 2100
+E_DATE = "Bitte ein gültiges Datum im Format JJJJ-MM-TT angeben (Jahr 1900 bis 2100)."
+E_MONTH = "Bitte einen gültigen Monat im Format JJJJ-MM angeben."
+
+
+async def get_conn(request: Request):
+    """Eine Verbindung pro Anfrage. Async, damit alles im selben Thread läuft."""
+    conn = connect(request.app.state.db_path)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def render(request: Request, name: str, status: int = 200, **ctx) -> HTMLResponse:
+    return templates.TemplateResponse(request, name, ctx, status_code=status)
+
+
+def current_month() -> str:
+    return month_of(date.today())
+
+
+def parse_date(text: str) -> date | None:
+    """ISO-Datum JJJJ-MM-TT, Jahr 1900..2100. Sonst None."""
+    text = text.strip()
+    if not _DATE_RE.fullmatch(text):
+        return None
+    try:
+        d = date.fromisoformat(text)
+    except ValueError:
+        return None
+    return d if MIN_YEAR <= d.year <= MAX_YEAR else None
+
+
+def parse_month(text: str) -> str | None:
+    text = text.strip()
+    if valid_month(text) and MIN_YEAR <= int(text[:4]) <= MAX_YEAR:
+        return text
+    return None
+
+
+def type_names(conn) -> list[str]:
+    return [r["name"] for r in conn.execute("select name from membership_type order by id")]

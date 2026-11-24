@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Kontoauszüge importieren{% endblock %}
+{% block content %}
+<p>Im Online-Banking den Export <strong>XML CAMT V8, gebuchte Umsätze</strong> wählen. Eine ZIP-Datei oder eine einzelne XML-Datei kann hier hochgeladen werden. Bereits importierte Buchungen werden erkannt und nicht doppelt angelegt.</p>
+{% if error %}<p class="alert" role="alert"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
+<form method="post" action="/import" enctype="multipart/form-data">
+  <div class="field">
+    <label for="file">Datei (ZIP oder XML)</label>
+    <input id="file" name="file" type="file" accept=".zip,.xml" required>
+  </div>
+  <button type="submit">Importieren</button>
+</form>
+{% endblock %}
