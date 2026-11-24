@@ -12,6 +12,7 @@ from kassivo.web.common import (
 )
 
 router = APIRouter()
+MAX_ID = 2**63 - 1
 STAMM = ("name", "street", "zip", "city", "email", "phone", "iban")
 
 
@@ -20,6 +21,8 @@ def _stamm(name, street, zip_, city, email, phone, iban) -> dict:
 
 
 def _get(conn, member_id: int):
+    if not 1 <= member_id <= MAX_ID:
+        raise HTTPException(404)
     row = conn.execute("select * from member where id=?", (member_id,)).fetchone()
     if row is None:
         raise HTTPException(404)

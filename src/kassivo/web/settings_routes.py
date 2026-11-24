@@ -10,6 +10,7 @@ from kassivo.web.common import (
 )
 
 router = APIRouter()
+MAX_FEE_CENTS = 10_000_000
 
 
 def _page(request, conn, status=200, errors=None, values=None, form=""):
@@ -51,8 +52,8 @@ async def fees_submit(
         cents = parse_cents(amount)
     except ValueError:
         pass
-    if cents <= 0:
-        errors["amount"] = "Bitte einen Betrag größer als 0 angeben, z. B. 17,00."
+    if not 1 <= cents <= MAX_FEE_CENTS:
+        errors["amount"] = "Bitte einen Betrag zwischen 0,01 und 100.000,00 angeben, z. B. 17,00."
     if type_name not in type_names(conn):
         errors["type_name"] = "Bitte eine Mitgliedsart wählen."
     month = parse_month(valid_from)

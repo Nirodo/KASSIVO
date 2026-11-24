@@ -15,7 +15,7 @@ UNSAFE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
 SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
+    "Referrer-Policy": "same-origin",
 }
 
 
@@ -39,6 +39,14 @@ def create_app(db_path) -> FastAPI:
                 resp = PlainTextResponse("Anfrage von fremder Herkunft abgelehnt.", status_code=403)
             else:
                 resp = await call_next(request)
+        resp.headers.update(SECURITY_HEADERS)
+        return resp
+
+    @app.exception_handler(Exception)
+    async def server_error(request: Request, exc: Exception):
+        # läuft außerhalb der Middleware: Header selbst setzen
+        resp = render(request, "error.html", 500,
+                      message="Interner Fehler. Es wurde nichts gespeichert.")
         resp.headers.update(SECURITY_HEADERS)
         return resp
 

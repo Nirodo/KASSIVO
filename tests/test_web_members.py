@@ -67,7 +67,7 @@ def test_security_headers(client):
     r = client.get("/members")
     assert r.headers["content-security-policy"] == "default-src 'self'; frame-ancestors 'none'"
     assert r.headers["x-content-type-options"] == "nosniff"
-    assert r.headers["referrer-policy"] == "no-referrer"
+    assert r.headers["referrer-policy"] == "same-origin"
 
 
 def test_bad_host_rejected(client):
@@ -347,3 +347,59 @@ def test_import_warning_has_no_full_iban(client):
     r = _upload(client, data)
     assert r.status_code == 200
     assert IBAN not in r.text
+
+
+# --- Fix round 1 -------------------------------------------------------------
+
+def test_referrer_policy_same_origin(client):
+    assert client.get("/members").headers["referrer-policy"] == "same-origin"
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1:8000", "localhost:8000"])
+def test_post_with_real_origin_ok(client, db, host):
+    r = client.post("/members/new", data=NEW,
+                    headers={"host": host, "origin": f"http://{host}"})
+    assert r.status_code == 303
+    assert _count(db, "member") == 1
+
+
+def test_origin_null_rejected(client, db):
+    r = client.post("/members/new", data=NEW, headers={"origin": "null"})
+    assert r.status_code == 403 and _count(db, "member") == 0
+
+
+@pytest.mark.parametrize("path", ["/members/99999999999999999999", "/members/0", "/members/-1"])
+def test_huge_or_bad_member_id_404(client, path):
+    assert client.get(path).status_code == 404
+    assert client.post(path, data={"name": "x"}).status_code == 404
+    assert client.post(path + "/type", data={"type_name": "Aktiv", "valid_from": "2026-01"}).status_code == 404
+    assert client.post(path + "/leave", data={"austritt": "2026-01-01"}).status_code == 404
+
+
+@pytest.mark.parametrize("amount", ["9" * 25, "100000,01", "0,00", "-5", "abc"])
+def test_fee_range_rejected(client, db, amount):
+    r = client.post("/settings/fees", data={"form": "fee", "type_name": "Aktiv",
+                                            "amount": amount, "valid_from": "2026-07"})
+    assert r.status_code == 422 and "Fehler" in r.text
+    assert _count(db, "fee_rate") == 2
+
+
+def test_fee_upper_limit_accepted(client, db):
+    r = client.post("/settings/fees", data={"form": "fee", "type_name": "Aktiv",
+                                            "amount": "100000,00", "valid_from": "2026-07"})
+    assert r.status_code == 303 and fee_at(db, "Aktiv", "2026-07") == 10_000_000
+
+
+def test_unhandled_error_is_safe_page(db_path):
+    app = create_app(db_path)
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("geheimer-fehlertext")
+
+    r = TestClient(app, raise_server_exceptions=False).get("/boom")
+    assert r.status_code == 500
+    assert "geheimer-fehlertext" not in r.text and "Traceback" not in r.text
+    assert r.headers["content-security-policy"] == "default-src 'self'; frame-ancestors 'none'"
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["referrer-policy"] == "same-origin"
