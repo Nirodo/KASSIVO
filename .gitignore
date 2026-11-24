@@ -37,6 +37,7 @@ venv/
 __pycache__/
 *.pyc
 vendor/
+!src/kassivo/web/static/vendor/
 
 # Build / Output
 dist/
