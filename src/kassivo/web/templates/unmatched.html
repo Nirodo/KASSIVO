@@ -4,6 +4,10 @@
 {% block title %}Unklar{% endblock %}
 {% block content %}
 <p><a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> prüfen und bestätigen.</p>
+<form method="post" action="/unmatched/auto" class="inline">
+  <button type="submit">Unklare automatisch zuordnen</button>
+  <span class="hint">Wendet gelernte Absender und die IBANs der Mitglieder erneut auf alle unklaren Zahlungen an.</span>
+</form>
 {% if rows %}
 <p>Zahlungseingänge ohne Mitglied. Bitte zuordnen.</p>
 <div class="table-wrap">

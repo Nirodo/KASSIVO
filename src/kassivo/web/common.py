@@ -70,6 +70,30 @@ def type_names(conn) -> list[str]:
     return [r["name"] for r in conn.execute("select name from membership_type order by id")]
 
 
+_NOTES = {
+    "auto": "{n} unklare Zahlungen automatisch zugeordnet.",
+    "learned": "Zugeordnet. {n} weitere Zahlungen mit derselben Absender-IBAN wurden"
+               " automatisch zugeordnet.",
+}
+_COUNT_RE = re.compile(r"[0-9]{1,7}", re.ASCII)
+
+
+def page_note(request: Request) -> str | None:
+    """Hinweis nach einer Aktion. Nur feste Codes und eine Zahl, nie freier Text."""
+    template = _NOTES.get(request.query_params.get("note", ""))
+    n = request.query_params.get("n", "")
+    if template is None or not _COUNT_RE.fullmatch(n):
+        return None
+    return template.format(n=int(n))
+
+
+def with_note(url: str, code: str, n: int) -> str:
+    assert code in _NOTES
+    return f"{url}{'&' if '?' in url else '?'}note={code}&n={int(n)}"
+
+
+templates.env.globals["page_note"] = page_note
+
 MAX_ID = 2**63 - 1
 MAX_CENTS = 10_000_000
 _NEXT_RE = re.compile(r"/(transactions|unmatched)([/?][!-~]*)?", re.ASCII)

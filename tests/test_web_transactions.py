@@ -550,3 +550,102 @@ def test_open_proposals_links(client):
     for path in ("/unmatched", "/transactions"):
         t = client.get(path).text
         assert 'href="/transactions?year=all&amp;proposed=1"' in t and "Offene Vorschläge" in t
+
+
+# --- I5: Unklar automatisch zuordnen, Lernen wirkt auf alte Zahlungen ----------
+
+def _text(html):
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+
+
+def _unmatched_ids(db):
+    return {r[0] for r in db.execute(
+        'select id from "transaction" where amount_cents > 0 and member_id is null')}
+
+
+def _three_months(client, iban=OTHER_IBAN, prefix="M"):
+    """Erstimport über drei Monate von einem Absender, nichts bekannt."""
+    entries = [dict(E_ERIKA, cp_iban=iban, ref=f"{prefix}{i}", purpose=f"{prefix} {i}",
+                    booking_date=f"2026-0{i}-05") for i in (1, 2, 3)]
+    _upload(client, entries)
+    return entries
+
+
+def test_unmatched_auto_button_assigns_exactly_matching(client, db):
+    _three_months(client)
+    _upload(client, [dict(E_SPENDE, ref="S1")])
+    m = _member(db, iban=OTHER_IBAN)          # IBAN erst nach dem Import bekannt
+    assert "Unklare automatisch zuordnen" in client.get("/unmatched").text
+    r = client.post("/unmatched/auto")
+    assert r.status_code == 303 and r.headers["location"] == "/unmatched?note=auto&n=3"
+    for i in (1, 2, 3):
+        assert _col(db, _tx_id(db, f"M {i}"), "member_id") == m
+    assert _col(db, _tx_id(db, "Spende Sommerfest"), "member_id") is None
+    t = client.get(r.headers["location"]).text
+    assert "3 unklare Zahlungen automatisch zugeordnet." in _text(t)
+
+
+def test_unmatched_auto_skips_ambiguous(client, db):
+    _three_months(client)
+    _member(db, "Kind A", iban=OTHER_IBAN)
+    db.execute("insert into member_iban(iban, member_id) values(?, null)", (OTHER_IBAN,))
+    db.commit()                              # mehrdeutig: kein Rückgriff auf member.iban
+    r = client.post("/unmatched/auto")
+    assert r.headers["location"] == "/unmatched?note=auto&n=0"
+    assert all(_col(db, _tx_id(db, f"M {i}"), "member_id") is None for i in (1, 2, 3))
+
+
+def test_unmatched_auto_foreign_origin_changes_nothing(client, db):
+    _three_months(client)
+    _member(db, iban=OTHER_IBAN)
+    before = _unmatched_ids(db)
+    r = client.post("/unmatched/auto", headers={"origin": "https://evil.example"})
+    assert r.status_code == 403
+    assert _unmatched_ids(db) == before
+
+
+def test_learn_cascades_to_other_unmatched_same_iban(client, db):
+    _three_months(client)
+    _upload(client, [dict(E_SPENDE, ref="S1")])
+    m = _member(db)
+    r = _assign(client, _tx_id(db, "M 1"), m, next="/unmatched")
+    assert r.status_code == 303
+    assert r.headers["location"] == "/unmatched?note=learned&n=2"
+    assert _col(db, _tx_id(db, "M 2"), "member_id") == m
+    assert _col(db, _tx_id(db, "M 3"), "member_id") == m
+    assert _col(db, _tx_id(db, "Spende Sommerfest"), "member_id") is None
+    t = _text(client.get(r.headers["location"]).text)
+    assert "2 weitere Zahlungen mit derselben Absender-IBAN wurden automatisch zugeordnet." in t
+
+
+def test_learn_cascade_keeps_existing_query_in_next(client, db):
+    _three_months(client)
+    m = _member(db)
+    r = _assign(client, _tx_id(db, "M 1"), m, next="/transactions?year=all")
+    assert r.headers["location"] == "/transactions?year=all&note=learned&n=2"
+
+
+def test_learn_off_no_cascade(client, db):
+    _three_months(client)
+    m = _member(db)
+    tx = _tx_id(db, "M 1")
+    r = client.post(f"/transactions/{tx}/member", data={"member_id": str(m), "next": "/unmatched"})
+    assert r.headers["location"] == "/unmatched"
+    assert _col(db, _tx_id(db, "M 2"), "member_id") is None
+
+
+def test_learn_cascade_skipped_when_ambiguous(client, db):
+    _three_months(client)
+    a, b = _member(db, "Kind A"), _member(db, "Kind B")
+    db.execute("insert into member_iban(iban, member_id) values(?,?)", (OTHER_IBAN, a))
+    db.commit()
+    r = _assign(client, _tx_id(db, "M 1"), b, next="/unmatched")  # IBAN wird mehrdeutig
+    assert r.headers["location"] == "/unmatched"  # kein Hinweis, nichts weiter zugeordnet
+    assert _col(db, _tx_id(db, "M 2"), "member_id") is None
+    assert _col(db, _tx_id(db, "M 3"), "member_id") is None
+
+
+@pytest.mark.parametrize("q", ["note=evil", "note=auto&n=abc", "note=<script>", "n=5"])
+def test_unknown_note_codes_show_nothing(client, q):
+    t = client.get(f"/unmatched?{q}").text
+    assert "automatisch zugeordnet." not in t and "<script>" not in t.split("<main>")[1]

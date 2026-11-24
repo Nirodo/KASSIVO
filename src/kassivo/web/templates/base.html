@@ -19,6 +19,7 @@
 </header>
 <main>
 <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
+{% set note = page_note(request) %}{% if note %}<p class="notice" role="status">{{ note }}</p>{% endif %}
 {% block content %}{% endblock %}
 </main>
 </body>

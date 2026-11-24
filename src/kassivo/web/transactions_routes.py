@@ -13,7 +13,7 @@ from kassivo.members import list_members
 from kassivo.money import parse_cents
 from kassivo.web.common import (
     E_MONTH, MAX_CENTS, MAX_YEAR, MIN_YEAR, check_id, get_conn, parse_id, parse_month,
-    render, safe_next,
+    render, safe_next, with_note,
 )
 
 router = APIRouter()
@@ -150,6 +150,13 @@ async def unmatched(request: Request, conn=Depends(get_conn)):
                   members=list_members(conn), next_url="/unmatched")
 
 
+@router.post("/unmatched/auto")
+async def unmatched_auto(conn=Depends(get_conn)):
+    """Regeln und Zuordnung erneut anwenden: gelernte und Stamm-IBANs auf "Unklar"."""
+    n = matching.auto_assign(conn, [r["id"] for r in matching.unmatched(conn)])
+    return _see_other(with_note("/unmatched", "auto", n))
+
+
 # --- Kategorie und Mitglied ----------------------------------------------------
 
 @router.post("/transactions/{tx_id:int}/category")
@@ -178,11 +185,21 @@ async def set_member(request: Request, tx_id: int, member_id: str = Form(""),
         member = parse_id(member_id)
         if member is None:
             return _error(request, "Unbekanntes Mitglied.", back=safe_next(next))
+    learning = learn == "on"
     try:
-        matching.assign_member(conn, tx_id, member, learn=learn == "on")
+        matching.assign_member(conn, tx_id, member, learn=learning)
     except ValueError as e:
         return _error(request, str(e), back=safe_next(next))
-    return _see_other(safe_next(next))
+    if not (learning and member is not None):
+        return _see_other(safe_next(next))
+    # Gelernte IBAN gleich auf die übrigen unklaren Zahlungen dieses Absenders
+    # anwenden; ist sie mehrdeutig geworden, ordnet auto_assign nichts zu.
+    iban = normalize_iban(_tx(conn, tx_id)["cp_iban"])
+    others = [r["id"] for r in matching.unmatched(conn)
+              if iban and normalize_iban(r["cp_iban"]) == iban]
+    n = matching.auto_assign(conn, others)
+    target = safe_next(next)
+    return _see_other(with_note(target, "learned", n) if n else target)
 
 
 # --- Verteilung ----------------------------------------------------------------
