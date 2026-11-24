@@ -1,0 +1,73 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Hier stehen die häufigsten Probleme mit Ursache und Lösung. Die Fragen sind nach dem Ablauf geordnet.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li>Suchen Sie unten die Frage, die zu Ihrem Problem passt.</li>
+  <li>Prüfen Sie die genannten Ursachen der Reihe nach.</li>
+  <li>Führt das nicht zum Ziel, legen Sie zuerst eine Sicherung an (<a href="/wiki/backup">Sicherung und Wiederherstellung</a>), bevor Sie größere Änderungen versuchen.</li>
+</ol>
+
+<h2>Fragen und Antworten</h2>
+
+<h3>1. Eine Zahlung wurde dem falschen Mitglied zugeordnet.</h3>
+<p><strong>Ursache:</strong> Meist hat KASSIVO eine gemerkte IBAN (oder die IBAN im Mitgliedsdatensatz) angewendet, etwa wenn ein Elternteil für ein anderes Kind zahlt. <strong>Lösung:</strong> Öffnen Sie <a href="/transactions">Buchungen</a>, wählen Sie in der Spalte „Mitglied“ das richtige Mitglied und dann „Zuordnen“. Meldet KASSIVO eine bestätigte Verteilung, heben Sie sie zuerst auf („Verteilung“, „Verteilung aufheben“). Haken Sie „Absender merken“ nur an, wenn die IBAN künftig zu diesem Mitglied gehören soll. Siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>.</p>
+
+<h3>2. Ein Monat ist überfällig, obwohl das Mitglied bezahlt hat.</h3>
+<p><strong>Ursachen:</strong></p>
+<ul>
+  <li>Die Zahlung hat einen Vorschlag, der nicht bestätigt ist. Nur bestätigte Verteilungen zählen. <strong>Lösung:</strong> Öffnen Sie „Offene Vorschläge“ und bestätigen Sie die Verteilung.</li>
+  <li>Die Zahlung steht noch in „Unklar“. <strong>Lösung:</strong> Ordnen Sie sie dem Mitglied zu.</li>
+  <li>Die Zahlung ist auf einen anderen Monat verteilt oder einem anderen Mitglied zugeordnet. <strong>Lösung:</strong> Öffnen Sie die Zahlungshistorie des Mitglieds (Namen in der Beitragsübersicht anklicken) und prüfen Sie die Monate je Zahlung. Korrigieren Sie über das Datum der Zahlung auf der Seite „Verteilung“.</li>
+  <li>Der Betrag war niedriger als der Beitrag. Der Monat zeigt „Teilweise“ oder „Überfällig“ mit dem Teilbetrag.</li>
+</ul>
+
+<h3>3. KASSIVO ist nach einem Update oder Neustart leer.</h3>
+<p><strong>Ursache:</strong> KASSIVO benutzt eine andere Datenbankdatei als zuvor. Das passiert, wenn <code>KASSIVO_DB</code> anders gesetzt ist, Sie unter einem anderen Windows-Benutzer starten oder ältere Daten noch in <code>data/kassivo.db</code> im Projektordner liegen. KASSIVO legt am neuen Ort still eine leere Datenbank an. <strong>Lösung:</strong> Lesen Sie in der Konsole die Zeile „Datenbank:“. Kopieren Sie bei Bedarf die alte Datenbank dorthin (KASSIVO vorher beenden) oder setzen Sie <code>KASSIVO_DB</code> auf den alten Pfad. Die Schritte stehen im README unter „Vorhandene Datenbank umziehen“.</p>
+
+<h3>4. Der Import bricht ab.</h3>
+<p><strong>Ursache:</strong> Die Datei hat das falsche Format oder ist beschädigt. <strong>Lösung:</strong> Lesen Sie die Meldung und suchen Sie sie in der Tabelle unter <a href="/wiki/import">Kontoexport importieren</a>. Meistens hilft es, im Online-Banking erneut „XML CAMT V8, gebuchte Umsätze“ zu exportieren. Es wurde dabei nichts importiert, Sie können gefahrlos wiederholen.</p>
+
+<h3>5. Eine Zahlung wird nicht automatisch zugeordnet.</h3>
+<p><strong>Mögliche Ursachen:</strong> Die IBAN ist KASSIVO unbekannt. Die IBAN ist mehrdeutig (gehört zu mehreren Mitgliedern). Das Mitglied ist ausgetreten und die Zahlung liegt nach dem Austrittsdatum. Die Zahlung hat keine Absender-IBAN (Bareinzahlung, Sammelbuchung). Die Buchung ist eine Ausgabe. <strong>Lösung:</strong> Ordnen Sie von Hand zu, mit „Absender merken“, wenn es passt. Tragen Sie die IBAN im Mitgliedsdatensatz ein und wählen Sie in „Unklar“ „Unklare automatisch zuordnen“.</p>
+
+<h3>6. Ich habe einen Beitrag geändert. Haben sich alte Monate verändert?</h3>
+<p><strong>Antwort:</strong> Nein, solange „Gültig ab Monat“ in der Zukunft oder im richtigen Monat liegt. Frühere Monate behalten ihren Beitrag. <strong>Prüfen:</strong> Sehen Sie in „Einstellungen“ die Tabelle „Verlauf der Beiträge“ an und öffnen Sie die Beitragsübersicht für ein altes Jahr. <strong>Falls doch:</strong> Sie haben einen zu frühen Monat gewählt. Speichern Sie für dieselbe Art und denselben Monat noch einmal den alten Betrag. Er ersetzt den falschen.</p>
+
+<h3>7. Die Diagramme im Report sind leer.</h3>
+<p><strong>Ursachen:</strong> Das Jahr hat keine Buchungen (dann zeigt KASSIVO gar keine Diagramme). JavaScript ist im Browser ausgeschaltet oder blockiert (dann steht eine Fehlermeldung dort). Die Buchungen des Jahres sind nicht kategorisiert, dann besteht das Tortendiagramm nur aus „Ohne Kategorie“. <strong>Lösung:</strong> Wählen Sie das richtige Jahr, erlauben Sie JavaScript für die Seite oder nutzen Sie die Tabellen darunter. Kategorisieren Sie Buchungen (<a href="/wiki/kategorien">Kategorien und Regeln</a>).</p>
+
+<h3>8. Wie spiele ich eine Sicherung zurück?</h3>
+<p>Von Hand, in fünf Schritten. Sie stehen unter <a href="/wiki/backup">Sicherung und Wiederherstellung</a>. Beenden Sie KASSIVO vorher.</p>
+
+<h3>9. Ein Mitglied ist ausgetreten. Was passiert mit den Monaten?</h3>
+<p>Der Austrittsmonat ist noch voll zu zahlen. Ab dem Folgemonat zeigt die Beitragsübersicht „—“. Alte Zahlungen und Verteilungen bleiben. Zahlungen nach dem Austrittsdatum ordnet KASSIVO nicht mehr automatisch zu. Sie landen in „Unklar“. Das Austrittsdatum können Sie unter „Bearbeiten“ ändern, aber nicht löschen.</p>
+
+<h3>10. Gibt es doppelte Buchungen?</h3>
+<p>Nein, nicht durch einen wiederholten Import. KASSIVO erkennt bereits bekannte Buchungen an der Bankreferenz oder an einem Fingerabdruck aus Datum, Betrag, IBAN und Zweck und zählt sie als „Duplikate“. Zwei echte, gleiche Zahlungen am selben Tag in derselben Datei ohne Bankreferenz bleiben beide erhalten. Buchungen löschen kann KASSIVO in dieser Version nicht. Korrigieren Sie die Folgen über Zuordnung und Verteilung.</p>
+
+<h3>11. Beim Start erscheint ein Fehler zum Port 8000.</h3>
+<p><strong>Ursache:</strong> Der Port 8000 auf Ihrem Rechner ist schon belegt, oft weil KASSIVO bereits in einem anderen Fenster läuft. KASSIVO meldet einen Fehler der Form „error while attempting to bind on address ('127.0.0.1', 8000)“ und beendet sich. Es wählt keinen anderen Port. <strong>Lösung:</strong> Läuft KASSIVO schon, öffnen Sie einfach <code>http://127.0.0.1:8000</code> im Browser. Sonst beenden Sie das Programm, das den Port belegt, und starten KASSIVO neu. Den Port ändern kann man in dieser Version nicht.</p>
+
+<h3>12. Die Seite zeigt „Ungültiger Host.“ oder „Anfrage von fremder Herkunft abgelehnt.“</h3>
+<p><strong>Ursache:</strong> Sie haben KASSIVO über eine andere Adresse aufgerufen als <code>127.0.0.1</code> oder <code>localhost</code>, oder ein Formular kam von einer anderen Webseite. <strong>Lösung:</strong> Öffnen Sie KASSIVO über <code>http://127.0.0.1:8000</code> und senden Sie das Formular dort noch einmal ab.</p>
+
+<h3>13. Es steht ein Hinweis „Prüfungsstart ist noch nicht festgelegt“ da.</h3>
+<p><strong>Lösung:</strong> Folgen Sie dem Link „Prüfungsstart festlegen“ und speichern Sie den ersten Monat, der geprüft werden soll. Siehe <a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>.</p>
+
+<h3>14. Ich habe ein Mitglied falsch angelegt oder Eintritt falsch eingetragen.</h3>
+<p>Name, Adresse, E-Mail, Telefon und IBAN ändern Sie unter „Bearbeiten“. Eintritt und „Zahlt ab Monat“ lassen sich in der Oberfläche nicht ändern, und ein Mitglied lässt sich nicht löschen. Mit „Art ändern“ legen Sie fest, ab wann welcher Beitrag gilt. Siehe <a href="/wiki/mitglieder">Mitglieder</a>.</p>
+
+<h2>Gut zu wissen</h2>
+<div class="callout callout-tip">
+  <p><strong>Tipp:</strong> Bei fast jedem Problem hilft derselbe Blick: Zahlungshistorie des Mitglieds öffnen, dann „Unklar“ und „Offene Vorschläge“ ansehen. So sehen Sie, wo eine Zahlung hängt.</p>
+</div>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/begriffe">Begriffe</a></li>
+  <li><a href="/wiki/grenzen">Bekannte Einschränkungen</a></li>
+</ul>
+{% endblock %}

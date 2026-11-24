@@ -1,0 +1,42 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Die <a href="/forecast">Prognose</a> (/forecast) zeigt, welche Mitgliedsbeiträge bis zu einem Stichtag noch offen sind. Sie beantwortet die Frage: „Wie viel sollte noch hereinkommen?“ In Version 1.0.0 betrachtet sie nur Mitgliedsbeiträge, keine wiederkehrenden Ausgaben wie Miete oder Versicherung.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li>Öffnen Sie <a href="/forecast">Prognose</a>. Vorgegeben ist das Ende des laufenden Monats.</li>
+  <li>Tragen Sie bei „Offene Beiträge bis einschließlich (JJJJ-MM-TT)“ ein Datum ein und wählen Sie „Anzeigen“. Oder wählen Sie eine „Schnellwahl“: „Ende dieses Monats“, „Ende nächsten Monats“, „Ende des Jahres“ oder „In 3 Monaten (Monatsende)“.</li>
+  <li>Lesen Sie die drei Summen „Überfällig“, „Noch fällig“ und „Gesamt offen“.</li>
+  <li>In der Tabelle „Offene Beiträge im Einzelnen“ steht je Mitglied und Monat der offene Betrag. Ein Klick auf den Namen öffnet die Zahlungshistorie.</li>
+</ol>
+
+<h2>Was die Summen bedeuten</h2>
+<ul>
+  <li><strong>Überfällig:</strong> offene Beträge aus Monaten, die schon vorbei sind.</li>
+  <li><strong>Noch fällig:</strong> offene Beträge des laufenden Monats und der Monate bis zum gewählten Datum.</li>
+  <li><strong>Gesamt offen:</strong> beides zusammen.</li>
+</ul>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Heute ist der 15.03.2026, der Prüfungsstart ist 2026-01. Max Mustermann (17,00 € im Monat) hat nur für Januar bestätigt bezahlt. Mit dem Datum 2026-03-31 zeigt die Prognose: Überfällig 17,00 € (Februar), Noch fällig 17,00 € (März), Gesamt offen 34,00 €. Mit dem Datum 2026-06-30 kommen April bis Juni dazu: Noch fällig 68,00 €, Gesamt offen 85,00 €.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Gerechnet wird ab dem Prüfungsstart.</strong> Monate davor zählen nicht. Ist er nicht gesetzt, nimmt KASSIVO den Monat der ältesten Buchung, sonst den frühesten „Zahlt ab“-Monat der Mitglieder.</li>
+  <li><strong>Vorschläge senken die Prognose nicht.</strong> Nur bestätigte Zahlungen zählen als bezahlt. Bestätigen Sie zuerst die <a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>, sonst ist die Prognose zu hoch.</li>
+  <li><strong>Horizont:</strong> Das Datum darf höchstens 50 Jahre in der Zukunft liegen. Sonst meldet KASSIVO „Das Datum liegt zu weit in der Zukunft (höchstens 50 Jahre).“ Das Jahr muss zwischen 1900 und 2100 liegen.</li>
+  <li>Bei einem Teilbetrag steht nur der noch fehlende Rest in der Tabelle.</li>
+  <li>Ausgetretene Mitglieder zählen nur bis zu ihrem Austrittsmonat.</li>
+  <li>Steht dort „Nichts offen bis zu diesem Datum.“, ist alles bestätigt bezahlt.</li>
+</ul>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/beitragsuebersicht">Beitragsübersicht</a></li>
+  <li><a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a></li>
+  <li><a href="/wiki/grenzen">Bekannte Einschränkungen</a></li>
+</ul>
+{% endblock %}

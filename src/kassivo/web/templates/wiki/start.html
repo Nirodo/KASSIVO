@@ -1,0 +1,52 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Diese Seite zeigt den Weg vom ersten Start bis zum fertigen Beitragsüberblick. Wer die Schritte in dieser Reihenfolge geht, vermeidet die häufigsten Fehler.</p>
+
+<h2>Der erste Start</h2>
+<p>KASSIVO starten Sie im Projektordner mit <code>python -m kassivo</code>. Die Konsole zeigt zwei Zeilen: <code>Datenbank: …</code> und <code>Sicherungen: …</code> mit den vollständigen Pfaden. Liegt die Datenbank in einem Cloud-Ordner (OneDrive, Dropbox, Google Drive, iCloud), steht dort zusätzlich eine Warnung. Danach öffnen Sie im Browser <code>http://127.0.0.1:8000</code>. Die Startseite leitet auf die Beitragsübersicht (<a href="/dues">/dues</a>) weiter.</p>
+<p>Beim ersten Start ist KASSIVO leer. Die Beitragsübersicht meldet „Keine Mitglieder vorhanden.“ KASSIVO legt die Datenbank beim ersten Aufruf selbst an und bringt Folgendes mit:</p>
+<ul>
+  <li>zwei Mitgliedsarten: <strong>Aktiv</strong> mit 17,00 € und <strong>Passiv</strong> mit 10,00 € pro Monat,</li>
+  <li>drei Kategorien: <strong>Beiträge</strong> (Einnahmen), <strong>Hauptverein</strong> (Ausgaben) und <strong>Sonstiges</strong> (beides).</li>
+</ul>
+<p>Die Datenbank liegt standardmäßig unter Windows in <code>%LOCALAPPDATA%\KASSIVO\kassivo.db</code>, unter Linux und macOS in <code>~/.local/share/kassivo/kassivo.db</code>. Mit der Umgebungsvariable <code>KASSIVO_DB</code> wählen Sie einen anderen Ort.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li><strong>Prüfungsstart festlegen.</strong> Öffnen Sie <a href="/settings/fees">Einstellungen</a> (/settings/fees), tragen Sie unter „Prüfungsstart (Monat)“ den ersten Monat ein, der geprüft werden soll (Format JJJJ-MM), und wählen Sie „Prüfungsstart speichern“. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Wählen Sie den ersten vollen Monat, den Ihr Kontoexport abdeckt. Mehr dazu unter <a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>.</li>
+  <li><strong>Mitglieder und Beiträge anlegen.</strong> Unter <a href="/members">Mitglieder</a> wählen Sie „Mitglied anlegen“. Prüfen Sie unter <a href="/settings/fees">Einstellungen</a>, ob die Beiträge stimmen, und ändern Sie sie bei Bedarf mit „Beitrag speichern“. Siehe <a href="/wiki/mitglieder">Mitglieder</a>.</li>
+  <li><strong>Kontoexport importieren.</strong> Erzeugen Sie im Online-Banking den Export „XML CAMT V8, gebuchte Umsätze“ und laden Sie ihn unter <a href="/import">Import</a> mit „Importieren“ hoch. Siehe <a href="/wiki/import">Kontoexport importieren</a>.</li>
+  <li><strong>„Unklar“ zuordnen.</strong> Zahlungen, die KASSIVO keinem Mitglied sicher zuordnen konnte, stehen unter <a href="/unmatched">Unklar</a>. Wählen Sie das Mitglied, lassen Sie „Absender merken“ angehakt und wählen Sie „Zuordnen“. Siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>.</li>
+  <li><strong>„Offene Vorschläge“ bestätigen.</strong> Der Link „<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>“ steht in den Buchungen und in Unklar. Öffnen Sie dort je Zahlung „Verteilung“, prüfen Sie die Monate und wählen Sie „Verteilung bestätigen“. Erst bestätigte Verteilungen zählen als bezahlt. Siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>.</li>
+  <li><strong>Ergebnis ansehen.</strong> <a href="/dues">Beiträge</a> zeigt, wer bezahlt hat, <a href="/forecast">Prognose</a> was noch kommt, <a href="/reports">Reports</a> das Jahr in Zahlen und Diagrammen.</li>
+</ol>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Der Kontoexport beginnt am 15.03.2026. Frühere Zahlungen von März fehlen. Wählen Sie deshalb <code>2026-04</code> als Prüfungsstart. Würden Sie <code>2026-03</code> wählen, erschiene der März bei vielen Mitgliedern als überfällig, obwohl sie früher im Monat gezahlt haben.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Max Mustermann (Art Aktiv, Eintritt 10.01.2026) zahlt ab 2026-02. Der Prüfungsstart ist <code>2026-02</code>. Am 03.02.2026 geht 17,00 € von <code>XX00 FAKE 0000 0000 01</code> ein. Steht diese IBAN in seinem Mitgliedsdatensatz, ordnet KASSIVO die Zahlung beim Import selbst zu und bestätigt sie, weil sie genau den Februar deckt.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<div class="callout callout-warn">
+  <p><strong>Achtung:</strong> Der Prüfungsstart ist die wichtigste Einstellung. Setzen Sie ihn vor dem ersten Import. Ändern Sie ihn später, berechnet KASSIVO offene Vorschläge neu. Bestätigte Verteilungen bleiben unverändert.</p>
+</div>
+<div class="callout callout-tip">
+  <p><strong>Tipp:</strong> Legen Sie nach dem ersten Import eine Sicherung an (<a href="/backup">Backup</a>). Dann haben Sie einen sauberen Stand, auf den Sie zurückgehen können.</p>
+</div>
+<ul>
+  <li>Eine Zahlung bestätigt KASSIVO nur dann selbst, wenn sie genau den Beitrag des frühesten offenen Monats deckt und in diesem Monat gebucht ist. Alles andere schlägt KASSIVO nur vor.</li>
+  <li>KASSIVO liest nur Dateien ein. Es fragt kein Bankkonto ab.</li>
+  <li>Alle Daten bleiben auf Ihrem Rechner. Siehe <a href="/wiki/sicherheit">Datenschutz und Sicherheit</a>.</li>
+</ul>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/begriffe">Begriffe</a></li>
+  <li><a href="/wiki/faq">Fehlerbehebung (FAQ)</a></li>
+  <li><a href="/wiki/grenzen">Bekannte Einschränkungen</a></li>
+</ul>
+{% endblock %}

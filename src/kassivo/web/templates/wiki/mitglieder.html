@@ -1,0 +1,63 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Unter <a href="/members">Mitglieder</a> (/members) pflegen Sie die Personen, deren Beiträge KASSIVO prüft: anlegen, Stammdaten ändern, die Mitgliedsart wechseln und den Austritt eintragen. Ein Mitglied zu löschen ist in dieser Version nicht möglich.</p>
+
+<h2>So geht's</h2>
+<h3>Mitglied anlegen</h3>
+<ol class="steps">
+  <li>Öffnen Sie <a href="/members">Mitglieder</a> und wählen Sie „Mitglied anlegen“.</li>
+  <li>Füllen Sie „Name“ und „Eintritt“ aus. Beide sind Pflicht. Wählen Sie bei „Art“ Aktiv oder Passiv.</li>
+  <li>Tragen Sie bei Bedarf Straße, PLZ, Ort, E-Mail, Telefon und „IBAN“ ein.</li>
+  <li>Lassen Sie „Zahlt ab Monat“ leer, wenn das Mitglied ab dem Monat nach dem Eintritt zahlt. Sonst tragen Sie den Monat im Format JJJJ-MM ein.</li>
+  <li>Wählen Sie „Anlegen“. Sie landen wieder in der Liste.</li>
+</ol>
+<h3>Stammdaten ändern</h3>
+<ol class="steps">
+  <li>Wählen Sie in der Liste „Bearbeiten“ beim Mitglied.</li>
+  <li>Ändern Sie Name, Adresse, E-Mail, Telefon oder IBAN und wählen Sie „Speichern“.</li>
+</ol>
+<h3>Mitgliedsart ändern</h3>
+<ol class="steps">
+  <li>Öffnen Sie das Mitglied über „Bearbeiten“. Im Abschnitt „Mitgliedsart ändern“ steht die aktuelle Art.</li>
+  <li>Wählen Sie bei „Neue Art“ die neue Art und tragen Sie bei „Gültig ab Monat“ den ersten Monat mit dem neuen Beitrag ein.</li>
+  <li>Wählen Sie „Art ändern“.</li>
+</ol>
+<h3>Austritt eintragen</h3>
+<ol class="steps">
+  <li>Öffnen Sie das Mitglied über „Bearbeiten“.</li>
+  <li>Tragen Sie im Abschnitt „Austritt“ das „Austrittsdatum“ ein und wählen Sie „Austritt eintragen“.</li>
+</ol>
+<h3>Suchen</h3>
+<p>Tippen Sie in der Liste einen Teil des Namens in „Name suchen“ und wählen Sie „Suchen“. Groß- und Kleinschreibung spielen keine Rolle.</p>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Max Mustermann tritt am 10.01.2026 ein. „Zahlt ab Monat“ bleibt leer. Der erste Beitragsmonat ist damit 2026-02. Der Januar ist beitragsfrei. Tritt er am 31.01.2026 ein, ist es genauso: Maßgeblich ist der Monat nach dem Eintritt.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Erika Musterfrau wechselt von Aktiv (17,00 €) auf Passiv (10,00 €) mit „Gültig ab Monat“ 2026-07. Januar bis Juni rechnet KASSIVO weiter mit 17,00 €, ab Juli mit 10,00 €.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Max Mustermann tritt am 05.03.2026 aus. Der März ist noch voll zu zahlen. Ab April zeigt die Beitragsübersicht „—“.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Eintritt und „Zahlt ab Monat“</strong> lassen sich nach dem Anlegen in der Oberfläche nicht mehr ändern. Prüfen Sie die Werte beim Anlegen.</li>
+  <li><strong>Austritt:</strong> Der Austrittsmonat ist noch voll zu zahlen. Das Austrittsdatum können Sie später ändern, aber nicht leeren. Bereits importierte Zahlungen und Verteilungen bleiben erhalten.</li>
+  <li><strong>IBAN-Feld:</strong> Das Feld nimmt die Bankverbindung, von der das Mitglied zahlt. KASSIVO entfernt Leerzeichen und macht Großbuchstaben daraus. Es prüft nicht, ob die IBAN gültig ist. Mit dieser IBAN ordnet KASSIVO Zahlungen beim Import automatisch zu (siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>). Tragen Sie dieselbe IBAN bei zwei Mitgliedern ein, gilt sie als mehrdeutig und wird nicht automatisch zugeordnet.</li>
+  <li><strong>Maskierung:</strong> In Listen zeigt KASSIVO IBANs gekürzt, zum Beispiel <code>XX00…0001</code>. Im Formular „Bearbeiten“ steht die volle IBAN.</li>
+  <li>Die Spalte „Art“ in der Liste zeigt die Art, die im laufenden Monat gilt. Ein Strich bedeutet, dass noch keine Art gilt, etwa weil das Mitglied erst später zahlt.</li>
+</ul>
+<div class="callout callout-warn">
+  <p><strong>Achtung:</strong> Eine Änderung der Art wirkt ab dem gewählten Monat. Wählen Sie einen Monat in der Vergangenheit, rechnet KASSIVO die Soll-Beträge dieser Monate neu. Bereits bestätigte Zahlungen bleiben bestehen, die Monate können dann „Teilweise“ oder „Offen“ zeigen.</p>
+</div>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/beitraege">Beiträge und Prüfungsstart</a></li>
+  <li><a href="/wiki/zuordnung">Zahlungen zuordnen</a></li>
+  <li><a href="/wiki/beitragsuebersicht">Beitragsübersicht</a></li>
+</ul>
+{% endblock %}

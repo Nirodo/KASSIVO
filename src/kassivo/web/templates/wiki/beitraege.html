@@ -1,0 +1,46 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Auf der Seite <a href="/settings/fees">Einstellungen</a> (/settings/fees) legen Sie fest, wie viel jede Mitgliedsart pro Monat zahlt und ab welchem Monat KASSIVO Beiträge prüft (Prüfungsstart).</p>
+
+<h2>So geht's</h2>
+<h3>Beitrag ändern</h3>
+<ol class="steps">
+  <li>Öffnen Sie <a href="/settings/fees">Einstellungen</a>. Oben stehen die aktuellen Beiträge pro Monat.</li>
+  <li>Wählen Sie unter „Beitrag ändern“ die „Art“, tragen Sie den „Betrag in Euro“ im deutschen Format ein (zum Beispiel <code>17,00</code>) und den Monat, ab dem er gilt, bei „Gültig ab Monat“ (Format JJJJ-MM).</li>
+  <li>Wählen Sie „Beitrag speichern“.</li>
+  <li>Kontrollieren Sie die Tabelle „Verlauf der Beiträge“. Dort steht jeder Betrag mit seinem Monat.</li>
+</ol>
+<h3>Prüfungsstart festlegen</h3>
+<ol class="steps">
+  <li>Tragen Sie im Abschnitt „Prüfungsstart“ bei „Prüfungsstart (Monat)“ den ersten Monat ein, der geprüft werden soll (JJJJ-MM).</li>
+  <li>Wählen Sie „Prüfungsstart speichern“. KASSIVO meldet danach: „Prüfungsstart gespeichert. N offene Vorschläge wurden neu berechnet.“</li>
+</ol>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Der Aktiv-Beitrag steigt von 17,00 € auf 18,00 €. Sie wählen Art „Aktiv“, Betrag <code>18,00</code>, „Gültig ab Monat“ <code>2027-01</code>. Alle Monate bis Dezember 2026 rechnen weiter mit 17,00 €, ab Januar 2027 mit 18,00 €. Im „Verlauf der Beiträge“ stehen beide Zeilen.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Ihr Kontoexport beginnt am 15.03.2026. Setzen Sie den Prüfungsstart auf <code>2026-04</code>. Der März und alle früheren Monate zeigen dann „—“ und zählen weder in der Beitragsübersicht noch in der Prognose.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Betrag:</strong> Erlaubt sind 0,01 € bis 100.000,00 €. Etwas anderes lehnt KASSIVO mit einer Fehlermeldung ab und speichert nichts.</li>
+  <li><strong>Eine Änderung wirkt ab dem Gültigkeitsmonat.</strong> Frühere Monate behalten ihren Beitrag. Das gilt nur, solange Sie den Monat richtig wählen: Wählen Sie einen Monat in der Vergangenheit, ändern sich die Soll-Beträge ab diesem Monat. Speichern Sie für dieselbe Art und denselben Monat noch einmal, ersetzt der neue Betrag den alten.</li>
+  <li><strong>Prüfungsstart:</strong> Monate vor dem Prüfungsstart zählen nicht. Sie zeigen „—“, haben kein Soll, und neue Verteilungsvorschläge beginnen frühestens im Prüfungsstart-Monat.</li>
+  <li><strong>Neu berechnen:</strong> Ändern Sie den Prüfungsstart, berechnet KASSIVO die <em>offenen Vorschläge</em> neu. Bestätigte Verteilungen fasst es nie an.</li>
+  <li><strong>Solange kein Prüfungsstart gespeichert ist,</strong> zeigen Beitragsübersicht und Import den Hinweis „Prüfungsstart ist noch nicht festgelegt“ mit einem Link hierher. Auf dieser Seite steht dann „nicht gesetzt“. Gibt es schon Buchungen, nennt sie dazu den Monat der ältesten Buchung („abgeleitet“). KASSIVO rechnet in dem Fall mit diesem Monat. Legen Sie ihn trotzdem ausdrücklich fest.</li>
+</ul>
+<div class="callout callout-warn">
+  <p><strong>Achtung:</strong> Wählen Sie als Prüfungsstart den ersten <em>vollen</em> Monat, den Ihr Kontoexport abdeckt. Beginnt der Export mitten im Monat, fehlen die früheren Zahlungen dieses Monats, und der Monat erschiene als überfällig.</p>
+</div>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/mitglieder">Mitglieder</a> (Art ändern mit Gültigkeitsmonat)</li>
+  <li><a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a></li>
+  <li><a href="/wiki/beitragsuebersicht">Beitragsübersicht</a></li>
+</ul>
+{% endblock %}

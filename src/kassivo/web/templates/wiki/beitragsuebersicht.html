@@ -1,0 +1,56 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Die <a href="/dues">Beitragsübersicht</a> (/dues, Menüpunkt „Beiträge“) ist die Startseite von KASSIVO. Sie zeigt ein Raster: links die Mitglieder, oben die zwölf Monate eines Jahres. Jede Zelle sagt, ob der Beitrag dieses Monats bezahlt ist.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li>Öffnen Sie <a href="/dues">Beiträge</a>. Sie sehen das laufende Jahr.</li>
+  <li>Wechseln Sie das Jahr mit den Links über dem Raster (zum Beispiel „« 2025“ oder „2027 »“).</li>
+  <li>Lesen Sie den Status jeder Zelle (siehe unten). Die Legende über dem Raster erklärt die Farben und Wörter.</li>
+  <li>Klicken Sie auf einen Mitgliedsnamen, um die Zahlungshistorie dieses Mitglieds zu öffnen.</li>
+  <li>Ist ein Monat überraschend offen, prüfen Sie über „Offene Vorschläge“ (Link in der Legende), ob dort eine Zahlung auf Bestätigung wartet.</li>
+</ol>
+
+<h2>Die Status</h2>
+<dl>
+  <dt>Bezahlt</dt>
+  <dd>Bestätigte Zahlungen decken den vollen Beitrag.</dd>
+  <dt>Teilweise</dt>
+  <dd>Bestätigt ist ein Teil bezahlt, der Monat läuft noch (oder liegt in der Zukunft).</dd>
+  <dt>Offen</dt>
+  <dd>Der Monat läuft noch (oder liegt in der Zukunft), und es ist noch nichts bestätigt bezahlt.</dd>
+  <dt>Überfällig</dt>
+  <dd>Der Monat ist vorbei und der volle Beitrag ist nicht bestätigt bezahlt. Auch eine Teilzahlung in einem vergangenen Monat zeigt „Überfällig“.</dd>
+  <dt>—</dt>
+  <dd>Kein Beitrag fällig: der Monat liegt vor dem Prüfungsstart, vor dem „Zahlt ab“-Monat des Mitglieds oder nach dessen Austrittsmonat.</dd>
+  <dt>Vorschlag</dt>
+  <dd>Eine kleine Markierung in der Zelle: Für diesen Monat liegt eine Verteilung vor, die auf Ihre Bestätigung wartet. Sie zählt noch nicht.</dd>
+</dl>
+<p>Die Zellen mit Beitrag zeigen unter dem Status „bezahlt / Soll“, zum Beispiel „10,00 / 17,00 €“.</p>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Heute ist der 20.03.2026. Max Mustermann hat im Januar bezahlt (bestätigt), im Februar nicht, im März noch nicht. Die Übersicht zeigt: Januar „Bezahlt“, Februar „Überfällig“ (der Februar war am 28.02. zu Ende), März „Offen“. Am 01.04.2026 wird der März „Überfällig“, wenn bis dahin nichts bestätigt wurde.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Erika Musterfrau zahlt 34,00 € für Februar und März. Beide Zellen zeigen „Vorschlag“ und weiter „Offen“ oder „Überfällig“, bis Sie die Verteilung bestätigen. Danach stehen beide auf „Bezahlt“.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Wann überfällig?</strong> Der Beitrag darf den ganzen Monat über eingehen. Mit dem Monatsende gilt ein nicht bezahlter Beitrag als überfällig, in der Anzeige also ab dem 1. des Folgemonats.</li>
+  <li><strong>Fußzeile:</strong> Die Zeile „Summe (bezahlt / erwartet)“ addiert je Monat über alle Mitglieder.</li>
+  <li><strong>Nur bestätigt zählt.</strong> Eine Zahlung in „Unklar“ oder mit unbestätigtem Vorschlag macht keinen Monat „Bezahlt“.</li>
+  <li><strong>Zahlungshistorie:</strong> Die Seite eines Mitglieds zeigt oben Name, aktuelle Art, Eintritt (und Austritt), dann die zwölf Monate des Jahres und darunter alle Zahlungen, neueste zuerst. Zu jeder Zahlung stehen die Monate ihrer Verteilung mit „bestätigt“ oder „vorgeschlagen“. Das Datum der Zahlung führt zur Seite „Verteilung“, wo Sie korrigieren können. Links gibt es auch zu „Stammdaten bearbeiten“ und „Zur Beitragsübersicht“.</li>
+  <li>Solange kein Prüfungsstart gespeichert ist, steht über dem Raster ein Hinweis mit Link.</li>
+  <li>Sind noch keine Mitglieder angelegt, steht dort „Keine Mitglieder vorhanden.“ mit einem Link zum Anlegen.</li>
+</ul>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a></li>
+  <li><a href="/wiki/prognose">Prognose</a></li>
+  <li><a href="/wiki/beitraege">Beiträge und Prüfungsstart</a></li>
+</ul>
+{% endblock %}
