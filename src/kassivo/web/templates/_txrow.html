@@ -1,0 +1,6 @@
+{% macro tx_cells(r) %}
+<td>{{ r.tx["booking_date"] }}</td>
+<td>{{ r.tx["cp_name"] or "—" }}{% if r.iban %}<br><span class="hint">{{ r.iban }}</span>{% endif %}</td>
+<td>{{ r.tx["purpose"] or "" }}</td>
+<td class="num">{{ r.tx["amount_cents"] | eur }}</td>
+{% endmacro %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ wiki_title | default("Wiki") }}{% endblock %}
+{% block content %}
+<a class="skip-link" href="#wiki-inhalt">Zum Inhalt springen</a>
+<div class="wiki">
+  <nav class="wiki-toc" aria-label="Themen des Wikis">
+    <p><a href="/wiki"{% if not slug %} aria-current="page"{% endif %}>Übersicht</a></p>
+    {% for group, items in groups if items %}
+    <p class="toc-group">{{ group }}</p>
+    <ul>
+      {% for s, t in items %}<li><a href="/wiki/{{ s }}"{% if s == slug %} aria-current="page"{% endif %}>{{ t }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </nav>
+  <article class="wiki-body" id="wiki-inhalt">
+    {% block body %}{% endblock %}
+    {% if slug %}
+    <nav class="wiki-pager" aria-label="Vorheriges und nächstes Thema">
+      {% if prev %}<a href="/wiki/{{ prev[0] }}" rel="prev">« Vorheriges Thema: {{ prev[1] }}</a>{% endif %}
+      <a href="/wiki">Zurück zur Übersicht</a>
+      {% if next %}<a href="/wiki/{{ next[0] }}" rel="next">Nächstes Thema: {{ next[1] }} »</a>{% endif %}
+    </nav>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kassivo"
+version = "1.0.0"
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.110", "jinja2>=3.1", "python-multipart>=0.0.9", "uvicorn>=0.27"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kassivo = [
+  "web/templates/*.html",
+  "web/templates/wiki/*.html",
+  "web/static/*.js",
+  "web/static/*.css",
+  "web/static/vendor/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,81 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Hier stehen die Wörter, die KASSIVO in Menüs, Tabellen und Meldungen benutzt, in kurzen Erklärungen. Sie sind nach Themen geordnet.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li>Suchen Sie den Begriff in der Liste unten.</li>
+  <li>Folgen Sie dem Link „Mehr dazu“, wenn Sie Einzelheiten brauchen.</li>
+</ol>
+
+<h2>Begriffe</h2>
+<h3>Mitglieder und Beiträge</h3>
+<dl>
+  <dt>Mitglied</dt>
+  <dd>Eine Person, die einen monatlichen Beitrag zahlt. Jedes Mitglied zahlt für sich. Mehr dazu: <a href="/wiki/mitglieder">Mitglieder</a>.</dd>
+  <dt>Mitgliedsart (Aktiv/Passiv)</dt>
+  <dd>Legt die Höhe des Beitrags fest. KASSIVO startet mit den Arten „Aktiv“ und „Passiv“. Ein Mitglied kann die Art wechseln, der Wechsel gilt ab einem Monat.</dd>
+  <dt>Beitrag</dt>
+  <dd>Der Betrag pro Monat und Mitgliedsart, mit einem Monat, ab dem er gilt. Mehr dazu: <a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>.</dd>
+  <dt>Gültigkeitsmonat</dt>
+  <dd>Der Monat (Format JJJJ-MM), ab dem ein Beitrag oder eine Mitgliedsart gilt. Frühere Monate bleiben, wie sie waren. In den Formularen heißt das Feld „Gültig ab Monat“.</dd>
+  <dt>Prüfungsstart</dt>
+  <dd>Der erste Monat, ab dem Beiträge geprüft werden. Monate davor zählen nicht und zeigen „—“.</dd>
+  <dt id="buchungsmonat">Buchungsmonat</dt>
+  <dd>Der Monat des Buchungsdatums einer Zahlung. Eine Zahlung vom 30.12.2026 hat den Buchungsmonat 2026-12.</dd>
+  <dt id="beitragsmonat">Beitragsmonat</dt>
+  <dd>Der Monat, für den eine Zahlung als Beitrag gedacht ist. Er kann vom Buchungsmonat abweichen: Die Zahlung vom 30.12.2026 kann der Beitrag für 2027-01 sein. Die Verteilung legt den Beitragsmonat fest.</dd>
+  <dt id="soll">Soll</dt>
+  <dd>Der Beitrag, den KASSIVO für ein Mitglied und einen Monat erwartet. Er ergibt sich aus der Mitgliedsart und dem Beitrag, der in diesem Monat gilt. KASSIVO rechnet ihn beim Anzeigen aus und speichert ihn nicht. In den Tabellen steht „bezahlt / Soll“.</dd>
+  <dt>überfällig</dt>
+  <dd>Ein Beitrag ist überfällig, wenn der Monat vorbei ist und nicht der volle Betrag bestätigt bezahlt wurde. Auch eine Teilzahlung in einem vergangenen Monat gilt als überfällig.</dd>
+</dl>
+<h3>Buchungen und Zuordnung</h3>
+<dl>
+  <dt>Buchung</dt>
+  <dd>Ein Umsatz aus dem Kontoexport: Datum, Betrag, Gegenpartei, Zweck. KASSIVO ändert Buchungen nie. Es setzt nur Mitglied, Kategorie und Verteilung.</dd>
+  <dt>Gegenpartei</dt>
+  <dd>Die andere Seite einer Buchung: bei einer Einnahme der Zahler, bei einer Ausgabe der Empfänger, mit Name und IBAN.</dd>
+  <dt>Unklar</dt>
+  <dd>Die Liste der Zahlungseingänge ohne Mitglied. Mehr dazu: <a href="/wiki/zuordnung">Zahlungen zuordnen</a>.</dd>
+  <dt>Zuordnung</dt>
+  <dd>Die Verbindung einer Zahlung mit einem Mitglied.</dd>
+  <dt>Absender merken</dt>
+  <dd>Häkchen bei der Zuordnung. KASSIVO merkt sich die Absender-IBAN für dieses Mitglied und ordnet künftige Zahlungen derselben IBAN selbst zu.</dd>
+  <dt>mehrdeutige IBAN</dt>
+  <dd>Eine IBAN, die für mehrere Mitglieder gezahlt hat (zum Beispiel ein Elternteil für zwei Kinder). KASSIVO ordnet sie nie automatisch zu.</dd>
+</dl>
+<h3>Verteilung</h3>
+<dl>
+  <dt>Verteilung</dt>
+  <dd>Die Aufteilung einer Zahlung auf Beitragsmonate, zum Beispiel 34,00 € auf zwei Monate zu je 17,00 €. Mehr dazu: <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>.</dd>
+  <dt>Vorschlag (vorgeschlagen)</dt>
+  <dd>Eine Verteilung, die KASSIVO berechnet hat und die auf Ihre Bestätigung wartet. Sie zählt noch nicht als bezahlt. In der Beitragsübersicht trägt der Monat die Markierung „Vorschlag“.</dd>
+  <dt>bestätigt</dt>
+  <dd>Eine Verteilung, die gilt. Nur bestätigte Verteilungen zählen als bezahlt. KASSIVO bestätigt selbst nur, wenn eine Zahlung genau den frühesten offenen Monat deckt und in diesem Monat gebucht ist.</dd>
+</dl>
+<h3>Kategorien</h3>
+<dl>
+  <dt>Kategorie</dt>
+  <dd>Eine Art von Einnahme oder Ausgabe, zum Beispiel „Beiträge“. Eine Buchung hat höchstens eine Kategorie. Ohne Kategorie erscheint sie als „Ohne Kategorie“.</dd>
+  <dt>Regel</dt>
+  <dd>Eine Vorschrift, die Buchungen einer Kategorie zuweist, wenn ein Feld einen Text enthält. Mehr dazu: <a href="/wiki/kategorien">Kategorien und Regeln</a>.</dd>
+</dl>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Max Mustermann zahlt 34,00 € am 05.03.2026. KASSIVO schlägt vor: 17,00 € für März und 17,00 € für April. Das ist eine <em>Verteilung</em> im Zustand <em>vorgeschlagen</em>. Erst nach „Verteilung bestätigen“ ist sie <em>bestätigt</em> und die beiden Monate zählen als bezahlt.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<div class="callout callout-tip">
+  <p><strong>Tipp:</strong> „Vorschlag“ und „bestätigt“ sind die zwei Zustände einer Verteilung. Wenn ein Monat unerwartet offen oder überfällig ist, prüfen Sie zuerst, ob dort ein unbestätigter Vorschlag liegt.</p>
+</div>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/start">Erste Schritte</a></li>
+  <li><a href="/wiki/faq">Fehlerbehebung (FAQ)</a></li>
+</ul>
+{% endblock %}

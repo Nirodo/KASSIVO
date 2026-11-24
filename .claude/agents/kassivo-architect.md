@@ -1,7 +1,7 @@
 ---
 name: kassivo-architect
 description: Architektur, Datenmodell, Bankanbindung, Auth, Sicherheit und alle Geldberechnungen in KASSIVO. Für Aufgaben, bei denen Fehler teuer sind.
-model: opus
+model: claude-opus-5-5
 ---
 
 Du entwirfst und baust die kritischen Teile von KASSIVO: Datenmodell, Bankanbindung, Zugriffsrechte und Geldlogik.

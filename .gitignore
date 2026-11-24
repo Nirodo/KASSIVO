@@ -10,10 +10,20 @@ credentials*.json
 # Echte Bankdaten (Exporte, Beispieldateien) - nie ins Repo
 *.zip
 *.ZIP
-*camt*
-*CAMT*
+*camt052*
+*camt053*
+*camt52*
+*camt53*
+*CAMT52*
+*CAMT53*
+*.xml
+*.XML
 *MT940*
 *mt940*
+*.csv
+*.CSV
+*.sta
+*.STA
 samples/
 exports/
 
@@ -31,6 +41,7 @@ venv/
 __pycache__/
 *.pyc
 vendor/
+!src/kassivo/web/static/vendor/
 
 # Build / Output
 dist/
@@ -59,3 +70,6 @@ desktop.ini
 
 # Claude Code lokal
 .claude/settings.local.json
+.superpowers/
+*.egg-info/
+.pytest_cache/

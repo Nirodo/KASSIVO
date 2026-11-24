@@ -1,0 +1,95 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Kontoumsätze kommen per Datei in KASSIVO. Auf der Seite <a href="/import">Import</a> (/import) laden Sie den Export aus dem Online-Banking hoch. KASSIVO liest die Datei nur, fragt kein Bankkonto ab und braucht keine Zugangsdaten.</p>
+<p>Unterstützt ist genau ein Format: <strong>camt.052.001.08</strong>, im Online-Banking „XML CAMT V8, gebuchte Umsätze“. Andere Formate (CAMT V2, MT940, CSV) lehnt KASSIVO ab.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li>Legen Sie vorher den Prüfungsstart fest (<a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>). Fehlt er, zeigt die Importseite einen Hinweis.</li>
+  <li>Erzeugen Sie im Online-Banking den Export „XML CAMT V8, gebuchte Umsätze“ für den gewünschten Zeitraum. Sie bekommen eine ZIP-Datei mit einer XML-Datei je Buchungstag oder eine einzelne XML-Datei.</li>
+  <li>Öffnen Sie <a href="/import">Import</a>, wählen Sie bei „Datei (ZIP oder XML)“ die Datei und dann „Importieren“. Entpacken Sie die ZIP-Datei nicht. KASSIVO liest sie direkt.</li>
+  <li>Lesen Sie die Ergebnisseite „Import abgeschlossen“ (siehe unten).</li>
+  <li>Gehen Sie weiter zu „Unklare Buchungen ansehen“ und ordnen Sie zu (<a href="/wiki/zuordnung">Zahlungen zuordnen</a>).</li>
+</ol>
+
+<h2>Was nach dem Import automatisch passiert</h2>
+<ol class="steps">
+  <li>KASSIVO legt nur neue Buchungen an. Bereits bekannte erkennt es als Duplikate.</li>
+  <li>Auf die neuen Buchungen wendet es die Kategorien-Regeln an (<a href="/wiki/kategorien">Kategorien und Regeln</a>).</li>
+  <li>Neue Zahlungseingänge ordnet es automatisch Mitgliedern zu, wenn die Absender-IBAN eindeutig bekannt ist, und berechnet die Verteilung auf Beitragsmonate.</li>
+  <li>Die Ergebnisseite zählt auf: „Neu“, „Duplikate“, „Automatisch kategorisiert“, „Automatisch zugeordnet“ und die Zahl der Vorschläge zur Bestätigung (offene Vorschläge insgesamt, nicht nur aus diesem Import). Der Link dort führt zu den offenen Vorschlägen.</li>
+</ol>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Sie importieren eine ZIP-Datei mit 30 Buchungen. Ergebnis: Neu 30, Duplikate 0. Eine Woche später exportieren Sie einen größeren Zeitraum, der die 30 Buchungen noch einmal enthält, und importieren erneut: Neu 12, Duplikate 30. Doppelt angelegt wird nichts.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Warnung: „Saldo stimmt nicht: Konto XX00…0001, 2026-03-05“. Die Datei für diesen Tag enthält einen Anfangssaldo, einen Schlusssaldo und Buchungen, die nicht zusammenpassen. Die Buchungen sind trotzdem importiert. Prüfen Sie im Online-Banking, ob der Export vollständig ist.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<h3>Duplikate</h3>
+<ul>
+  <li>KASSIVO erkennt Duplikate je Konto an der Bankreferenz der Buchung. Hat eine Buchung keine, bildet es einen Fingerabdruck aus Buchungsdatum, Betrag, Gegenpartei-IBAN und Zweck. Zwei sonst gleiche Buchungen in derselben Datei zählen dabei getrennt.</li>
+  <li>Ein mehrfacher Import derselben Datei ist deshalb sicher.</li>
+</ul>
+<p>Die Erkennung hat drei bekannte Grenzen. Sie treffen selten zu, sind aber möglich:</p>
+<ul>
+  <li><strong>Gleiche Bankreferenz, anderer Inhalt:</strong> Hat eine neue Buchung dieselbe Bankreferenz wie eine frühere, aber einen anderen Betrag oder ein anderes Datum, verwirft KASSIVO sie still als Duplikat. Sie erscheint nur in der Zahl „Duplikate“.</li>
+  <li><strong>Gleiche Zahlung ohne Bankreferenz in einer späteren Datei:</strong> Die laufende Nummer, die zwei sonst gleiche Buchungen unterscheidet, beginnt in jeder Datei neu. Kommt dieselbe Zahlung (gleiches Datum, gleicher Betrag, gleiche IBAN, gleicher Zweck, keine Bankreferenz) ein zweites Mal in einer <em>späteren</em> Datei, verwirft KASSIVO sie als Duplikat. In derselben Datei bleiben beide erhalten.</li>
+  <li><strong>Fehler nach dem Import:</strong> KASSIVO speichert die Buchungen, bevor es Regeln und automatische Zuordnung anwendet. Scheitert einer dieser Schritte, bleiben die Buchungen ohne Kategorie und ohne Mitglied, und ein erneuter Import zählt sie als Duplikate. Wählen Sie dann „Regeln anwenden“ (<a href="/wiki/kategorien">Kategorien und Regeln</a>) und „Unklare automatisch zuordnen“ (<a href="/wiki/zuordnung">Zahlungen zuordnen</a>).</li>
+</ul>
+<h3>Grenzen</h3>
+<ul>
+  <li>Eine hochgeladene Datei darf höchstens 100 MB groß sein.</li>
+  <li>In einer ZIP-Datei liest KASSIVO höchstens 5000 XML-Dateien. Jede XML-Datei darf höchstens 20 MB groß sein, alle zusammen höchstens 200 MB.</li>
+  <li>Eine Datei darf genau einen Bericht (ein Konto, einen Buchungstag) enthalten.</li>
+</ul>
+<h3>Alles oder nichts</h3>
+<p>Findet KASSIVO in irgendeiner Datei einen Fehler, bricht der ganze Import ab und legt nichts an. Die Meldung endet dann mit „Es wurde nichts importiert.“ Beheben Sie die Ursache und laden Sie die Datei erneut hoch. Das ist gefahrlos.</p>
+<h3>Fehlermeldungen</h3>
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Meldung</th><th scope="col">Bedeutung und Abhilfe</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Bitte eine Datei auswählen.</th><td>Es wurde keine Datei gewählt.</td></tr>
+    <tr><th scope="row">Die Datei ist zu groß (Grenze 100 MB).</th><td>Exportieren Sie einen kürzeren Zeitraum und importieren Sie in mehreren Teilen.</td></tr>
+    <tr><th scope="row">Dateityp nicht erkannt. Erwartet wird eine ZIP- oder XML-Datei.</th><td>Die Datei ist weder ZIP noch XML. Prüfen Sie, ob Sie die richtige Datei gewählt haben.</td></tr>
+    <tr><th scope="row">… kein gültiges ZIP</th><td>Die ZIP-Datei ist beschädigt. Exportieren Sie sie neu.</td></tr>
+    <tr><th scope="row">Keine XML-Dateien gefunden</th><td>Die ZIP-Datei enthält keine XML-Datei. Wählen Sie beim Export „XML“.</td></tr>
+    <tr><th scope="row">Import insgesamt zu groß</th><td>Alle XML-Dateien zusammen sind größer als 200 MB. Exportieren Sie einen kürzeren Zeitraum.</td></tr>
+    <tr><th scope="row">zu viele XML-Dateien (&gt; 5000)</th><td>Die ZIP-Datei enthält mehr als 5000 Dateien. Teilen Sie den Zeitraum.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: Datei zu groß</th><td>Eine einzelne XML-Datei ist größer als 20 MB.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: nicht lesbar</th><td>Ein Eintrag der ZIP-Datei lässt sich nicht lesen (beschädigt oder verschlüsselt).</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: kein gültiges XML</th><td>Die Datei ist kein lesbares XML.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: kein camt.052.001.08-Dokument</th><td>Falsches Format. Wählen Sie im Online-Banking „XML CAMT V8, gebuchte Umsätze“, nicht V2 oder MT940. Kontoauszüge (camt.053) gehen ebenfalls nicht.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: DOCTYPE/ENTITY nicht erlaubt</th><td>Aus Sicherheitsgründen akzeptiert KASSIVO keine XML-Dateien mit solchen Angaben. Ein echter Bankexport hat sie nicht.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: Rpt fehlt / IBAN fehlt</th><td>Die Datei enthält keinen Bericht oder keine Konto-IBAN.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: Mehrere Berichte in einer Datei werden nicht unterstützt.</th><td>Die Datei fasst mehrere Berichte zusammen. Exportieren Sie je Konto und Tag.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: ungültiger Betrag</th><td>Ein Betrag ist 0,00, hat ein Vorzeichen im Text, mehr als zwei Nachkommastellen oder ist übergroß. Die Datei wird dann ganz abgelehnt.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: Betrag oder Soll/Haben-Kennzeichen fehlt</th><td>Die Datei ist unvollständig. Exportieren Sie sie neu.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: Buchungsdatum fehlt / ungültiges Datum</th><td>Ein Datum fehlt oder ist kaputt. Exportieren Sie neu.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Bei einer Datei aus einer ZIP-Datei steht der Name der XML-Datei vor der Meldung, bei einer einzelnen XML-Datei <code>upload.xml</code>.</p>
+<h3>Weiteres</h3>
+<ul>
+  <li><strong>Nur gebuchte Umsätze:</strong> KASSIVO übernimmt Einträge mit dem Status „gebucht“ (BOOK) und überspringt alle anderen.</li>
+  <li><strong>Sammelbuchungen</strong> (eine Buchung mit mehreren Einzelposten) importiert KASSIVO ohne Gegenpartei. Sie werden daher nie automatisch einem Mitglied zugeordnet und stehen, wenn es Eingänge sind, in „Unklar“.</li>
+  <li><strong>Einträge mit 0,00 €</strong> machen den Import der ganzen Datei unmöglich. KASSIVO meldet dann zum Beispiel „2026-03-05.xml: ungültiger Betrag“. Nur bei den Salden ist 0,00 erlaubt. Lassen Sie den Tag nicht einfach aus dem Export weg: Dann fehlen alle Zahlungen dieses Tages für immer, denn Buchungen von Hand gibt es nicht. Die betroffenen Monate erscheinen überfällig, obwohl bezahlt wurde. Klären Sie den Tag mit der Bank, zum Beispiel einen Export ohne die 0,00-Buchung. Oder Sie nehmen die Lücke hin, bis eine spätere Version solche Einträge mit einer Warnung überspringt.</li>
+  <li>Echte Bankdateien gehören nie in Git, Issues oder Pull Requests.</li>
+</ul>
+<div class="callout callout-warn">
+  <p><strong>Achtung:</strong> Beginnt der Export mitten im Monat, fehlen Zahlungen dieses Monats. Setzen Sie den Prüfungsstart auf den ersten vollen Monat des Exports.</p>
+</div>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/zuordnung">Zahlungen zuordnen</a></li>
+  <li><a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a></li>
+  <li><a href="/wiki/faq">Fehlerbehebung (FAQ)</a></li>
+</ul>
+{% endblock %}

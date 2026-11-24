@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_cell, legend, year_nav, check_start_notice, help_link %}
+{% block title %}Beiträge {{ year }}{% endblock %}
+{% block content %}
+{{ help_link("beitragsuebersicht") }}
+{{ check_start_notice(check_start_set) }}
+{{ year_nav("/dues", year, prev, next) }}
+{{ legend(with_proposal=true) }}
+{% if grid %}
+<div class="table-wrap">
+<table class="grid">
+  <caption>Beitragsstatus je Mitglied und Monat, {{ year }}</caption>
+  <thead><tr><th scope="col">Mitglied</th>{% for i in range(1, 13) %}<th scope="col">{{ i | month_abbr }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in grid %}
+  <tr><th scope="row"><a href="/members/{{ r.member_id }}/history?year={{ year }}">{{ r.name }}</a></th>
+    {% for st in r.months %}{{ status_cell(st, (r.member_id, st.month) in proposals) }}{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><th scope="row">Summe (bezahlt / erwartet)</th>
+    {% for t in totals %}<td class="num">{{ (t.paid | eur)[:-2] }} / {{ t.expected | eur }}</td>{% endfor %}</tr></tfoot>
+</table>
+</div>
+{% else %}
+<p>Keine Mitglieder vorhanden. <a href="/members/new">Mitglied anlegen</a></p>
+{% endif %}
+{% endblock %}

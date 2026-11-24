@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Import abgeschlossen{% endblock %}
+{% block content %}
+<p class="notice" role="status"><strong>Import abgeschlossen.</strong></p>
+<ul>
+  <li>Neu: {{ result.new }}</li>
+  <li>Duplikate: {{ result.duplicates }}</li>
+  <li>Automatisch kategorisiert: {{ categorized }}</li>
+  <li>Automatisch zugeordnet: {{ assigned }}</li>
+  <li><a href="/transactions?year=all&amp;proposed=1">{{ proposals }} Vorschläge zur Bestätigung (offene Vorschläge insgesamt)</a></li>
+</ul>
+{% if result.warnings %}
+<h2>Warnungen</h2>
+<ul>
+  {% for w in result.warnings %}<li>{{ w }}</li>{% endfor %}
+</ul>
+{% endif %}
+<p><a href="/unmatched">Unklare Buchungen ansehen</a> · <a href="/import">Weitere Datei importieren</a></p>
+{% endblock %}

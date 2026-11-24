@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_cell, legend, year_nav, help_link %}
+{% block title %}Zahlungshistorie: {{ member["name"] }}{% endblock %}
+{% block content %}
+{{ help_link("beitragsuebersicht") }}
+<dl class="facts">
+  <dt>Name</dt><dd>{{ member["name"] }}</dd>
+  <dt>Art (aktuell)</dt><dd>{{ type_name }}</dd>
+  <dt>Eintritt</dt><dd>{{ member["eintritt"] }}</dd>
+  {% if member["austritt"] %}<dt>Austritt</dt><dd>{{ member["austritt"] }}</dd>{% endif %}
+</dl>
+<p><a href="/members/{{ member['id'] }}">Stammdaten bearbeiten</a> · <a href="/dues?year={{ year }}">Zur Beitragsübersicht</a></p>
+<h2>Beitragsstatus {{ year }}</h2>
+{{ year_nav("/members/" ~ member["id"] ~ "/history", year, prev, next) }}
+{{ legend() }}
+<div class="table-wrap">
+<table class="grid">
+  <caption>Beitragsstatus je Monat, {{ year }}</caption>
+  <thead><tr>{% for i in range(1, 13) %}<th scope="col">{{ i | month_abbr }}</th>{% endfor %}</tr></thead>
+  <tbody><tr>{% for st in months %}{{ status_cell(st) }}{% endfor %}</tr></tbody>
+</table>
+</div>
+<h2>Zahlungen</h2>
+{% if payments %}
+<div class="table-wrap">
+<table>
+  <caption>Zahlungen, neueste zuerst</caption>
+  <thead><tr><th scope="col">Datum</th><th scope="col" class="num">Betrag</th><th scope="col">Gegenpartei</th><th scope="col">Zweck</th><th scope="col">Verteilung</th></tr></thead>
+  <tbody>
+  {% for p in payments %}
+  <tr>
+    <th scope="row"><a href="/transactions/{{ p.tx_id }}/allocate">{{ p.booking_date }}<span class="visually-hidden">: Buchung {{ p.tx_id }} verteilen</span></a></th>
+    <td class="num">{{ p.amount_cents | eur }}</td>
+    <td>{{ p.cp_name or "" }}</td>
+    <td>{{ p.purpose or "" }}</td>
+    <td>{% for month, cents, status in p.allocations %}{{ month }}: {{ cents | eur }} ({{ "bestätigt" if status == "confirmed" else "vorgeschlagen" }}){% if not loop.last %}<br>{% endif %}{% else %}–{% endfor %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>Keine Zahlungen für dieses Mitglied.</p>
+{% endif %}
+{% endblock %}

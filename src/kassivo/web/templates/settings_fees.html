@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_macros.html" import summary, field, select, month_field, help_link %}
+{% block title %}Beiträge und Prüfungsstart{% endblock %}
+{% block content %}
+{{ help_link("beitraege") }}
+{% if ok %}<p class="notice" role="status"><strong>Gespeichert.</strong></p>{% endif %}
+<section>
+  <h2>Aktuelle Beiträge ({{ month }})</h2>
+  <ul>
+    {% for t, cents in current %}<li>{{ t }}: {{ cents | eur }} pro Monat</li>{% endfor %}
+  </ul>
+  <h2>Beitrag ändern</h2>
+  <form method="post" action="/settings/fees">
+    <input type="hidden" name="form" value="fee">
+    {% if form == "fee" %}{{ summary(errors) }}{% endif %}
+    {% set e = errors if form == "fee" else {} %}
+    {{ select("type_name", "Art", types, values.get("type_name"), e) }}
+    {{ field("amount", "Betrag in Euro", values, e, required=true, placeholder="17,00", hint="Deutsches Format, z. B. 17,00") }}
+    {{ month_field("valid_from", "Gültig ab Monat", values, e) }}
+    <button type="submit">Beitrag speichern</button>
+  </form>
+</section>
+<section>
+  <h2>Verlauf der Beiträge</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Art</th><th>Betrag</th><th>Gültig ab</th></tr></thead>
+    <tbody>
+    {% for h in history %}<tr><td>{{ h["name"] }}</td><td>{{ h["cents"] | eur }}</td><td>{{ h["valid_from"] }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+<section>
+  <h2>Prüfungsstart</h2>
+  <p>Ab diesem Monat werden Beiträge geprüft. Aktuell: {% if check_start_set %}{{ check_start }}{% elif check_start %}nicht gesetzt (abgeleitet: {{ check_start }}){% else %}nicht gesetzt{% endif %}.</p>
+  <form method="post" action="/settings/fees">
+    <input type="hidden" name="form" value="check_start">
+    {% if form == "check_start" %}{{ summary(errors) }}{% endif %}
+    {{ month_field("check_start", "Prüfungsstart (Monat)", values if form == "check_start" else {}, errors if form == "check_start" else {}) }}
+    <button type="submit">Prüfungsstart speichern</button>
+  </form>
+</section>
+{% endblock %}

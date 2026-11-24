@@ -1,0 +1,50 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>KASSIVO verarbeitet Namen, Adressen, IBANs und Kontoumsätze. Diese Seite erklärt in einfachen Worten, wie KASSIVO diese Daten schützt, wogegen es nicht schützt und was Sie selbst tun sollten.</p>
+
+<h2>Wie KASSIVO die Daten schützt</h2>
+<ul>
+  <li><strong>Nur lokal.</strong> KASSIVO lauscht nur auf <code>127.0.0.1</code> (Port 8000). Andere Rechner im Netz erreichen es nicht. Es schickt nichts ins Internet. Auch die Diagramm-Bibliothek liegt lokal im Programm.</li>
+  <li><strong>Keine Bankzugangsdaten.</strong> KASSIVO kennt weder Zugangsdaten noch PINs. Es liest nur Exportdateien, die Sie selbst im Online-Banking erzeugen und hochladen. Es gibt keine Verbindung zur Bank und keinen Schreibzugriff auf ein Konto.</li>
+  <li><strong>Prüfung des Hosts.</strong> KASSIVO beantwortet nur Anfragen, die an <code>127.0.0.1</code> oder <code>localhost</code> gerichtet sind. Alles andere lehnt es mit „Ungültiger Host.“ ab. Das verhindert, dass eine fremde Webseite Ihren Browser dazu bringt, KASSIVO unter anderem Namen anzusprechen.</li>
+  <li><strong>Prüfung der Herkunft.</strong> Aktionen, die etwas ändern (Speichern, Importieren, Zuordnen), lehnt KASSIVO ab, wenn sie von einer anderen Webseite kommen. Sie sehen dann „Anfrage von fremder Herkunft abgelehnt.“ So kann keine andere offene Webseite heimlich Daten in KASSIVO ändern.</li>
+  <li><strong>Strenge Seitenregeln.</strong> Die Seiten laden nur Dateien von KASSIVO selbst und lassen sich nicht in fremde Seiten einbetten.</li>
+  <li><strong>Begrenzte Uploads.</strong> Hochgeladene Dateien haben Größengrenzen, werden nur gelesen, nie ausgeführt, und eine ZIP-Datei wird nicht entpackt. XML-Dateien mit DOCTYPE oder ENTITY lehnt KASSIVO ab.</li>
+  <li><strong>Gekürzte IBANs.</strong> In Listen und Meldungen zeigt KASSIVO IBANs gekürzt (<code>XX00…0001</code>).</li>
+</ul>
+
+<h2>Was nicht geschützt ist</h2>
+<div class="callout callout-warn">
+  <p><strong>Achtung:</strong> KASSIVO hat <strong>keine Anmeldung</strong>. Jeder, der an Ihrem Rechner angemeldet ist und im Browser <code>http://127.0.0.1:8000</code> öffnet, sieht und ändert alle Daten, solange KASSIVO läuft. Die Datenbankdatei ist nicht verschlüsselt. Wer sie kopiert, kann sie lesen.</p>
+</div>
+<p>Schützen Sie deshalb Ihren Rechner (Benutzerkonto mit Passwort, Bildschirmsperre, Festplattenverschlüsselung) und beenden Sie KASSIVO, wenn Sie es nicht brauchen. Betreiben Sie es nicht auf einem Rechner, den mehrere Personen gemeinsam nutzen, und nicht auf einem Server.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li>Prüfen Sie beim Start die Zeile „Datenbank:“. Der Pfad sollte auf einem lokalen Laufwerk liegen und nicht in einem Cloud-Ordner (OneDrive, Dropbox, Google Drive, iCloud). Sonst zeigt KASSIVO eine Warnung.</li>
+  <li>Wählen Sie bei Bedarf mit der Umgebungsvariable <code>KASSIVO_DB</code> einen lokalen Ort (cmd: <code>set KASSIVO_DB=...</code>, PowerShell: <code>$env:KASSIVO_DB = "..."</code>, Einzelheiten unter <a href="/wiki/start">Erste Schritte</a>).</li>
+  <li>Legen Sie Sicherungen nur an Orten ab, die Sie kontrollieren (<a href="/wiki/backup">Sicherung und Wiederherstellung</a>).</li>
+  <li>Löschen Sie Exportdateien aus dem Online-Banking, wenn Sie sie importiert haben, oder bewahren Sie sie sicher auf.</li>
+</ol>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Ein zweiter Rechner im selben WLAN versucht, <code>192.168.0.5:8000</code> im Browser aufzurufen, die Adresse Ihres Rechners. Es kommt keine Verbindung zustande, weil KASSIVO nur auf <code>127.0.0.1</code> lauscht. Trifft trotzdem eine Anfrage mit einem anderen Host-Namen ein, antwortet KASSIVO mit „Ungültiger Host.“</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Echte Bankdateien gehören nicht in Git.</strong> Das gilt auch für Issues, Pull Requests und Releases. Die <code>.gitignore</code> des Projekts schließt ZIP-, XML-, CSV- und Datenbankdateien aus. Wer an KASSIVO mitarbeitet, nutzt nur erfundene Beispieldaten.</li>
+  <li><strong>Konsolenausgabe:</strong> Das Konsolenfenster, in dem KASSIVO läuft, protokolliert jede Anfrage mit ihrer Adresse (Uvicorn-Zugriffsprotokoll). Dort stehen auch Suchtexte, zum Beispiel <code>/transactions?q=Name</code>. Fügen Sie Konsolenausgaben nie ungeprüft in Issues oder Nachrichten ein. Entfernen Sie zuerst solche Zeilen.</li>
+  <li>Beispiele in diesem Wiki nutzen erfundene Namen und IBANs wie <code>XX00 FAKE 0000 0000 01</code>.</li>
+  <li>Die Datenbank liegt standardmäßig unter Windows in <code>%LOCALAPPDATA%\KASSIVO\kassivo.db</code>, sonst in <code>~/.local/share/kassivo/kassivo.db</code>.</li>
+</ul>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/backup">Sicherung und Wiederherstellung</a></li>
+  <li><a href="/wiki/import">Kontoexport importieren</a></li>
+  <li><a href="/wiki/grenzen">Bekannte Einschränkungen</a></li>
+</ul>
+{% endblock %}

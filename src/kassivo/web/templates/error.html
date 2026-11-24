@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Hinweis{% endblock %}
+{% block content %}
+<p class="alert" role="alert"><strong>Fehler:</strong> {{ message }}</p>
+<p><a href="{{ back or '/members' }}">{{ back_label or 'Zur Mitgliederliste' }}</a></p>
+{% endblock %}

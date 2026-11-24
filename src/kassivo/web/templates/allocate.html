@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Verteilung{% endblock %}
+{% block content %}
+{{ ui.help_link("verteilung") }}
+{{ ui.error_list(errors) }}
+<section>
+  <h2>Buchung</h2>
+  <dl>
+    <dt>Datum</dt><dd>{{ tx["booking_date"] }}</dd>
+    <dt>Gegenpartei</dt><dd>{{ tx["cp_name"] or "—" }}</dd>
+    <dt>Betrag</dt><dd>{{ tx["amount_cents"] | eur }}</dd>
+    <dt>Mitglied</dt><dd>{{ member["name"] }}</dd>
+  </dl>
+</section>
+<section>
+  <h2>Aktuelle Verteilung</h2>
+  {% if stored %}
+  <table>
+    <caption>Gespeicherte Verteilung</caption>
+    <thead><tr><th>Monat</th><th class="num">Betrag</th><th>Status</th></tr></thead>
+    <tbody>{% for a in stored %}<tr><td>{{ a["month"] }}</td><td class="num">{{ a["cents"] | eur }}</td><td>{{ "bestätigt" if a["status"] == "confirmed" else "vorgeschlagen" }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p>Noch keine Verteilung.</p>{% endif %}
+</section>
+<section>
+  <h2>Verteilung bearbeiten</h2>
+  <form method="post" action="/transactions/{{ tx['id'] }}/allocate">
+    <input type="hidden" name="next" value="{{ next_value }}">
+    <div class="table-wrap">
+    <table>
+      <caption>Monate und Beträge (leere Zeilen werden ignoriert)</caption>
+      <thead><tr><th>Monat (JJJJ-MM)</th><th>Betrag (z. B. 17,00)</th><th>Gespeichert als</th><th>Beitragsstatus des Mitglieds</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><label class="visually-hidden" for="month_{{ loop.index0 }}">Monat Zeile {{ loop.index }}</label>
+          <input id="month_{{ loop.index0 }}" name="month_{{ loop.index0 }}" value="{{ r.month }}" maxlength="7" placeholder="JJJJ-MM"></td>
+        <td><label class="visually-hidden" for="amount_{{ loop.index0 }}">Betrag Zeile {{ loop.index }}</label>
+          <input id="amount_{{ loop.index0 }}" name="amount_{{ loop.index0 }}" value="{{ r.amount }}" maxlength="12" inputmode="decimal"></td>
+        <td>{{ r.alloc }}</td>
+        <td>{% if r.info %}{{ r.info.text }} (Soll {{ r.info.expected | eur }}, bezahlt {{ r.info.paid | eur }}){% else %}–{% endif %}
+          {% if r.stale %}<br><span class="warn">Warnung: Monat bereits bezahlt</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p>Summe der Zeilen: <strong>{{ total | eur }}</strong> von <strong>{{ tx["amount_cents"] | eur }}</strong>.
+      {% if diff == 0 %}Die Summe passt.{% else %}Differenz: <strong>{{ diff | eur }}</strong>. Die Summe muss dem Buchungsbetrag entsprechen.{% endif %}</p>
+    <button type="submit">Verteilung bestätigen</button>
+  </form>
+</section>
+<section>
+  <h2>Neu vorschlagen oder aufheben</h2>
+  <form method="post" action="/transactions/{{ tx['id'] }}/allocate/propose" class="inline">
+    <input type="hidden" name="next" value="{{ next_value }}">
+    <button type="submit">Neu vorschlagen</button>
+    <span class="hint">Bei bestätigter Verteilung ändert sich nichts.</span>
+  </form>
+  <form method="post" action="/transactions/{{ tx['id'] }}/allocate/clear" class="inline">
+    <input type="hidden" name="next" value="{{ next_value }}">
+    <label class="check"><input type="checkbox" name="confirm" value="yes"> Ich bestätige, dass die Verteilung aufgehoben wird</label>
+    <button type="submit">Verteilung aufheben</button>
+  </form>
+</section>
+<p><a href="{{ next_value }}">Zurück zu den Buchungen</a></p>
+{% endblock %}

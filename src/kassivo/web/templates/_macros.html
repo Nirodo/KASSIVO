@@ -1,0 +1,96 @@
+{% macro help_link(slug, text="Hilfe zu dieser Seite") %}<p class="help-link"><a href="/wiki/{{ slug }}">{{ text }}</a></p>{% endmacro %}
+
+{% macro summary(errors) %}
+{% if errors %}<p class="alert" role="alert"><strong>Fehler:</strong> Bitte die markierten Eingaben prüfen. Es wurde nichts gespeichert.</p>{% endif %}
+{% endmacro %}
+
+{% macro field(name, label, values, errors, type="text", required=false, pattern="", placeholder="", hint="") %}
+<div class="field">
+  <label for="{{ name }}">{{ label }}{% if required %} (Pflicht){% endif %}</label>
+  <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name) or '' }}"
+    {%- if required %} required{% endif %}
+    {%- if pattern %} pattern="{{ pattern }}"{% endif %}
+    {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+    {%- if name in errors or hint %} aria-describedby="note-{{ name }}"{% endif %}
+    {%- if name in errors %} aria-invalid="true"{% endif %}>
+  {% if name in errors %}<p class="error" id="note-{{ name }}"><strong>Fehler:</strong> {{ errors[name] }}</p>
+  {% elif hint %}<p class="hint" id="note-{{ name }}">{{ hint }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro select(name, label, options, selected, errors) %}
+<div class="field">
+  <label for="{{ name }}">{{ label }}</label>
+  <select id="{{ name }}" name="{{ name }}"{% if name in errors %} aria-invalid="true" aria-describedby="note-{{ name }}"{% endif %}>
+    {% for o in options %}<option value="{{ o }}"{% if o == selected %} selected{% endif %}>{{ o }}</option>{% endfor %}
+  </select>
+  {% if name in errors %}<p class="error" id="note-{{ name }}"><strong>Fehler:</strong> {{ errors[name] }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro month_field(name, label, values, errors, required=true, hint="Format JJJJ-MM, z. B. 2026-07") %}
+{{ field(name, label, values, errors, required=required, pattern="[0-9]{4}-(0[1-9]|1[0-2])", placeholder="JJJJ-MM", hint=hint) }}
+{% endmacro %}
+
+{% macro error_list(messages) %}
+{% if messages %}<div class="alert" role="alert"><strong>Fehler:</strong>
+  <ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
+  <p>Es wurde nichts gespeichert.</p></div>{% endif %}
+{% endmacro %}
+
+{% macro check_start_notice(is_set) %}
+{% if not is_set %}<p class="alert" role="status"><strong>Hinweis:</strong> Prüfungsstart ist noch nicht festgelegt – bitte vor dem ersten Import festlegen. <a href="/settings/fees">Prüfungsstart festlegen</a></p>{% endif %}
+{% endmacro %}
+
+{% macro money(cents) %}<td class="num">{{ cents | eur }}</td>{% endmacro %}
+
+{% macro member_options(members, selected) %}
+<option value="">— keins —</option>
+{% for m in members %}<option value="{{ m['id'] }}"{% if m['id'] == selected %} selected{% endif %}>{{ m["name"] }}{% if m["austritt"] %} (ausgetreten){% endif %}</option>{% endfor %}
+{% endmacro %}
+
+{# learn_checked: nur auf /unmatched vorbelegt; beim Korrigieren in /transactions nicht #}
+{% macro member_form(tx_id, selected, members, next_url, learn_checked=false) %}
+<form method="post" action="/transactions/{{ tx_id }}/member" class="inline">
+  <input type="hidden" name="next" value="{{ next_url }}">
+  <label class="visually-hidden" for="member-{{ tx_id }}">Mitglied für Buchung {{ tx_id }}</label>
+  <select id="member-{{ tx_id }}" name="member_id">{{ member_options(members, selected) }}</select>
+  <label class="check"><input type="checkbox" name="learn" value="on"{% if learn_checked %} checked{% endif %}> Absender merken</label>
+  <button type="submit">Zuordnen</button>
+</form>
+{% endmacro %}
+
+{% macro category_form(tx_id, selected, cats, next_url) %}
+<form method="post" action="/transactions/{{ tx_id }}/category" class="inline">
+  <input type="hidden" name="next" value="{{ next_url }}">
+  <label class="visually-hidden" for="cat-{{ tx_id }}">Kategorie für Buchung {{ tx_id }}</label>
+  <select id="cat-{{ tx_id }}" name="category_id">
+    <option value="">Ohne Kategorie</option>
+    {% for c in cats %}<option value="{{ c['id'] }}"{% if c['id'] == selected %} selected{% endif %}>{{ c["name"] }}</option>{% endfor %}
+  </select>
+  <button type="submit">Setzen</button>
+</form>
+{% endmacro %}
+
+{% set STATUS_WORDS = {"PAID": "Bezahlt", "PARTIAL": "Teilweise", "OPEN": "Offen", "OVERDUE": "Überfällig", "NONE": "—"} %}
+
+{% macro status_cell(st, proposal=false) %}
+<td class="status status-{{ st.status | lower }}{% if proposal %} status-proposal{% endif %}"><span class="status-word">{{ STATUS_WORDS[st.status] }}</span>
+  {%- if st.expected > 0 %}<br><span class="status-amount">{{ (st.paid | eur)[:-2] }} / {{ st.expected | eur }}</span>{% endif %}
+  {%- if proposal %}<br><span class="status-note">Vorschlag</span>{% endif %}</td>
+{% endmacro %}
+
+{% macro legend(with_proposal=false) %}
+<p class="legend">Legende:
+  {% for key in ["PAID", "PARTIAL", "OPEN", "OVERDUE", "NONE"] %}<span class="status status-{{ key | lower }}">{{ STATUS_WORDS[key] }}</span>{% if key == "NONE" %} = kein Beitrag fällig{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}
+  {%- if with_proposal %} · <span class="status status-proposal"><span class="status-note">Vorschlag</span></span> = Verteilung wartet auf Bestätigung (<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>){% endif %}
+</p>
+{% endmacro %}
+
+{% macro year_nav(base, year, prev, next, extra="") %}
+<nav class="pager" aria-label="Jahr wählen">
+  {% if prev %}<a href="{{ base }}?year={{ prev }}" rel="prev">« {{ prev }}</a>{% endif %}
+  <strong>{{ year }}</strong>
+  {% if next %}<a href="{{ base }}?year={{ next }}" rel="next">{{ next }} »</a>{% endif %}
+</nav>
+{% endmacro %}

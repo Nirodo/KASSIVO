@@ -1,0 +1,42 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Der <a href="/reports">Report</a> (/reports, Menüpunkt „Reports“) fasst ein Kalenderjahr zusammen: Einnahmen, Ausgaben, Saldo, die Verteilung auf Kategorien und den Verlauf über die Monate. Er wird bei jedem Aufruf aus den Buchungen berechnet, nichts davon ist gespeichert.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li>Öffnen Sie <a href="/reports">Reports</a>. Sie sehen das laufende Jahr.</li>
+  <li>Wechseln Sie das Jahr mit den Links über den Kennzahlen.</li>
+  <li>Lesen Sie die Kennzahlen „Einnahmen“, „Ausgaben“ und „Saldo“.</li>
+  <li>Sehen Sie sich die Diagramme an: „Ausgaben nach Kategorie“ und „Einnahmen nach Kategorie“ (Tortendiagramme) sowie „Einnahmen und Ausgaben je Monat“ (Balken). Fahren Sie mit der Maus über ein Stück, um den Betrag zu sehen.</li>
+  <li>Unter „Zahlen im Detail“ stehen dieselben Zahlen als Tabellen.</li>
+</ol>
+
+<h2>Die Tabellen</h2>
+<ul>
+  <li><strong>Einnahmen und Ausgaben je Kategorie:</strong> Buchungen ohne Kategorie stehen in der Zeile „Ohne Kategorie“.</li>
+  <li><strong>Einnahmen, Ausgaben und Saldo je Monat:</strong> nach Buchungsdatum.</li>
+  <li><strong>Beiträge für die Beitragsmonate JJJJ:</strong> die bestätigt bezahlten Beiträge je Mitglied, gerechnet <em>nach Beitragsmonat</em>, nicht nach Buchungsdatum.</li>
+</ul>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Max Mustermann zahlt am 30.12.2025 einen Beitrag für Januar 2026 und bestätigt die Verteilung. Die 17,00 € zählen im Report 2025 zu den Einnahmen (Buchungsdatum). In der Tabelle „Beiträge“ des Reports 2026 stehen sie bei Max, weil der Beitragsmonat 2026-01 ist.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Ein Jahr ohne Buchungen</strong> zeigt „Keine Buchungen in diesem Jahr.“, keine Diagramme und Nullen in den Kennzahlen.</li>
+  <li><strong>Diagramme brauchen JavaScript</strong> im Browser. Die Bibliothek (Chart.js) liegt lokal im Programm, es wird nichts aus dem Internet geladen. Erscheinen sie nicht, steht dort „Die Diagramme konnten nicht geladen werden. Die Tabellen unten enthalten dieselben Zahlen.“ Die Tabellen funktionieren immer.</li>
+  <li>Ein Tortendiagramm zeigt höchstens sieben Kategorien einzeln, der Rest steht als „Weitere“.</li>
+  <li>Der Report zählt alle Buchungen des Jahres, auch unzugeordnete und unkategorisierte. Je mehr Buchungen Kategorien haben, desto aussagekräftiger sind die Tortendiagramme. Siehe <a href="/wiki/kategorien">Kategorien und Regeln</a>.</li>
+  <li>Als bezahlt zählen nur bestätigte Verteilungen. Unbestätigte Vorschläge tauchen in der Tabelle „Beiträge“ nicht auf.</li>
+</ul>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/kategorien">Kategorien und Regeln</a></li>
+  <li><a href="/wiki/beitragsuebersicht">Beitragsübersicht</a></li>
+  <li><a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a></li>
+</ul>
+{% endblock %}

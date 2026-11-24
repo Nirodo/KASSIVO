@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_macros.html" import year_nav, help_link %}
+{% block title %}Report {{ year }}{% endblock %}
+{% block content %}
+{{ help_link("reports") }}
+{{ year_nav("/reports", year, prev, next) }}
+<dl class="sums">
+  <div><dt>Einnahmen</dt><dd>{{ s.income_cents | eur }}</dd></div>
+  <div><dt>Ausgaben</dt><dd>{{ s.expense_cents | eur }}</dd></div>
+  <div><dt>Saldo</dt><dd>{{ s.balance_cents | eur }}</dd></div>
+</dl>
+{% if empty %}
+<p>Keine Buchungen in diesem Jahr.</p>
+{% else %}
+<div id="charts" data-year="{{ year }}">
+  <p id="chart-error" class="chart-error hidden" role="alert">Die Diagramme konnten nicht geladen werden. Die Tabellen unten enthalten dieselben Zahlen.</p>
+  <div class="chart-grid">
+    <section>
+      <h2>Ausgaben nach Kategorie</h2>
+      <div class="chart-box"><canvas id="chart-expense" role="img" aria-label="Tortendiagramm: Ausgaben nach Kategorie, {{ year }}. Die Zahlen stehen in der Tabelle Kategorien unten."></canvas></div>
+    </section>
+    <section>
+      <h2>Einnahmen nach Kategorie</h2>
+      <div class="chart-box"><canvas id="chart-income" role="img" aria-label="Tortendiagramm: Einnahmen nach Kategorie, {{ year }}. Die Zahlen stehen in der Tabelle Kategorien unten."></canvas></div>
+    </section>
+  </div>
+  <section>
+    <h2>Einnahmen und Ausgaben je Monat</h2>
+    <div class="chart-box chart-wide"><canvas id="chart-months" role="img" aria-label="Balkendiagramm: Einnahmen und Ausgaben je Monat, {{ year }}. Die Zahlen stehen in der Tabelle Monate unten."></canvas></div>
+  </section>
+</div>
+{% endif %}
+
+<section>
+  <h2>Zahlen im Detail</h2>
+  <div class="table-wrap">
+  <table>
+    <caption>Einnahmen und Ausgaben je Kategorie, {{ year }}</caption>
+    <thead><tr><th scope="col">Kategorie</th><th scope="col" class="num">Einnahmen</th><th scope="col" class="num">Ausgaben</th></tr></thead>
+    <tbody>
+    {% for c in s.by_category %}
+    <tr><th scope="row">{{ c.name }}</th><td class="num">{{ c.income_cents | eur }}</td><td class="num">{{ c.expense_cents | eur }}</td></tr>
+    {% else %}
+    <tr><td colspan="3">Keine Buchungen.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <caption>Einnahmen, Ausgaben und Saldo je Monat, {{ year }}</caption>
+    <thead><tr><th scope="col">Monat</th><th scope="col" class="num">Einnahmen</th><th scope="col" class="num">Ausgaben</th><th scope="col" class="num">Saldo</th></tr></thead>
+    <tbody>
+    {% for m in s.by_month %}
+    <tr><th scope="row">{{ (m.month[5:] | int) | month_abbr }}</th><td class="num">{{ m.income_cents | eur }}</td><td class="num">{{ m.expense_cents | eur }}</td><td class="num">{{ (m.income_cents - m.expense_cents) | eur }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <caption>Beiträge für die Beitragsmonate {{ year }} (nach Beitragsmonat, nicht nach Buchungsdatum)</caption>
+    <thead><tr><th scope="col">Mitglied</th><th scope="col" class="num">Beiträge</th></tr></thead>
+    <tbody>
+    {% for b in s.by_member %}
+    <tr><th scope="row">{{ b.name }}</th><td class="num">{{ b.paid_cents | eur }}</td></tr>
+    {% else %}
+    <tr><td colspan="2">Keine Beitragszahlungen.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% if not empty %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/reports.js"></script>
+{% endif %}
+{% endblock %}

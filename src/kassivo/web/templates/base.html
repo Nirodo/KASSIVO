@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{% endblock %} – KASSIVO</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="site">
+  <a class="brand" href="/">KASSIVO</a>
+  <nav aria-label="Hauptnavigation">
+    <ul>
+      {% for href, label in [("/dues", "Beiträge"), ("/members", "Mitglieder"), ("/transactions", "Buchungen"), ("/unmatched", "Unklar"), ("/categories", "Kategorien"), ("/forecast", "Prognose"), ("/reports", "Reports"), ("/import", "Import"), ("/backup", "Backup"), ("/settings/fees", "Einstellungen"), ("/wiki", "Wiki")] %}
+      <li><a href="{{ href }}"{% if request.url.path == href %} aria-current="page"{% endif %}>{{ label }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+</header>
+<main>
+<h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
+{% set note = page_note(request) %}{% if note %}<p class="notice" role="status">{{ note }}</p>{% endif %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

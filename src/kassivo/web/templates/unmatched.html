@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% import "_txrow.html" as row %}
+{% block title %}Unklar{% endblock %}
+{% block content %}
+{{ ui.help_link("zuordnung") }}
+<p><a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> prüfen und bestätigen.</p>
+<form method="post" action="/unmatched/auto" class="inline">
+  <button type="submit">Unklare automatisch zuordnen</button>
+  <span class="hint">Wendet gelernte Absender und die IBANs der Mitglieder erneut auf alle unklaren Zahlungen an.</span>
+</form>
+{% if rows %}
+<p>Zahlungseingänge ohne Mitglied. Bitte zuordnen.</p>
+<div class="table-wrap">
+<table>
+  <caption>Nicht zugeordnete Zahlungseingänge</caption>
+  <thead><tr><th>Datum</th><th>Gegenpartei</th><th>Zweck</th><th class="num">Betrag</th><th>Mitglied zuordnen</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>{{ row.tx_cells(r) }}<td>{{ ui.member_form(r.tx["id"], None, members, next_url, learn_checked=true) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>Alle Zahlungseingänge sind zugeordnet.</p>
+{% endif %}
+{% endblock %}

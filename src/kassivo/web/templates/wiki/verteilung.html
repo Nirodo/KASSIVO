@@ -1,0 +1,69 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Eine Zahlung sagt KASSIVO nicht, für welchen Monat sie gedacht ist. Die <strong>Verteilung</strong> teilt sie auf Beitragsmonate auf. Erst eine <strong>bestätigte</strong> Verteilung macht einen Monat „Bezahlt“. Eine Verteilung hat zwei Zustände: „vorgeschlagen“ (KASSIVO hat sie berechnet, Sie haben sie noch nicht bestätigt) und „bestätigt“.</p>
+
+<h2>Wann bestätigt KASSIVO selbst?</h2>
+<p>KASSIVO bestätigt eine Zahlung nur, wenn beides stimmt:</p>
+<ul>
+  <li>Der Betrag deckt <strong>genau</strong> den Beitrag, der im frühesten offenen Monat noch fehlt, und nicht mehr.</li>
+  <li>Der <a href="/wiki/begriffe#buchungsmonat">Buchungsmonat</a> der Zahlung ist dieser <a href="/wiki/begriffe#beitragsmonat">Beitragsmonat</a>.</li>
+</ul>
+<p>Alles andere ist ein Vorschlag und braucht Ihre Bestätigung: Mehrmonatszahlungen, Teilzahlungen, Rückstände, Vorauszahlungen und Zahlungen, die schon im Vormonat gebucht sind.</p>
+
+<h2>So geht's</h2>
+<ol class="steps">
+  <li>Öffnen Sie <a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>. Der Link steht in „Buchungen“, „Unklar“ und nach dem Import. Er zeigt alle Zahlungen mit unbestätigtem Vorschlag.</li>
+  <li>Wählen Sie bei der Zahlung „Verteilung“. Die Seite „Verteilung“ zeigt oben die Buchung und die „Aktuelle Verteilung“ mit dem Zustand je Monat.</li>
+  <li>Prüfen Sie unter „Verteilung bearbeiten“ die Zeilen aus Monat (JJJJ-MM) und Betrag (zum Beispiel <code>17,00</code>). Sie können Monate und Beträge ändern. Leere Zeilen werden ignoriert, es stehen immer ein paar freie Zeilen bereit. Die Spalte „Beitragsstatus des Mitglieds“ zeigt je Monat <a href="/wiki/begriffe#soll">Soll</a> und bisher Bezahltes.</li>
+  <li>Kontrollieren Sie die Zeile „Summe der Zeilen“. Die Summe muss dem Buchungsbetrag entsprechen. Passt sie, steht dort „Die Summe passt.“ Sonst steht dort die Differenz.</li>
+  <li>Wählen Sie „Verteilung bestätigen“. Die Zahlung zählt jetzt als bezahlt.</li>
+</ol>
+<h3>Neu vorschlagen</h3>
+<p>„Neu vorschlagen“ lässt KASSIVO die Verteilung neu berechnen, zum Beispiel nachdem Sie andere Zahlungen bestätigt haben. Bei einer bestätigten Verteilung ändert sich nichts.</p>
+<h3>Verteilung aufheben</h3>
+<ol class="steps">
+  <li>Haken Sie „Ich bestätige, dass die Verteilung aufgehoben wird“ an.</li>
+  <li>Wählen Sie „Verteilung aufheben“.</li>
+</ol>
+<p>KASSIVO löscht dann alle Zeilen der Verteilung, auch bestätigte. Mitglied, Kategorie und gemerkte IBAN bleiben. Es schlägt nichts neu vor. Mit „Neu vorschlagen“ holen Sie einen Vorschlag zurück oder tragen die Monate selbst ein. Ohne Häkchen meldet KASSIVO einen Fehler und tut nichts.</p>
+
+<h2>Beispiele</h2>
+<p>Das Mitglied Max Mustermann zahlt 17,00 € im Monat (Art Aktiv). Der Prüfungsstart ist 2026-01, bisher ist nichts bezahlt.</p>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Genau ein Monat. Am 15.01.2026 gehen 17,00 € ein. Das deckt genau den Januar, und die Zahlung ist im Januar gebucht. KASSIVO bestätigt selbst. Der Januar steht auf „Bezahlt“.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Zwei Monate. Am 15.01.2026 gehen 34,00 € ein. KASSIVO schlägt vor: 17,00 € für 2026-01 und 17,00 € für 2026-02. Beide Monate tragen in der Beitragsübersicht die Markierung „Vorschlag“. Nach „Verteilung bestätigen“ sind beide „Bezahlt“.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Teilzahlung. Am 15.01.2026 gehen 10,00 € ein. KASSIVO schlägt 10,00 € für 2026-01 vor. Nach der Bestätigung steht der Januar auf „Teilweise“ (nach Monatsende auf „Überfällig“). Gehen am 10.02.2026 die fehlenden 7,00 € ein, schlägt KASSIVO 7,00 € für 2026-01 vor, weil der Januar noch offen ist. Auch das bestätigen Sie, denn die Zahlung ist nicht im Januar gebucht.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Zu viel gezahlt. Am 15.01.2026 gehen 20,00 € ein. Vorschlag: 17,00 € für 2026-01 und 3,00 € für 2026-02. Der Februar ist dann nur zu 3,00 € von 17,00 € bezahlt, bis der Rest eingeht.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Zahlung am Monatsende. Der Dezember 2026 und alle Monate davor sind schon bezahlt. Am 30.12.2026 gehen 17,00 € ein. Das ist Beitrag für Januar 2027, aber die Zahlung ist im Dezember gebucht. Der Buchungsmonat (2026-12) ist nicht der Beitragsmonat (2027-01), darum schlägt KASSIVO nur vor und wartet auf Ihre Bestätigung. Wäre der Dezember noch offen gewesen, hätte KASSIVO den Dezember selbst bestätigt.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Nur bestätigte Verteilungen zählen als bezahlt.</strong> Beitragsübersicht, Prognose und Report rechnen nur mit ihnen. Ein Monat mit Vorschlag sieht deshalb weiter „Offen“ oder „Überfällig“ aus, trägt aber die Markierung „Vorschlag“. Das ist die häufigste Ursache für einen scheinbar fehlenden Beitrag.</li>
+  <li><strong>Wie KASSIVO rechnet:</strong> Es beginnt beim späteren von Prüfungsstart und „Zahlt ab“-Monat des Mitglieds und füllt die Monate der Reihe nach, in denen noch etwas fehlt (Soll minus bestätigt Bezahltes). Ein Rest ohne offenen Monat geht in den zuletzt verteilten Monat. Gibt es keinen, geht er in den Buchungsmonat. So entspricht die Summe immer dem Betrag. Der Vorschlag reicht höchstens 24 Monate über den späteren von Startmonat und Buchungsmonat hinaus.</li>
+  <li><strong>Warnung „Monat bereits bezahlt“:</strong> Sie erscheint in der Zeile eines Vorschlags, wenn der Monat inzwischen durch bestätigte Zahlungen voll bezahlt ist. Prüfen Sie dann den Monat. Sonst zahlen Sie doppelt.</li>
+  <li><strong>Prüfungsstart ändern</strong> berechnet offene Vorschläge neu und lässt bestätigte unverändert.</li>
+  <li>Beträge je Zeile: 0,01 € bis 100.000,00 €. Ein Monat darf nur einmal vorkommen.</li>
+  <li>Bestätigte Verteilungen sperren das Umhängen der Zahlung auf ein anderes Mitglied. Heben Sie sie vorher auf (<a href="/wiki/zuordnung">Zahlungen zuordnen</a>).</li>
+</ul>
+<div class="callout callout-warn">
+  <p><strong>Achtung:</strong> „Verteilung bestätigen“ ersetzt die bisherige Verteilung dieser Zahlung durch genau die Zeilen, die Sie eingetragen haben. Prüfen Sie die Summe, bevor Sie bestätigen.</p>
+</div>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/zuordnung">Zahlungen zuordnen</a></li>
+  <li><a href="/wiki/beitragsuebersicht">Beitragsübersicht</a></li>
+  <li><a href="/wiki/beitraege">Beiträge und Prüfungsstart</a></li>
+  <li><a href="/wiki/begriffe">Begriffe</a></li>
+</ul>
+{% endblock %}

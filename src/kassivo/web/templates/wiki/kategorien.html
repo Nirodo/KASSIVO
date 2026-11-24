@@ -1,0 +1,68 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>Kategorien sortieren Einnahmen und Ausgaben für den <a href="/wiki/reports">Report</a>, zum Beispiel „Beiträge“ oder „Hauptverein“. <strong>Regeln</strong> weisen Buchungen automatisch einer Kategorie zu. Jede Buchung hat höchstens eine Kategorie. Ohne Kategorie erscheint sie als „Ohne Kategorie“.</p>
+<p>KASSIVO startet mit drei Kategorien: <strong>Beiträge</strong> (Einnahmen), <strong>Hauptverein</strong> (Ausgaben) und <strong>Sonstiges</strong> (Beide).</p>
+
+<h2>So geht's</h2>
+<h3>Kategorie anlegen</h3>
+<ol class="steps">
+  <li>Öffnen Sie <a href="/categories">Kategorien</a> (/categories).</li>
+  <li>Tragen Sie unter „Kategorie anlegen“ den „Name (Pflicht)“ ein (1 bis 100 Zeichen) und wählen Sie die „Art“: Einnahmen, Ausgaben oder Beide.</li>
+  <li>Wählen Sie „Anlegen“.</li>
+</ol>
+<h3>Regel anlegen</h3>
+<ol class="steps">
+  <li>Wählen Sie unter „Regel anlegen“ die „Kategorie“, die die Regel vergeben soll.</li>
+  <li>Wählen Sie das „Feld“: „Verwendungszweck“, „Name der Gegenpartei“ oder „IBAN der Gegenpartei“.</li>
+  <li>Tragen Sie bei „Enthält (Pflicht)“ den Text ein, der im Feld vorkommen muss.</li>
+  <li>Setzen Sie bei Bedarf die „Priorität“, einen „Mindestbetrag“ und einen „Höchstbetrag“.</li>
+  <li>Wählen Sie „Regel anlegen“.</li>
+</ol>
+<h3>Regeln auf vorhandene Buchungen anwenden</h3>
+<ol class="steps">
+  <li>Gehen Sie zum Abschnitt „Regeln auf alle Buchungen anwenden“.</li>
+  <li>Lassen Sie „Gesetzte Kategorien überschreiben“ leer, wenn nur Buchungen ohne Kategorie eine bekommen sollen.</li>
+  <li>Wählen Sie „Regeln anwenden“. KASSIVO meldet zum Beispiel: „Regeln angewendet: 3 Buchungen geändert.“</li>
+</ol>
+<h3>Eine Buchung von Hand kategorisieren</h3>
+<p>In <a href="/transactions">Buchungen</a> steht in der Spalte „Kategorie“ eine Auswahl. Wählen Sie die Kategorie und dann „Setzen“. Mit „Ohne Kategorie“ nehmen Sie die Kategorie wieder weg. Der Filter oberhalb der Liste (Jahr, „Kategorie“ mit der Wahl „Ohne Kategorie“, „Art“ und Suchtext) findet Buchungen wieder. Wählen Sie „Filtern“, um ihn anzuwenden.</p>
+
+<h2>So arbeiten Regeln</h2>
+<ul>
+  <li><strong>Enthält:</strong> Die Regel trifft, wenn das Feld den Text irgendwo enthält. Groß- und Kleinschreibung spielen keine Rolle. Bei der IBAN werden Leerzeichen ignoriert.</li>
+  <li><strong>Priorität:</strong> Die <strong>kleinere Zahl gewinnt</strong>. KASSIVO prüft die Regeln in dieser Reihenfolge und nimmt die erste, die passt. Haben zwei Regeln dieselbe Zahl, gilt die ältere. Erlaubt sind 0 bis 10000, ohne Angabe gilt 100.</li>
+  <li><strong>Art der Kategorie:</strong> Eine Kategorie mit „Einnahmen“ vergibt KASSIVO nur an Zahlungseingänge, „Ausgaben“ nur an Ausgaben, „Beide“ an beide.</li>
+  <li><strong>Betragsgrenzen:</strong> „Mindestbetrag“ und „Höchstbetrag“ gelten für den Betrag ohne Vorzeichen. Eine Ausgabe von −40,00 € hat die Größe 40,00 €. Beide Grenzen sind optional, erlaubt sind 0,00 € bis 100.000,00 €. Der Punkt ist das Tausendertrennzeichen und das Komma trennt die Cent: <code>1.500</code> gilt als 1.500,00 €, <code>17.00</code> lehnt KASSIVO ab (richtig: <code>17,00</code>).</li>
+</ul>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Sie legen die Kategorie „Miete“ mit Art „Ausgaben“ an und eine Regel: Feld „Verwendungszweck“, Enthält „Hallenmiete“. Eine Ausgabe mit dem Zweck „Hallenmiete März 2026“ bekommt beim nächsten Import die Kategorie „Miete“.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Zwei Regeln erfassen das Wort „Spende“. Regel A gibt „Sonstiges“ mit Priorität 100, Regel B gibt „Spenden“ mit Priorität 10. Eine Buchung mit „Spende“ bekommt „Spenden“, denn 10 ist kleiner als 100.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Regel: Feld „Name der Gegenpartei“ enthält „Hauptverein Beispielstadt“, Kategorie „Hauptverein“, Höchstbetrag 500,00 €. Eine Überweisung über 300,00 € dorthin passt. Eine über 800,00 € nicht und bleibt unkategorisiert.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Neue Importe:</strong> Regeln wirken beim Import automatisch auf die neuen Buchungen. Eine neue oder geänderte Regel ändert alte Buchungen erst, wenn Sie „Regeln anwenden“ wählen.</li>
+  <li><strong>Beiträge:</strong> Ordnen Sie eine Zahlung einem Mitglied zu und hat sie noch keine Kategorie, setzt KASSIVO „Beiträge“. Eine vorhandene Kategorie bleibt.</li>
+  <li><strong>Überschreiben:</strong> Mit „Gesetzte Kategorien überschreiben“ gilt eine passende Regel auch für Buchungen, die schon eine Kategorie haben. Dafür müssen Sie zusätzlich „Ich bestätige das Überschreiben (nur nötig beim Überschreiben)“ anhaken. Sonst lehnt KASSIVO ab („Zum Überschreiben bitte ausdrücklich bestätigen.“). Passt keine Regel, bleibt eine vorhandene Kategorie stehen.</li>
+  <li><strong>Reservierter Name:</strong> „Ohne Kategorie“ ist kein echter Name und lässt sich nicht anlegen. Zwei Kategorien dürfen nicht gleich heißen (Groß- und Kleinschreibung zählen nicht).</li>
+  <li>In dieser Version lassen sich Kategorien und Regeln nur anlegen, nicht ändern oder löschen.</li>
+</ul>
+<div class="callout callout-warn">
+  <p><strong>Achtung:</strong> „Regeln anwenden“ mit Überschreiben kann Kategorien ersetzen, die Sie von Hand gesetzt haben. Legen Sie vorher eine Sicherung an (<a href="/backup">Backup</a>).</p>
+</div>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/reports">Jahresreport</a></li>
+  <li><a href="/wiki/import">Kontoexport importieren</a></li>
+  <li><a href="/wiki/zuordnung">Zahlungen zuordnen</a></li>
+</ul>
+{% endblock %}
