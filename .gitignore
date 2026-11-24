@@ -1,0 +1,51 @@
+# Secrets (Bank-Zugangsdaten, API-Keys, Tokens)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials*.json
+
+# Lokale Daten / DBs
+*.db
+*.sqlite
+*.sqlite3
+data/
+backups/
+
+# Abhängigkeiten
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+vendor/
+
+# Build / Output
+dist/
+build/
+out/
+coverage/
+.next/
+target/
+bin/
+obj/
+
+# Logs / Temp
+*.log
+logs/
+tmp/
+.cache/
+
+# IDE / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code lokal
+.claude/settings.local.json
