@@ -109,6 +109,8 @@ def test_no_dead_internal_links(client):
     seen = set()
     for page, text in _all_pages(client).items():
         for href in _hrefs(text):
+            if href == "#wiki-inhalt":  # Sprungmarke zum Inhalt, Ziel wird eigens geprüft
+                continue
             if href.startswith(("http:", "https:", "mailto:", "#")):
                 pytest.fail(f"externer oder Anker-Link auf {page}: {href}")
             if not href.startswith("/") or href.startswith("/static/"):
@@ -289,3 +291,15 @@ def test_help_link_macro_accepts_custom_text():
 def test_packaging_covers_wiki_folder():
     text = (TEMPLATES.parents[3] / "pyproject.toml").read_text("utf-8")
     assert "web/templates/wiki/*.html" in text
+
+
+@pytest.mark.parametrize("path", ["/wiki"] + [f"/wiki/{s}" for s in SLUGS])
+def test_sidebar_has_no_headings_skip_link_and_current(client, path):
+    text = client.get(path).text
+    nav = re.search(r'<nav class="wiki-toc".*?</nav>', text, re.S)[0]
+    assert "<h2" not in nav and 'class="toc-group"' in nav
+    assert text.index('href="#wiki-inhalt"') < text.index('<nav class="wiki-toc"')
+    assert "Zum Inhalt springen" in text and 'id="wiki-inhalt"' in text
+    assert nav.count('aria-current="page"') == 1
+    if path != "/wiki":
+        assert f'<a href="{path}" aria-current="page">' in nav

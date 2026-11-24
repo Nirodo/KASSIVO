@@ -86,8 +86,9 @@ section .table-wrap { margin-bottom: 1.5rem; }
 .help-link { margin: 0 0 1rem; font-size: .9rem; }
 .wiki { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 1.5rem 2rem; align-items: start; }
 .wiki-toc { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: .75rem 1rem; font-size: .95rem; }
-.wiki-toc h2 { font-size: 1rem; margin: .75rem 0 .25rem; }
-.wiki-toc h2:first-child { margin-top: 0; }
+.wiki-toc .toc-group { font-size: 1rem; font-weight: 700; margin: .75rem 0 .25rem; }
+.skip-link { position: absolute; left: -999rem; }
+.skip-link:focus { position: static; display: inline-block; margin-bottom: .5rem; }
 .wiki-toc ul { list-style: none; margin: 0; padding: 0; display: block; }
 .wiki-toc a { display: block; padding: .2rem 0; }
 .wiki-toc a[aria-current="page"] { font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
