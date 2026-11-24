@@ -114,7 +114,7 @@ Das Sparkasse-Online-Banking bietet u. a. CSV-CAMT V2/V8, CSV-MT940, XML CAMT V2
 - Format ist `camt.052.001.08`. Pro Datei steht ein Konto (`Acct`) mit IBAN und Währung EUR.
 - Jede Datei hat Anfangs- und Schlusssaldo (`OPBD`, `CLBD`). Damit kann KASSIVO beim Import prüfen, ob die Summe der Buchungen zum Saldo passt.
 - Jede Buchung (`Ntry`) hat Betrag, Soll/Haben (`CdtDbtInd`: `DBIT` oder `CRDT`), Buchungs- und Wertstellungsdatum, Bankreferenz (`AcctSvcrRef`) und Gegenpartei (Name und IBAN als Zahler `Dbtr` oder Empfänger `Cdtr`).
-- Die Datei enthält echte Namen und IBANs. Sie darf nie ins Repo. Die `.gitignore` sperrt `*.zip`, `*camt*`, `*MT940*`, `samples/` und `exports/`.
+- Die Datei enthält echte Namen und IBANs. Sie darf nie ins Repo. Die `.gitignore` sperrt `*.zip`, `*.xml`, `*camt052*`, `*camt053*`, `*camt52*`, `*camt53*`, `*CAMT52*`, `*CAMT53*`, `*MT940*`, `*.csv`, `*.sta` (jeweils auch in Großschreibung), `samples/` und `exports/`.
 
 ## Weitere Annahmen nach dem Builder-Check (meine Entscheidungen, bitte prüfen)
 

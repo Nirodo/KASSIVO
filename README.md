@@ -18,7 +18,7 @@ KASSIVO ist ein lokales Kassenprogramm für eine Person an einem Rechner. Es ver
 
 ## Voraussetzungen
 
-Python ab 3.10. Entwickelt wurde mit Python 3.15 (siehe `.venv`).
+Python ab 3.10 (`requires-python = ">=3.10"`). Entwickelt und getestet wird nur mit Python 3.15 (siehe `.venv`); ältere Versionen sind erlaubt, aber nicht getestet.
 
 ## Installation
 
@@ -61,6 +61,17 @@ Unter Linux oder macOS: `KASSIVO_DB=/pfad/zur/kassivo.db python -m kassivo`.
 **Warnung zu Cloud-Ordnern:** Die Datenbank und die Sicherungen enthalten Namen, Adressen und IBANs. Sie gehören nicht in einen Ordner, der mit OneDrive, Dropbox, Google Drive oder iCloud synchronisiert wird. Liegt der Pfad in einem solchen Ordner, zeigt KASSIVO beim Start eine Warnung (der Start wird nicht verhindert).
 
 **Vorhandene Datenbank umziehen:** Wer schon mit einer älteren Version gearbeitet hat, findet die Datenbank in `data/kassivo.db` im Projektordner. KASSIVO beenden, `data/kassivo.db` (und `data/backups/`, falls vorhanden) an den neuen Ort kopieren, zum Beispiel nach `%LOCALAPPDATA%\KASSIVO\`, KASSIVO starten und prüfen, dass der angezeigte Pfad stimmt und die Daten da sind. Danach die alte Kopie im Projektordner löschen, damit sie nicht weiter synchronisiert wird.
+
+## Empfohlener Ablauf
+
+1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis.
+2. **Mitglieder und Beiträge anlegen** (Mitglieder, Einstellungen).
+3. **Kontoexport importieren** (Import).
+4. **"Unklar" zuordnen**: jede Zahlung einem Mitglied zuordnen, mit "Absender merken". Weitere unklare Zahlungen derselben IBAN werden dann gleich mit zugeordnet. Der Knopf "Unklare automatisch zuordnen" wendet Gelerntes erneut auf die ganze Liste an. Zahlt eine IBAN für mehrere Mitglieder (z. B. ein Elternteil für zwei Kinder), wird sie nicht automatisch zugeordnet.
+5. **"Offene Vorschläge" prüfen und bestätigen** (Link in Buchungen und Unklar): Verteilungen, die KASSIVO nur vorschlägt, zählen erst nach der Bestätigung als bezahlt.
+6. **Beitragsübersicht, Prognose und Report ansehen.**
+
+Eine Zahlung bestätigt KASSIVO nur dann selbst, wenn sie genau den Beitrag des frühesten offenen Monats deckt und in diesem Monat gebucht ist. Zahlungen, die außerhalb des Fälligkeitsmonats gebucht sind (Rückstände, Vorauszahlungen, Zahlung schon im Vormonat), und Mehrmonatszahlungen brauchen immer eine Bestätigung von Hand.
 
 ## Ablauf Import
 

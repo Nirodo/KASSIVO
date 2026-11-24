@@ -384,6 +384,13 @@ def test_fee_range_rejected(client, db, amount):
     assert _count(db, "fee_rate") == 2
 
 
+def test_fee_rejects_arabic_indic_digits(client, db):
+    r = client.post("/settings/fees", data={"form": "fee", "type_name": "Aktiv",
+                                            "amount": "١٧,٠٠", "valid_from": "2026-07"})
+    assert r.status_code == 422
+    assert fee_at(db, "Aktiv", "2026-07") == 1700  # unverändert
+
+
 def test_fee_upper_limit_accepted(client, db):
     r = client.post("/settings/fees", data={"form": "fee", "type_name": "Aktiv",
                                             "amount": "100000,00", "valid_from": "2026-07"})

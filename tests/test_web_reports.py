@@ -169,6 +169,13 @@ def test_vendor_integrity():
     assert "4.4.1" in text
 
 
+def test_by_member_caption_names_contribution_months(client, db):
+    _tx(db, "2026-03-05", 1700)
+    html = client.get("/reports?year=2026").text
+    assert ("<caption>Beiträge für die Beitragsmonate 2026 (nach Beitragsmonat, "
+            "nicht nach Buchungsdatum)</caption>") in html
+
+
 def test_vendor_license_file():
     lic = STATIC / "vendor" / "LICENSE.chartjs.txt"
     text = lic.read_text(encoding="utf-8")
@@ -181,4 +188,5 @@ def test_reports_js_safe():
     assert "innerHTML" not in js and "outerHTML" not in js
     assert "insertAdjacentHTML" not in js and "document.write" not in js
     assert "eval(" not in js and "new Function" not in js
-    assert "topSlices" in js and "formatEuro" in js and "data-year" in js or "dataset.year" in js
+    assert "topSlices" in js and "formatEuro" in js
+    assert "data-year" in js or "dataset.year" in js

@@ -20,6 +20,10 @@ credentials*.json
 *.XML
 *MT940*
 *mt940*
+*.csv
+*.CSV
+*.sta
+*.STA
 samples/
 exports/
 

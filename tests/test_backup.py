@@ -249,12 +249,18 @@ def test_failure_gives_500_page_without_leftovers(db_path, monkeypatch):
 def test_gitignore_protects_data():
     lines = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "data/" in lines and "*.db" in lines
+    for pat in ("*.zip", "*.ZIP", "*.xml", "*.XML", "*camt052*", "*camt053*", "*camt52*",
+                "*camt53*", "*CAMT52*", "*CAMT53*", "*MT940*", "*.csv", "*.CSV", "*.sta",
+                "*.STA", "samples/", "exports/"):
+        assert pat in lines, pat
 
 
 def test_readme_not_stale():
     t = (ROOT / "README.md").read_text(encoding="utf-8")
     for s in ("python -m kassivo", "127.0.0.1", "<DB-Ordner>/backups", "CAMT",
-              "KASSIVO_DB", "%LOCALAPPDATA%", "OneDrive", "Vorhandene Datenbank umziehen"):
+              "KASSIVO_DB", "%LOCALAPPDATA%", "OneDrive", "Vorhandene Datenbank umziehen",
+              "## Empfohlener Ablauf", "Prüfungsstart festlegen", "Absender merken",
+              "Offene Vorschläge", "außerhalb des Fälligkeitsmonats", "3.15", ">=3.10"):
         assert s in t
 
 

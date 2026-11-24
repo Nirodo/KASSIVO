@@ -15,6 +15,12 @@ def test_parse_cents_invalid():
             parse_cents(bad)
 
 
+@pytest.mark.parametrize("bad", ["١٧,٠٠", "17,٠٠", "١.٢٣٤,٥", "１７,００"])
+def test_parse_cents_rejects_non_ascii_digits(bad):
+    with pytest.raises(ValueError):
+        parse_cents(bad)
+
+
 def test_format_eur():
     assert format_eur(1700) == "17,00 €"
     assert format_eur(-1050) == "-10,50 €"

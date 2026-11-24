@@ -1,7 +1,7 @@
 import re
 from decimal import Decimal
 
-_AMOUNT = re.compile(r"-?(\d+|\d{1,3}(\.\d{3})+)(,\d{1,2})?")
+_AMOUNT = re.compile(r"-?(\d+|\d{1,3}(\.\d{3})+)(,\d{1,2})?", re.ASCII)  # \d nur 0-9
 
 
 def parse_cents(text: str) -> int:

@@ -651,6 +651,15 @@ def test_unknown_note_codes_show_nothing(client, q):
     assert "automatisch zugeordnet." not in t and "<script>" not in t.split("<main>")[1]
 
 
+def test_allocation_rejects_arabic_indic_digits(client, db):
+    m, tx = _two(client, db)
+    before = _alloc(db, tx)
+    r = client.post(f"/transactions/{tx}/allocate", data={
+        "month_0": "2026-02", "amount_0": "١٧,٠٠", "month_1": "2026-03", "amount_1": "8,00"})
+    assert r.status_code == 422
+    assert _alloc(db, tx) == before
+
+
 @pytest.mark.parametrize("raw", ["sNaN", "1E999999", "0.00"])
 def test_import_bad_amount_is_422_not_500(client, db, raw):
     data = make_camt(IBAN, 0, [dict(E_ERIKA, amount_raw=raw)], "2026-03-01", with_balances=False)
