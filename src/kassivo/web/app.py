@@ -53,6 +53,8 @@ def create_app(db_path, extra_hosts=()) -> FastAPI:
                     foreign_fetch
                     or (origin is not None and urlsplit(origin).netloc != host)):
                 resp = PlainTextResponse("Anfrage von fremder Herkunft abgelehnt.", status_code=403)
+            elif import_routes.upload_too_large(request):
+                resp = render(request, "error.html", 413, message=import_routes.TOO_BIG)
             else:
                 resp = await call_next(request)
         resp.headers.update(SECURITY_HEADERS)

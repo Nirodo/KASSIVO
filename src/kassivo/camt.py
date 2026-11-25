@@ -35,6 +35,7 @@ class ParsedStatement:
     entries: list[ParsedTx]
     skipped_zero: int = 0  # übersprungene Einträge mit 0,00 €
     skipped_date: date | None = None  # spätestes Buchungsdatum davon
+    skipped_nostatus: int = 0  # Einträge ohne Sts/Cd (nicht als Buchung lesbar)
 
 
 def _text(el, path: str) -> str | None:
@@ -111,9 +112,37 @@ def _entry(ntry) -> ParsedTx:
     )
 
 
+_BOMS = (b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff")  # UTF-16 LE/BE, UTF-32 BE (UTF-32 LE beginnt wie UTF-16 LE)
+_WIDE_START = (b"<\x00", b"\x00<", b"\x00\x00\x00<")  # UTF-16/32 ohne BOM: Nullbytes um das erste "<"
+_DECL_RE = re.compile(rb"\A\s*<\?xml[^>]*?\sencoding\s*=\s*[\"']([^\"']*)[\"']", re.IGNORECASE)
+_OK_ENCODINGS = {b"utf-8", b"us-ascii", b"iso-8859-1"}
+E_ENCODING = "Nicht unterstützte Zeichenkodierung (erlaubt: UTF-8, US-ASCII, ISO-8859-1)"
+
+
+def _check_encoding(xml: bytes) -> str:
+    """Liefert den streng dekodierten Text; der DOCTYPE-Schutz läuft darauf mit.
+
+    Die Bytes-Vorprüfung ließe sich mit UTF-16/32 umgehen (auch ohne BOM und Deklaration,
+    etwa mit Leerraum vor dem ersten "<"). Darum: Nullbyte in den ersten 64 Bytes, ein
+    BOM außer UTF-8 oder eine fremde Deklaration lehnt ab, der Rest muss streng als
+    UTF-8 (bei ISO-8859-1-Deklaration: Latin-1) dekodierbar sein."""
+    body = xml[3:] if xml.startswith(b"\xef\xbb\xbf") else xml
+    if b"\x00" in body[:64] or body.startswith(_BOMS) or body.startswith(_WIDE_START):
+        raise CamtError(E_ENCODING)
+    m = _DECL_RE.match(body)
+    declared = m.group(1).strip().lower() if m else b"utf-8"
+    if declared not in _OK_ENCODINGS:
+        raise CamtError(E_ENCODING)
+    try:
+        return body.decode("latin-1" if declared == b"iso-8859-1" else "utf-8")
+    except UnicodeDecodeError:
+        raise CamtError(E_ENCODING) from None
+
+
 def parse_camt052(xml: bytes) -> ParsedStatement:
+    text = _check_encoding(xml).upper()
     head = xml.upper()
-    if b"<!DOCTYPE" in head or b"<!ENTITY" in head:
+    if b"<!DOCTYPE" in head or b"<!ENTITY" in head or "<!DOCTYPE" in text or "<!ENTITY" in text:
         raise CamtError("DOCTYPE/ENTITY nicht erlaubt")
     try:
         root = ET.fromstring(xml)
@@ -130,12 +159,15 @@ def parse_camt052(xml: bytes) -> ParsedStatement:
     iban = _text(rpt, "c:Acct/c:Id/c:IBAN")
     if iban is None:
         raise CamtError("IBAN fehlt")
-    parsed = [
-        _entry(n) for n in rpt.findall("c:Ntry", _N) if _text(n, "c:Sts/c:Cd") == "BOOK"
-    ]
+    # Status: nur BOOK sind Buchungen. PDNG u. a. sind noch keine Buchungen und bleiben
+    # still außen vor (ein späterer Export enthält sie als BOOK). Nur ein fehlender
+    # Status wird gezählt und gemeldet, weil der Eintrag sonst unbemerkt fehlte.
+    ntrys = rpt.findall("c:Ntry", _N)
+    nostatus = sum(1 for n in ntrys if _text(n, "c:Sts/c:Cd") is None)
+    parsed = [_entry(n) for n in ntrys if _text(n, "c:Sts/c:Cd") == "BOOK"]
     entries = [t for t in parsed if t.amount_cents != 0]
     zeros = [t.booking_date for t in parsed if t.amount_cents == 0]
     return ParsedStatement(
         iban, _balance(rpt, "OPBD"), _balance(rpt, "CLBD"), entries,
-        len(zeros), max(zeros) if zeros else None,
+        len(zeros), max(zeros) if zeros else None, nostatus,
     )

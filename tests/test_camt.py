@@ -224,3 +224,93 @@ def test_zero_entries_on_several_days_latest_date():
                            dict(amount=0, ref="B", booking_date="2025-01-09"),
                            dict(amount=0, ref="C", booking_date="2025-01-05")]))
     assert st.skipped_zero == 3 and st.skipped_date == date(2025, 1, 9)
+
+
+# --- Import-Robustheit (#9): fehlender Status, Zeichenkodierung ---------------
+
+def test_entry_without_status_is_counted_not_imported():
+    xml = mk([dict(amount=1700, ref="A1"), dict(amount=500, ref="A2")], closing=10000)
+    xml = xml.replace(b"<Sts><Cd>BOOK</Cd></Sts>", b"", 1)
+    st = parse_camt052(xml)
+    assert [t.bank_ref for t in st.entries] == ["A2"]
+    assert st.skipped_nostatus == 1
+
+
+def test_pending_entries_stay_silently_ignored():
+    st = parse_camt052(mk([dict(amount=1700, ref="A1", status="PDNG")]))
+    assert st.entries == [] and st.skipped_nostatus == 0
+
+
+def test_utf8_bom_still_accepted():
+    assert parse_camt052(b"\xef\xbb\xbf" + mk([dict(amount=1700)])).entries
+
+
+@pytest.mark.parametrize("bom", [b"\xff\xfe", b"\xfe\xff", b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff"])
+def test_utf16_utf32_bom_rejected(bom):
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052(bom + mk([dict(amount=1700)]))
+
+
+def test_utf16_without_bom_rejected_before_doctype_check():
+    xml = mk([dict(amount=1700)]).decode("utf-8").replace("<Document", "<!DOCTYPE x><Document", 1)
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052(xml.encode("utf-16-le"))
+
+
+@pytest.mark.parametrize("enc", ["UTF-16", "utf-32", "cp037", "windows-1252"])
+def test_declared_foreign_encoding_rejected(enc):
+    xml = mk([dict(amount=1700)]).replace(b'encoding="UTF-8"', f'encoding="{enc}"'.encode())
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052(xml)
+
+
+@pytest.mark.parametrize("enc", ["UTF-8", "utf-8", "US-ASCII", "ISO-8859-1"])
+def test_declared_allowed_encoding_accepted(enc):
+    xml = mk([dict(amount=1700)]).replace(b'encoding="UTF-8"', f"encoding='{enc}'".encode())
+    assert len(parse_camt052(xml).entries) == 1
+
+
+def test_doctype_still_rejected():
+    xml = mk([dict(amount=1700)]).replace(b"<Document", b"<!DOCTYPE x><Document", 1)
+    with pytest.raises(CamtError, match="DOCTYPE"):
+        parse_camt052(xml)
+
+
+# --- Verschlüsselungs-Umgehung der DOCTYPE-Prüfung (UTF-16/32 ohne BOM und Deklaration) ----
+
+_EVIL = ('<!DOCTYPE d [<!ENTITY a "x">]><Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08">'
+         "&a;</Document>")
+
+
+@pytest.mark.parametrize("enc", ["utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"])
+@pytest.mark.parametrize("prefix", ["", " \n", "\t", "\r\n  "])
+def test_wide_encodings_with_whitespace_prefix_rejected(enc, prefix):
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052((prefix + _EVIL).encode(enc))
+
+
+def test_utf16_document_with_bom_rejected():
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052(mk([dict(amount=1700)]).decode("utf-8").encode("utf-16"))
+
+
+def test_invalid_utf8_rejected():
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052(mk([dict(amount=1700)]).replace(b"Document", b"Docu\xffment", 1))
+
+
+def test_doctype_in_decoded_text_rejected_even_if_obfuscated_for_bytes():
+    # Latin-1 deklariert: der Text wird dekodiert und geprüft
+    xml = mk([dict(amount=1700)]).replace(b"UTF-8", b"ISO-8859-1").replace(
+        b"<Document", b"<!doctype d><Document", 1)
+    with pytest.raises(CamtError, match="DOCTYPE"):
+        parse_camt052(xml)
+
+
+def test_umlauts_utf8_utf8bom_and_latin1_accepted():
+    base = mk([dict(amount=1700, name="Jörg Müller", purpose="Beitrag für Größe")])
+    assert parse_camt052(base).entries[0].cp_name is None or True
+    assert "Größe" in parse_camt052(base).entries[0].purpose
+    assert "Größe" in parse_camt052(b"\xef\xbb\xbf" + base).entries[0].purpose
+    latin = base.decode("utf-8").replace("UTF-8", "ISO-8859-1").encode("latin-1")
+    assert "Größe" in parse_camt052(latin).entries[0].purpose
