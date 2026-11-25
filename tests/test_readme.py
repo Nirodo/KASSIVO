@@ -115,3 +115,9 @@ def test_readme_documents_shell_variants_and_limits(needle):
 
 def test_readme_mentions_category_clears_unmatched():
     assert "Kein Mitglied nötig" in README
+
+
+def test_readme_documents_import_robustness_facts():
+    for fact in ("Einträge ohne Status", "UTF-8, US-ASCII und ISO-8859-1", "bereits bekannter Bankreferenz",
+                 "Sparkasse-Tagesdateien tragen Bankreferenzen"):
+        assert fact in README, fact
