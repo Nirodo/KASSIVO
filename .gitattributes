@@ -1,2 +1,4 @@
 # Batch-Dateien brauchen unter Windows CRLF-Zeilenenden.
 *.bat text eol=crlf
+# JavaScript-Tests: LF, damit Zeilenenden nicht wechseln.
+*.mjs text eol=lf
