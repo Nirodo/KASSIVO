@@ -19,7 +19,7 @@
   <table>
     <caption>Gespeicherte Verteilung</caption>
     <thead><tr><th>Monat</th><th class="num">Betrag</th><th>Status</th></tr></thead>
-    <tbody>{% for a in stored %}<tr><td>{{ a["month"] }}</td><td class="num">{{ a["cents"] | eur }}</td><td>{{ "bestätigt" if a["status"] == "confirmed" else "vorgeschlagen" }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for a in stored %}<tr><td>{{ a["month"] }}</td><td class="num">{{ a["cents"] | eur }}</td><td>{{ "bestätigt" if a["status"] == "confirmed" else "vorgeschlagen" }}{% if a["status"] == "confirmed" and a["source"] == "auto" %} (automatisch, <a href="/auto">Rückgängig</a> möglich){% endif %}</td></tr>{% endfor %}</tbody>
   </table>
   {% else %}<p>Noch keine Verteilung.</p>{% endif %}
 </section>

@@ -4,6 +4,8 @@
 {% block content %}
 {{ help_link("beitragsuebersicht") }}
 {{ check_start_notice(check_start_set) }}
+{% if waiting %}<p class="notice" role="status"><a href="/transactions?year=all&amp;proposed=1">{{ waiting }} Zahlungen warten auf Ihre Prüfung</a> (Ausnahmen, die KASSIVO nicht selbst verteilt hat).</p>{% endif %}
+<p><a href="/auto">Automatisch verteilt</a>: welche Zahlungen KASSIVO selbst auf Monate verteilt hat, mit „Rückgängig“.</p>
 {{ year_nav("/dues", year, prev, next) }}
 {{ legend(with_proposal=true) }}
 {% if grid %}

@@ -109,25 +109,41 @@ _NOTES = {
                  " künftig nicht automatisch zugeordnet.",
     "cleaned": "Gelöschte Sicherungen: {n}.",
     "cleaned_partial": "Gelöschte Sicherungen: {n}. {m} konnten nicht gelöscht werden.",
-    "reproposed": "Prüfungsstart gespeichert. {n} offene Vorschläge wurden neu berechnet.",
+    "reproposed": "Prüfungsstart gespeichert. {n} Zahlungen neu verteilt.",
+    "undone": "Automatische Verteilung rückgängig gemacht. Die Zahlung steht jetzt unter"
+              " „Offene Vorschläge“ und kann auf der Seite „Verteilung“ geändert und"
+              " bestätigt werden.",
+    "run": "{n} geprüft: {a} automatisch verteilt, {r} bleiben zur Prüfung,"
+           " {o} liegen vor dem Prüfungsstart.",
 }
+# Zahlen, die ein Hinweis zusätzlich zu n verwenden darf (nur ganze Zahlen)
+_NOTE_KEYS = ("a", "r", "o")
 _COUNT_RE = re.compile(r"[0-9]{1,7}", re.ASCII)
 
 
 def page_note(request: Request) -> str | None:
-    """Hinweis nach einer Aktion. Nur feste Codes und eine Zahl, nie freier Text."""
+    """Hinweis nach einer Aktion. Nur feste Codes und Zahlen, nie freier Text."""
     template = _NOTES.get(request.query_params.get("note", ""))
-    n = request.query_params.get("n", "")
-    m = request.query_params.get("m", "0")
-    if template is None or not _COUNT_RE.fullmatch(n) or not _COUNT_RE.fullmatch(m):
+    if template is None:
         return None
-    return template.format(n=int(n), m=int(m))
+    values = {}
+    for key in ("n", "m") + _NOTE_KEYS:
+        raw = request.query_params.get(key, "0" if key == "m" else None)
+        if raw is None:
+            if "{" + key + "}" in template:
+                return None
+            continue
+        if not _COUNT_RE.fullmatch(raw):
+            return None
+        values[key] = int(raw)
+    return template.format(**values)
 
 
-def with_note(url: str, code: str, n: int, m: int | None = None) -> str:
-    assert code in _NOTES
-    extra = "" if m is None else f"&m={int(m)}"
-    return f"{url}{'&' if '?' in url else '?'}note={code}&n={int(n)}{extra}"
+def with_note(url: str, code: str, n: int, m: int | None = None, **extra: int) -> str:
+    assert code in _NOTES and set(extra) <= set(_NOTE_KEYS)
+    tail = "" if m is None else f"&m={int(m)}"
+    tail += "".join(f"&{k}={int(extra[k])}" for k in _NOTE_KEYS if k in extra)
+    return f"{url}{'&' if '?' in url else '?'}note={code}&n={int(n)}{tail}"
 
 
 templates.env.globals["page_note"] = page_note

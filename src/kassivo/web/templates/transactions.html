@@ -4,7 +4,13 @@
 {% block title %}Buchungen{% endblock %}
 {% block content %}
 {{ ui.help_link("zuordnung") }}
-<p><a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> (Zahlungen, deren Verteilung auf Bestätigung wartet) · <a href="/unmatched">Unklar</a></p>
+<p><a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> (Ausnahmen, die KASSIVO nicht selbst verteilt: bitte prüfen) · <a href="/auto">Automatisch verteilt</a> · <a href="/unmatched">Unklar</a></p>
+{% if f.proposed == "1" %}
+<form method="post" action="/auto/run" class="inline">
+  <button type="submit">Offene Vorschläge jetzt automatisch verteilen</button>
+  <span class="hint">Wendet die Regeln erneut auf alle offenen Vorschläge an. Bestätigte Verteilungen und rückgängig gemachte Vorschläge bleiben unverändert.</span>
+</form>
+{% endif %}
 <form method="get" action="/transactions" class="filter" role="search">
   <div class="field"><label for="year">Jahr (JJJJ oder „all“)</label>
     <input id="year" name="year" value="{{ f.year }}" maxlength="4"></div>
@@ -42,7 +48,8 @@
     <td>{{ ui.category_form(r.tx["id"], r.tx["category_id"], cats, next_url) }}</td>
     <td>{% if r.tx["amount_cents"] > 0 %}{{ r.tx["member_name"] or "—" }}
       {{ ui.member_form(r.tx["id"], r.tx["member_id"], members, next_url) }}{% else %}—{% endif %}</td>
-    <td>{% if r.tx["member_id"] %}<a href="/transactions/{{ r.tx['id'] }}/allocate?next={{ next_url | urlencode }}">Verteilung<span class="visually-hidden"> für Buchung {{ r.tx["id"] }}</span></a>{% endif %}</td>
+    <td>{% if r.tx["member_id"] %}<a href="/transactions/{{ r.tx['id'] }}/allocate?next={{ next_url | urlencode }}">Verteilung<span class="visually-hidden"> für Buchung {{ r.tx["id"] }}</span></a>{% endif %}
+      {%- if reasons.get(r.tx["id"]) %}<br><span class="hint">{{ reasons[r.tx["id"]] }}</span>{% endif %}</td>
   </tr>
   {% endfor %}
   </tbody>

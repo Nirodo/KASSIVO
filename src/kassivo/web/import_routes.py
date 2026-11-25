@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Request, UploadFile
 
 from kassivo import categories, matching
 from kassivo.camt import CamtError
-from kassivo.dues import check_start_is_set, proposed_tx_count
+from kassivo.dues import check_start_is_set, distribution_counts, proposed_tx_count
 from kassivo.ingest import import_path
 from kassivo.web.common import get_conn, render
 
@@ -76,6 +76,8 @@ async def import_submit(
             return _form(request, conn, 422, f"{e}. Es wurde nichts importiert.")
         categorized = categories.apply_rules(conn, result.new_tx_ids)
         assigned = matching.auto_assign(conn, result.new_tx_ids)
+    auto_count, review_count = distribution_counts(conn, result.new_tx_ids)
     return render(request, "import_result.html", result=result,
                   categorized=categorized, assigned=assigned,
+                  auto_count=auto_count, review_count=review_count,
                   proposals=proposed_tx_count(conn))

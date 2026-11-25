@@ -134,10 +134,18 @@ async def transactions(request: Request, conn=Depends(get_conn)):
         return "/transactions?" + urlencode({**base, "page": p})
 
     pages = max(1, -(-count // PAGE_SIZE))
-    here = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    # Hinweis-Parameter nicht in Rücksprung-Links übernehmen (sonst erscheint er erneut)
+    query = request.url.query
+    if "note" in request.query_params:
+        query = urlencode([(k, v) for k, v in request.query_params.multi_items()
+                           if k not in ("note", "n", "a", "r", "o")])
+    here = request.url.path + (f"?{query}" if query else "")
+    reasons = ({r["id"]: dues.review_reason(conn, r["id"]) for r in rows}
+               if f["proposed"] == "1" else {})
     return render(
         request, "transactions.html", f=f, rows=[_cp(r) for r in rows], count=count,
         income=income, expense=expense, cats=_cats(conn), members=list_members(conn),
+        reasons=reasons,
         next_url=safe_next(here), pages=pages,
         prev_url=page_url(f["page"] - 1) if f["page"] > 1 else None,
         next_page_url=page_url(f["page"] + 1) if f["page"] < pages else None,
@@ -226,7 +234,7 @@ def _alloc_tx(conn, tx_id: int):
 
 def _alloc_page(request, conn, tx, member, status=200, rows=None, errors=None, nxt=""):
     stored = conn.execute(
-        "select month, cents, status from allocation where tx_id=? order by month, id",
+        "select month, cents, status, source from allocation where tx_id=? order by month, id",
         (tx["id"],)).fetchall()
     by_month = {r["month"]: r for r in stored}
     if rows is None:

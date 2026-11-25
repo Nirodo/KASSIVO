@@ -428,6 +428,9 @@ def _sim3a(db):
            for i in range(8, 13)]
     db.commit()
     assert auto_assign(db, ids) == 5
+    # Altbestand vor #27: Vorschläge statt Bestätigung (wie nach Migration 2)
+    db.execute("update allocation set status='proposed', source='auto'")
+    db.commit()
     return ids
 
 
@@ -445,7 +448,7 @@ def test_check_start_reproposes_open_proposals(client, db):
     assert r.headers["location"] == "/settings/fees?note=reproposed&n=5"
     assert _statuses(db, ids) == ["confirmed"] * 5
     t = client.get(r.headers["location"]).text
-    assert "Prüfungsstart gespeichert. 5 offene Vorschläge wurden neu berechnet." in t
+    assert "Prüfungsstart gespeichert. 5 Zahlungen neu verteilt." in t
 
 
 def test_check_start_foreign_origin_changes_nothing(client, db):

@@ -7,7 +7,8 @@
   <li>Duplikate: {{ result.duplicates }}</li>
   <li>Automatisch kategorisiert: {{ categorized }}</li>
   <li>Automatisch zugeordnet: {{ assigned }}</li>
-  <li><a href="/transactions?year=all&amp;proposed=1">{{ proposals }} Vorschläge zur Bestätigung (offene Vorschläge insgesamt)</a></li>
+  <li>Verteilung der neuen Zahlungen: automatisch verteilt: {{ auto_count }}, zur Prüfung: {{ review_count }}
+    (<a href="/auto">Automatisch verteilt</a> · <a href="/transactions?year=all&amp;proposed=1">{{ proposals }} offene Vorschläge insgesamt</a>)</li>
 </ul>
 {% if result.warnings %}
 <h2>Warnungen</h2>
