@@ -310,3 +310,50 @@ def test_zip_and_folder_at_cap_still_import(conn, tmp_path, monkeypatch):
     for n, d in files.items():
         (folder / n).write_bytes(d)
     assert import_path(conn, folder).duplicates == 5
+
+
+def _zero_files():
+    files = day_files()
+    k = f"{DAYS[1]}-camt.xml"
+    files[k] = make_camt(IBAN, 10000 + 1700 - 500, [
+        dict(amount=0, name="Bankinfo Geheim", ref="Z1"),
+        dict(amount=1000, name="Erika Beispiel", cp_iban=OTHER_IBAN, purpose="Beitrag", ref="R3"),
+    ], DAYS[1])
+    return files
+
+
+def test_zero_entry_skipped_with_one_masked_warning(conn, tmp_path):
+    z = write_zip(tmp_path, _zero_files())
+    r = import_path(conn, z)
+    assert r.new == 5 and r.duplicates == 0
+    assert len(r.warnings) == 1
+    w = r.warnings[0]
+    assert f"{IBAN[:4]}…{IBAN[-4:]}" in w and IBAN not in w
+    assert DAYS[1] in w and "1 Eintrag" in w and "0,00" in w
+    assert "Bankinfo" not in w and "Geheim" not in w
+    assert conn.execute('select count(*) from "transaction"').fetchone()[0] == 5
+    r2 = import_path(conn, z)
+    assert (r2.new, r2.duplicates) == (0, 5)
+    assert r2.warnings == r.warnings
+
+
+def test_plural_wording(conn, tmp_path):
+    f = make_camt(IBAN, 0, [dict(amount=0, ref="Z1"), dict(amount=0, ref="Z2")], DAYS[0])
+    r = import_path(conn, write_zip(tmp_path, {"a.xml": f}))
+    assert "2 Einträge" in r.warnings[0]
+
+
+def test_only_zero_entries_imports_with_warning(conn, tmp_path):
+    f = make_camt(IBAN, 500, [dict(amount=0, ref="Z1")], DAYS[0])
+    r = import_path(conn, write_zip(tmp_path, {"a.xml": f}))
+    assert (r.new, r.duplicates) == (0, 0)
+    assert len(r.warnings) == 1 and DAYS[0] in r.warnings[0]
+
+
+def test_zero_plus_broken_file_writes_nothing(conn, tmp_path):
+    files = _zero_files()
+    files["x.xml"] = make_camt(IBAN, 0, [dict(amount_raw="-0.01")], DAYS[2])
+    with pytest.raises(CamtError):
+        import_path(conn, write_zip(tmp_path, files))
+    assert conn.execute('select count(*) from "transaction"').fetchone()[0] == 0
+    assert conn.execute("select count(*) from import_batch").fetchone()[0] == 0

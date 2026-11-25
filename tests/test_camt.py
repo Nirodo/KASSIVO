@@ -116,7 +116,7 @@ def test_bad_amount():
 # --- Fix-Welle: Beträge, Sammelbuchungen, mehrere Berichte ---------------------
 
 @pytest.mark.parametrize("raw", ["NaN", "sNaN", "Infinity", "-Infinity", "1E999999",
-                                 "-5.00", "0.00", "0", "+5.00", "1000000000.01", "1E+10",
+                                 "-5.00", "-0.01", "+0.00", "-0.00", "0.001", "0.000", "+5.00", "1000000000.01", "1E+10",
                                  " ", "5.001"])
 def test_invalid_amounts_rejected_cleanly(raw):
     with pytest.raises(CamtError) as e:
@@ -157,3 +157,31 @@ def test_several_reports_rejected():
     doubled = xml[:end] + xml[start:end] + xml[end:]
     with pytest.raises(CamtError, match="Mehrere Berichte in einer Datei werden nicht unterstützt."):
         parse_camt052(doubled.encode("utf-8"))
+
+
+def test_zero_entry_skipped_and_counted():
+    st = parse_camt052(mk([dict(amount=0, ref="Z1"), dict(amount=1700, ref="R1")]))
+    assert [t.amount_cents for t in st.entries] == [1700]
+    assert st.skipped_zero == 1
+    assert st.skipped_date == date(2025, 1, 7)
+    assert st.opening_cents + sum(t.amount_cents for t in st.entries) == st.closing_cents
+
+
+@pytest.mark.parametrize("raw", ["0", "0.0", "0.00", "00.00"])
+def test_zero_spellings_skipped(raw):
+    st = parse_camt052(mk([dict(amount_raw=raw)]))
+    assert st.entries == [] and st.skipped_zero == 1
+
+
+def test_only_zero_entries():
+    st = parse_camt052(mk([dict(amount=0, ref="Z1"), dict(amount=0, ref="Z2")]))
+    assert st.entries == [] and st.skipped_zero == 2
+
+
+def test_pending_zero_entry_not_counted():
+    st = parse_camt052(mk([dict(amount=0, status="PDNG")]))
+    assert st.skipped_zero == 0
+
+
+def test_no_zero_entries_counts_zero():
+    assert parse_camt052(mk([dict(amount=100)])).skipped_zero == 0

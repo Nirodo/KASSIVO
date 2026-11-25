@@ -68,7 +68,7 @@
     <tr><th scope="row">&lt;Datei&gt;: DOCTYPE/ENTITY nicht erlaubt</th><td>Aus Sicherheitsgründen akzeptiert KASSIVO keine XML-Dateien mit solchen Angaben. Ein echter Bankexport hat sie nicht.</td></tr>
     <tr><th scope="row">&lt;Datei&gt;: Rpt fehlt / IBAN fehlt</th><td>Die Datei enthält keinen Bericht oder keine Konto-IBAN.</td></tr>
     <tr><th scope="row">&lt;Datei&gt;: Mehrere Berichte in einer Datei werden nicht unterstützt.</th><td>Die Datei fasst mehrere Berichte zusammen. Exportieren Sie je Konto und Tag.</td></tr>
-    <tr><th scope="row">&lt;Datei&gt;: ungültiger Betrag</th><td>Ein Betrag ist 0,00, hat ein Vorzeichen im Text, mehr als zwei Nachkommastellen oder ist übergroß. Die Datei wird dann ganz abgelehnt.</td></tr>
+    <tr><th scope="row">&lt;Datei&gt;: ungültiger Betrag</th><td>Ein Betrag hat ein Vorzeichen im Text, mehr als zwei Nachkommastellen oder ist übergroß. Die Datei wird dann ganz abgelehnt. Einträge mit 0,00 € sind kein Fehler, siehe unten.</td></tr>
     <tr><th scope="row">&lt;Datei&gt;: Betrag oder Soll/Haben-Kennzeichen fehlt</th><td>Die Datei ist unvollständig. Exportieren Sie sie neu.</td></tr>
     <tr><th scope="row">&lt;Datei&gt;: Buchungsdatum fehlt / ungültiges Datum</th><td>Ein Datum fehlt oder ist kaputt. Exportieren Sie neu.</td></tr>
   </tbody>
@@ -79,7 +79,7 @@
 <ul>
   <li><strong>Nur gebuchte Umsätze:</strong> KASSIVO übernimmt Einträge mit dem Status „gebucht“ (BOOK) und überspringt alle anderen.</li>
   <li><strong>Sammelbuchungen</strong> (eine Buchung mit mehreren Einzelposten) importiert KASSIVO ohne Gegenpartei. Sie werden daher nie automatisch einem Mitglied zugeordnet und stehen, wenn es Eingänge sind, in „Unklar“.</li>
-  <li><strong>Einträge mit 0,00 €</strong> machen den Import der ganzen Datei unmöglich. KASSIVO meldet dann zum Beispiel „2026-03-05.xml: ungültiger Betrag“. Nur bei den Salden ist 0,00 erlaubt. Lassen Sie den Tag nicht einfach aus dem Export weg: Dann fehlen alle Zahlungen dieses Tages für immer, denn Buchungen von Hand gibt es nicht. Die betroffenen Monate erscheinen überfällig, obwohl bezahlt wurde. Klären Sie den Tag mit der Bank, zum Beispiel einen Export ohne die 0,00-Buchung. Oder Sie nehmen die Lücke hin, bis eine spätere Version solche Einträge mit einer Warnung überspringt.</li>
+  <li><strong>Einträge mit 0,00 €</strong> (zum Beispiel Bankinformationen) werden übersprungen und nicht gespeichert. KASSIVO meldet sie als Warnung auf der Ergebnisseite, zum Beispiel „Konto XX00…0001, 2026-03-05: 1 Eintrag mit 0,00 € übersprungen“. Alle anderen Zahlungen der Datei werden normal importiert. Enthält eine Datei nur 0,00-Einträge, ist der Import erfolgreich mit 0 neuen Buchungen und der Warnung. Die Einträge zählen weder als neu noch als Duplikat; ein erneuter Import zeigt dieselbe Warnung noch einmal. Nur bei den Salden ist 0,00 ebenfalls erlaubt.</li>
   <li>Echte Bankdateien gehören nie in Git, Issues oder Pull Requests.</li>
 </ul>
 <div class="callout callout-warn">

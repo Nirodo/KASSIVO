@@ -455,3 +455,13 @@ def test_check_start_foreign_origin_changes_nothing(client, db):
     assert r.status_code == 403
     assert get_check_start(db) == "2025-07"
     assert _statuses(db, ids) == ["proposed"] * 5
+
+
+def test_import_page_shows_zero_entry_warning(client):
+    r = _upload(client, _zip([
+        {"amount": 0, "name": "Bankinfo", "ref": "Z1"},
+        {"amount": 1700, "name": "Erika Muster", "cp_iban": OTHER_IBAN, "purpose": "Beitrag", "ref": "R1"},
+    ]))
+    assert r.status_code == 200
+    assert "Warnungen" in r.text and "1 Eintrag mit 0,00 € übersprungen" in r.text
+    assert IBAN not in r.text
