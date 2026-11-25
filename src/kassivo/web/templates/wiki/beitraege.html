@@ -14,7 +14,7 @@
 <h3>Prüfungsstart festlegen</h3>
 <ol class="steps">
   <li>Tragen Sie im Abschnitt „Prüfungsstart“ bei „Prüfungsstart (Monat)“ den ersten Monat ein, der geprüft werden soll (JJJJ-MM).</li>
-  <li>Wählen Sie „Prüfungsstart speichern“. KASSIVO meldet danach: „Prüfungsstart gespeichert. N Zahlungen neu verteilt.“</li>
+  <li>Wählen Sie „Prüfungsstart speichern“. KASSIVO meldet danach: „Prüfungsstart gespeichert. N Zahlungen neu verteilt.“ Liegen Zahlungen jetzt vor dem Prüfungsstart, kommt „M liegen vor dem Prüfungsstart.“ dazu. N zählt nur Zahlungen, deren Verteilung sich geändert hat.</li>
 </ol>
 
 <h2>Beispiele</h2>
@@ -31,7 +31,7 @@
   <li><strong>Schreibweise:</strong> Der Punkt ist das Tausendertrennzeichen, das Komma trennt die Cent. <code>1.500</code> liest KASSIVO als 1.500,00 €. <code>17.00</code> lehnt es ab, schreiben Sie <code>17,00</code>.</li>
   <li><strong>Eine Änderung wirkt ab dem Gültigkeitsmonat.</strong> Frühere Monate behalten ihren Beitrag. Das gilt nur, solange Sie den Monat richtig wählen: Wählen Sie einen Monat in der Vergangenheit, ändern sich die Soll-Beträge ab diesem Monat. Speichern Sie für dieselbe Art und denselben Monat noch einmal, ersetzt der neue Betrag den alten.</li>
   <li><strong>Prüfungsstart:</strong> Monate vor dem Prüfungsstart zählen nicht. Sie zeigen „—“, haben kein Soll, und Verteilungen beginnen frühestens im Prüfungsstart-Monat.</li>
-  <li><strong>Neu verteilen:</strong> Ändern Sie den Prüfungsstart, verteilt KASSIVO die <em>offenen Vorschläge</em> und Zahlungen ohne Verteilung nach den Regeln neu (siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>). Vorschläge für Zahlungen vor dem neuen Prüfungsstart verschwinden. Bestätigte Verteilungen und rückgängig gemachte Vorschläge fasst es nie an.</li>
+  <li><strong>Neu verteilen:</strong> Ändern Sie den Prüfungsstart, verteilt KASSIVO alle <em>abgeleiteten</em> Verteilungen neu, automatisch bestätigte wie vorgeschlagene (siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>). Zahlungen vor dem neuen Prüfungsstart verlieren ihre automatische Verteilung. Verteilungen, die manuell sind (von Ihnen bestätigt, rückgängig gemacht oder aufgehoben), fasst es nie an.</li>
   <li><strong>Solange kein Prüfungsstart gespeichert ist,</strong> zeigen Beitragsübersicht und Import den Hinweis „Prüfungsstart ist noch nicht festgelegt“ mit einem Link hierher. Auf dieser Seite steht dann „nicht gesetzt“. Gibt es schon Buchungen, nennt sie dazu den Monat der ältesten Buchung („abgeleitet“). KASSIVO rechnet in dem Fall mit diesem Monat. Legen Sie ihn trotzdem ausdrücklich fest.</li>
 </ul>
 <div class="callout callout-warn">

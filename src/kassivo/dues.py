@@ -7,24 +7,31 @@ Automatische Verteilung eines Zahlungseingangs (#27). Bezeichnungen:
 start = max(Prüfungsstart, Beitragsbeginn des Mitglieds), P = Buchungsmonat,
 offener Monat = Monat ab start mit Soll minus bestätigt (andere Buchungen) > 0.
 
+Grundsatz: Zeilen mit source='auto' (Vorschlag und bestätigt) sind abgeleitet
+und werden neu berechnet, sobald sich die Eingaben ändern (Prüfungsstart,
+Zuordnung, frühere Zahlungen). Zeilen mit source='manual' sind Entscheidungen
+des Nutzers (Bestätigen, Rückgängig, Verteilung aufheben, Neu vorschlagen) und
+werden von keinem automatischen Weg angefasst.
+
 1. Vor dem Prüfungsstart (P < Prüfungsstart): keine Verteilung, kein
    Vorschlag. Die Zahlung bleibt dem Mitglied zugeordnet (Historie).
-2. Ist P offen, geht der Betrag zuerst dorthin, der Rest an die ältesten
+2. Angefangener Monat: Gibt es Monate M mit start <= M < P, die teilweise
+   bezahlt sind, und übersteigt der Betrag den Fehlbetrag nicht, geht alles in
+   den ältesten solchen Monat.
+3. Ist P offen, geht der Betrag zuerst dorthin, der Rest an die ältesten
    anderen offenen Monate (Rückstand), danach an folgende Monate
    (Vorauszahlung), jeder Monat bis zu seinem vollen Fehlbetrag.
-3. Ist P nicht offen: älteste offene Monate aufsteigend, dann folgende.
-4. Folgemonate höchstens MAX_MONTHS_AHEAD Monate nach max(P, start); nach
+4. Ist P nicht offen: älteste offene Monate aufsteigend, dann folgende.
+5. Folgemonate höchstens MAX_MONTHS_AHEAD Monate nach max(P, start); nach
    dem Austrittsmonat ist kein Monat mehr fällig.
-5. Eindeutig (automatisch bestätigt, source='auto'): alles verteilt und
-   jeder Monat bekommt seinen vollen Fehlbetrag, oder eine einzelne
-   Teilzahlung (Betrag kleiner als der Fehlbetrag des ersten Monats).
-6. Sonst Vorschlag zur Prüfung (status='proposed'): ein Rest geht in den
+6. Eindeutig (automatisch bestätigt): alles verteilt, höchstens
+   MAX_AUTO_MONTHS Monate, und jeder Monat bekommt seinen vollen Fehlbetrag
+   oder es ist eine einzelne Teilzahlung.
+7. Sonst Vorschlag zur Prüfung (status='proposed'): ein Rest geht in den
    letzten verteilten Monat, ohne verteilten Monat in P. Die Summe ist
    immer der Buchungsbetrag.
-7. Bestätigte Zeilen bleiben unangetastet, ersetzt werden nur Vorschläge.
-8. source='manual' heißt: der Nutzer hat entschieden (Bestätigen oder
-   Rückgängig). Automatische Läufe fassen nur Buchungen ohne Zeilen oder
-   mit reinen Vorschlägen von KASSIVO (source='auto') an.
+8. Läufe über mehrere Buchungen gehen chronologisch und wiederholen sich, bis
+   nichts Neues mehr bestätigt wird (Fixpunkt: ein zweiter Lauf ändert nichts).
 
 Verworfen: nur den exakten frühesten Monat im Buchungsmonat bestätigen (zu
 viel Handarbeit, #27) und den Monat nach einer Zahlung am Monatsende

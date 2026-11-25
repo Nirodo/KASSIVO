@@ -56,11 +56,12 @@
   <form method="post" action="/transactions/{{ tx['id'] }}/allocate/propose" class="inline">
     <input type="hidden" name="next" value="{{ next_value }}">
     <button type="submit">Neu vorschlagen</button>
-    <span class="hint">Bei bestätigter Verteilung ändert sich nichts.</span>
+    <span class="hint">Schlägt nur vor und bestätigt nie. Bei bestätigter Verteilung ändert sich nichts.</span>
   </form>
   <form method="post" action="/transactions/{{ tx['id'] }}/allocate/clear" class="inline">
     <input type="hidden" name="next" value="{{ next_value }}">
     <label class="check"><input type="checkbox" name="confirm" value="yes"> Ich bestätige, dass die Verteilung aufgehoben wird</label>
+    <span class="hint">Danach steht die Zahlung als Vorschlag zur Prüfung bereit.</span>
     <button type="submit">Verteilung aufheben</button>
   </form>
 </section>

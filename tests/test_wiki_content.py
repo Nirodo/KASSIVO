@@ -85,6 +85,11 @@ def test_faq_has_at_least_ten_questions(pages):
     ("zuordnung", ["automatisch verteilt", "Rückgängig"]),
     ("beitragsuebersicht", ["warten auf Ihre Prüfung", "Automatisch verteilt"]),
     ("grenzen", ["Buchungsmonat zuerst"]),
+    # Fix-Runde 1: abgeleitet und manuell
+    ("verteilung", ["abgeleitet", "manuell", "Mehr als 12 Monate", "angefangen",
+                    "schlägt nur vor", "manuellen Vorschlag"]),
+    ("begriffe", ["abgeleitet", "manuell"]),
+    ("beitraege", ["abgeleitet", "manuell"]),
     ("import", ["camt.052.001.08", "Duplikat", "Es wurde nichts importiert"]),
     ("zuordnung", ["mehrdeutig", "Absender merken", "ausgetreten", "Unklar"]),
     ("backup", ["journal", "kassivo.db", "backups"]),
@@ -344,13 +349,44 @@ def test_distribution_rest_after_partial_payment():
     assert dues.month_status(conn, mid, "2026-01", date(2026, 2, 1)).status == "PAID"
 
 
-def test_distribution_rest_in_next_month_counts_for_next_month():
+def test_distribution_rest_in_next_month_completes_january():
     conn, mid = _setup()
     dues.propose_allocations(conn, _pay(conn, mid, "2026-01-15", 1000))
-    rest = _pay(conn, mid, "2026-02-10", 700)
+    rest = _pay(conn, mid, "2026-02-03", 700)
     dues.propose_allocations(conn, rest)
-    assert _rows(conn, rest) == [("2026-02", 700, "confirmed")]  # Buchungsmonat zuerst
-    assert dues.month_status(conn, mid, "2026-01", date(2026, 2, 11)).status == "OVERDUE"
+    assert _rows(conn, rest) == [("2026-01", 700, "confirmed")]  # angefangener Monat
+    assert dues.month_status(conn, mid, "2026-01", date(2026, 2, 11)).status == "PAID"
+    assert dues.month_status(conn, mid, "2026-02", date(2026, 2, 11)).status == "OPEN"
+    conn2, mid2 = _setup()
+    dues.propose_allocations(conn2, _pay(conn2, mid2, "2026-01-15", 1000))
+    dues.propose_allocations(conn2, _pay(conn2, mid2, "2026-02-05", 1700))
+    march = _pay(conn2, mid2, "2026-03-03", 700)
+    dues.propose_allocations(conn2, march)
+    assert _rows(conn2, march) == [("2026-01", 700, "confirmed")]
+
+
+def test_distribution_13_months_is_exception():
+    conn, mid = _setup()
+    tx = _pay(conn, mid, "2026-01-15", 22100)
+    dues.propose_allocations(conn, tx)
+    assert {r[2] for r in _rows(conn, tx)} == {"proposed"}
+    assert dues.review_reason(conn, tx) == "Mehr als 12 Monate im Voraus"
+
+
+def test_clear_and_repropose_are_manual_proposals():
+    conn, mid = _setup()
+    tx = _pay(conn, mid, "2026-01-15", 1700)
+    dues.propose_allocations(conn, tx)
+    dues.clear_allocations(conn, tx)
+    assert _rows(conn, tx) == [("2026-01", 1700, "proposed")]
+    dues.auto_distribute_pending(conn)
+    dues.redistribute_all(conn)
+    assert _rows(conn, tx) == [("2026-01", 1700, "proposed")]
+
+
+def test_check_start_note_example_matches_code(pages):
+    from kassivo.web.common import _NOTES
+    assert _NOTES["reproposed_outside"].format(n=3, o=2) in _text(pages["verteilung"])
 
 
 def test_distribution_second_payment_same_month():
@@ -461,9 +497,9 @@ def test_sibling_reassignment_flow():
     dues.confirm_allocations(conn, tx, [("2026-02", 1700)])  # Ihre Bestätigung sperrt
     with pytest.raises(ValueError, match="hat bestätigte Verteilung: Verteilung zuerst aufheben"):
         matching.assign_member(conn, tx, erika)
-    dues.clear_allocations(conn, tx)
+    dues.clear_allocations(conn, tx)  # manueller Vorschlag, entsperrt das Umhängen
     matching.assign_member(conn, tx, erika)
-    assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]
+    assert _rows(conn, tx) == [("2026-02", 1700, "proposed")]  # bleibt manueller Vorschlag
 
 
 def test_keins_is_reassigned_by_auto_assign_and_ambiguity_is_permanent():
@@ -605,11 +641,13 @@ def test_faq_example_march_without_february():
 
 def test_run_note_example_matches_code(pages):
     from kassivo.web.common import _NOTES
-    assert _NOTES["run"].format(n=12, a=9, r=2, o=1) in _text(pages["verteilung"])
+    assert _NOTES["run_outside"].format(n=12, a=9, r=2, o=1) in _text(pages["verteilung"])
     assert _NOTES["reproposed"].format(n=0).replace("0", "N", 1) in _text(pages["beitraege"])
 
 
 def test_auto_rows_limit_matches_wiki(pages):
     import inspect
-    assert inspect.signature(dues.auto_rows).parameters["limit"].default == 200
-    assert "200 neuesten automatischen Verteilungen" in _text(pages["grenzen"])
+    from kassivo.web import auto_routes
+    assert inspect.signature(dues.auto_rows).parameters["limit"].default == auto_routes.PAGE_SIZE
+    assert auto_routes.PAGE_SIZE == 100
+    assert "100 automatische Verteilungen je Seite" in _text(pages["grenzen"])

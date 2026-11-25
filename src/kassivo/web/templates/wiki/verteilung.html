@@ -2,18 +2,28 @@
 {% block body %}
 <h2>Wofür ist das?</h2>
 <p>Eine Zahlung sagt KASSIVO nicht, für welchen Monat sie gedacht ist. Die <strong>Verteilung</strong> teilt sie auf Beitragsmonate auf. Erst eine <strong>bestätigte</strong> Verteilung macht einen Monat „Bezahlt“. KASSIVO verteilt eindeutige Zahlungen selbst und bestätigt sie gleich (<strong>automatisch verteilt</strong>). Nur echte Ausnahmen bleiben ein <strong>Vorschlag</strong> („vorgeschlagen“), den Sie prüfen und bestätigen. Jede automatische Verteilung sehen Sie auf der Seite <a href="/auto">Automatisch verteilt</a> und können sie mit einem Klick rückgängig machen.</p>
+<h3>Abgeleitet oder manuell</h3>
+<p>KASSIVO unterscheidet zwei Herkünfte einer Verteilung:</p>
+<ul>
+  <li><strong>Abgeleitet (automatisch):</strong> Alles, was KASSIVO selbst berechnet hat, automatische Verteilungen und automatische Vorschläge. KASSIVO berechnet sie neu, sobald sich etwas ändert, von dem sie abhängen: der Prüfungsstart, die Zuordnung einer Zahlung zu einem Mitglied oder frühere Zahlungen desselben Mitglieds.</li>
+  <li><strong>Manuell (Ihre Entscheidung):</strong> Alles, was Sie selbst festgelegt haben: „Verteilung bestätigen“, „Rückgängig“, „Verteilung aufheben“ und „Neu vorschlagen“. Diese Verteilungen und Vorschläge fasst KASSIVO nie von selbst an, auch nicht beim Ändern des Prüfungsstarts oder beim Umhängen anderer Zahlungen.</li>
+</ul>
 
 <h2>Nach welchen Regeln verteilt KASSIVO?</h2>
 <ol>
   <li><strong>Vor dem Prüfungsstart:</strong> Ist eine Zahlung vor dem Prüfungsstart-Monat gebucht, verteilt KASSIVO sie nicht. Sie bleibt dem Mitglied zugeordnet und steht in seiner Zahlungshistorie, erscheint aber nicht als Vorschlag.</li>
+  <li><strong>Angefangener Monat zuerst:</strong> Ist ein früherer Monat nur teilweise bezahlt und übersteigt die Zahlung den fehlenden Rest nicht, geht sie ganz in den ältesten solchen Monat. So vervollständigt ein Rest den angefangenen Monat, auch wenn er erst im Folgemonat kommt.</li>
   <li><strong>Buchungsmonat zuerst:</strong> Ist im <a href="/wiki/begriffe#buchungsmonat">Buchungsmonat</a> noch etwas offen, geht die Zahlung zuerst dorthin. Ein Rest geht an die ältesten offenen Monate (<strong>Rückstand</strong>), danach an die folgenden Monate (<strong>Vorauszahlung</strong>). Jeder Monat bekommt dabei höchstens, was ihm noch fehlt (<a href="/wiki/begriffe#soll">Soll</a> minus bestätigt Bezahltes).</li>
   <li><strong>Buchungsmonat schon bezahlt</strong> (zum Beispiel die zweite Zahlung im selben Monat): Die Zahlung geht an den ältesten offenen Monat, sonst an den nächsten Monat.</li>
-  <li><strong>Automatisch bestätigt</strong> wird, wenn das Ergebnis eindeutig ist: Der ganze Betrag ist verteilt und jeder Monat bekommt seinen vollen Fehlbetrag. Das gilt auch für Vielfache des Beitrags, zum Beispiel 34,00 € oder 204,00 €. Eine einzelne <strong>Teilzahlung</strong> unter dem Beitrag wird ebenfalls automatisch bestätigt. Der Rest des Monats bleibt sichtbar offen.</li>
+  <li><strong>Automatisch bestätigt</strong> wird, wenn das Ergebnis eindeutig ist: Der ganze Betrag ist verteilt und jeder Monat bekommt seinen vollen Fehlbetrag. Das gilt auch für Vielfache des Beitrags, zum Beispiel 34,00 € oder 204,00 €. Eine einzelne <strong>Teilzahlung</strong> unter dem Beitrag wird ebenfalls automatisch bestätigt. Der Rest des Monats bleibt sichtbar offen. Höchstens 12 Monate werden automatisch bestätigt.</li>
   <li><strong>Ausnahme zur Prüfung:</strong> Alles andere bleibt ein Vorschlag. In „Offene Vorschläge“ steht dann der Grund:
     <ul>
       <li>„Betrag passt nicht zu ganzen Monatsbeiträgen“, zum Beispiel 20,00 € = 17,00 € + 3,00 €.</li>
       <li>„Rest ohne offenen Monat“: Nach dem Verteilen bleibt Geld übrig, aber kein Monat ist mehr fällig (etwa wegen eines Austritts).</li>
       <li>„Kein offener Monat (Mitglied ausgetreten oder Zahlung ohne fälligen Monat)“.</li>
+      <li>„Mehr als 12 Monate im Voraus“: Die Zahlung reicht für mehr als 12 Monate, zum Beispiel 221,00 € (13 × 17,00 €).</li>
+      <li>„Von Ihnen zur Prüfung gestellt: bitte Verteilung prüfen und bestätigen“: nach „Rückgängig“, „Verteilung aufheben“ oder „Neu vorschlagen“.</li>
+      <li>„Wird beim nächsten Lauf automatisch verteilt“: Der Vorschlag wäre inzwischen eindeutig, zum Beispiel weil eine spätere Zahlung den Monat ergänzt hat. „Offene Vorschläge jetzt automatisch verteilen“ erledigt das.</li>
     </ul>
   </li>
 </ol>
@@ -28,7 +38,7 @@
   <li>Wählen Sie „Verteilung bestätigen“. Die Zahlung zählt jetzt als bezahlt.</li>
 </ol>
 <h3>Offene Vorschläge jetzt automatisch verteilen</h3>
-<p>Der Knopf „Offene Vorschläge jetzt automatisch verteilen“ in „Offene Vorschläge“ wendet die Regeln erneut auf alle offenen Vorschläge an, zum Beispiel auf Vorschläge aus einer älteren KASSIVO-Version. Eindeutige Zahlungen werden dabei automatisch verteilt. Vorschläge für Zahlungen vor dem Prüfungsstart verschwinden. KASSIVO meldet danach zum Beispiel: „12 geprüft: 9 automatisch verteilt, 2 bleiben zur Prüfung, 1 liegen vor dem Prüfungsstart.“ Bestätigte Verteilungen und rückgängig gemachte Vorschläge fasst der Knopf nicht an.</p>
+<p>Der Knopf „Offene Vorschläge jetzt automatisch verteilen“ in „Offene Vorschläge“ wendet die Regeln erneut auf alle offenen Vorschläge an, zum Beispiel auf Vorschläge aus einer älteren KASSIVO-Version. Eindeutige Zahlungen werden dabei automatisch verteilt. Vorschläge für Zahlungen vor dem Prüfungsstart verschwinden. KASSIVO rechnet so lange, bis sich nichts mehr ändert; ein zweiter Klick ändert nichts. Danach meldet es zum Beispiel: „12 geprüft: 9 automatisch verteilt, 2 bleiben zur Prüfung, 1 liegen vor dem Prüfungsstart.“ Zahlungen vor dem Prüfungsstart, die schon keine Verteilung hatten, zählt es nicht mit. Bestätigte Verteilungen und manuelle Vorschläge fasst der Knopf nicht an.</p>
 <h3>Automatisch verteilt und Rückgängig</h3>
 <p>Die Seite <a href="/auto">Automatisch verteilt</a> (Link in „Buchungen“ und in der Beitragsübersicht) zeigt die neuesten automatischen Verteilungen: Datum, Mitglied, Betrag, die Monate mit Betrag und die Art. Die Art ist „Normal“ (genau der Buchungsmonat), „Rückstand“ (ein früherer Monat), „Vorauszahlung“ (ein späterer Monat) oder „Teilzahlung“.</p>
 <ol class="steps">
@@ -36,15 +46,15 @@
   <li>Die Zahlung zählt nicht mehr als bezahlt. Sie steht jetzt als Vorschlag in „Offene Vorschläge“.</li>
   <li>Ändern Sie dort auf der Seite „Verteilung“ die Monate und wählen Sie „Verteilung bestätigen“.</li>
 </ol>
-<p>Einen rückgängig gemachten Vorschlag bestätigt KASSIVO nie wieder von selbst, auch nicht beim Ändern des Prüfungsstarts. „Rückgängig“ gibt es nur für automatische Verteilungen. Eine Verteilung, die Sie selbst bestätigt haben, lehnt KASSIVO ab: „Nur automatisch verteilte Zahlungen können rückgängig gemacht werden.“ Die Seite „Verteilung“ markiert automatische Verteilungen mit „(automatisch …)“.</p>
+<p>Der Vorschlag nach „Rückgängig“ ist manuell: KASSIVO bestätigt ihn nie wieder von selbst, auch nicht beim Ändern des Prüfungsstarts oder beim Umhängen auf ein anderes Mitglied (dort bleibt er ein Vorschlag). „Rückgängig“ gibt es nur für automatische Verteilungen. Eine Verteilung, die Sie selbst bestätigt haben, lehnt KASSIVO ab: „Nur automatisch verteilte Zahlungen können rückgängig gemacht werden.“ Die Seite „Verteilung“ markiert automatische Verteilungen mit „(automatisch …)“.</p>
 <h3>Neu vorschlagen</h3>
-<p>„Neu vorschlagen“ lässt KASSIVO die Verteilung einer Zahlung nach den Regeln oben neu berechnen, zum Beispiel nachdem Sie andere Zahlungen bestätigt haben. Ist das Ergebnis eindeutig, bestätigt KASSIVO es dabei automatisch. Bei einer bestätigten Verteilung ändert sich nichts.</p>
+<p>„Neu vorschlagen“ berechnet die Verteilung einer Zahlung nach den Regeln oben neu, zum Beispiel nachdem Sie andere Zahlungen bestätigt haben. Es schlägt nur vor und bestätigt nie: Das Ergebnis ist ein manueller Vorschlag, den Sie mit „Verteilung bestätigen“ übernehmen. Bei einer bestätigten Verteilung ändert sich nichts.</p>
 <h3>Verteilung aufheben</h3>
 <ol class="steps">
   <li>Haken Sie „Ich bestätige, dass die Verteilung aufgehoben wird“ an.</li>
   <li>Wählen Sie „Verteilung aufheben“.</li>
 </ol>
-<p>KASSIVO löscht dann alle Zeilen der Verteilung, auch bestätigte. Mitglied, Kategorie und gemerkte IBAN bleiben. Es schlägt nicht sofort neu vor. Mit „Neu vorschlagen“ holen Sie einen Vorschlag zurück oder tragen die Monate selbst ein. Achtung: „Offene Vorschläge jetzt automatisch verteilen“ und eine Änderung des Prüfungsstarts verteilen auch Zahlungen ohne Verteilung neu. Ohne Häkchen meldet KASSIVO einen Fehler und tut nichts.</p>
+<p>KASSIVO löscht dann alle Zeilen der Verteilung, auch bestätigte, und legt an ihrer Stelle einen manuellen Vorschlag an. Die Zahlung zählt nicht mehr als bezahlt und steht in „Offene Vorschläge“. Automatische Läufe und eine Änderung des Prüfungsstarts bestätigen diesen Vorschlag nie. Liegt die Zahlung vor dem Prüfungsstart, bleibt sie ohne Verteilung. Mitglied, Kategorie und gemerkte IBAN bleiben, die Zahlung lässt sich danach auf ein anderes Mitglied umhängen. Ohne Häkchen meldet KASSIVO einen Fehler und tut nichts.</p>
 
 <h2>Beispiele</h2>
 <p>Das Mitglied Max Mustermann zahlt 17,00 € im Monat (Art Aktiv). Der Prüfungsstart ist 2026-01, bisher ist nichts bezahlt.</p>
@@ -64,7 +74,7 @@
   <p><strong>Beispiel:</strong> Rückstand. Max hat den Januar bezahlt, den Februar nicht. Am 03.03.2026 zahlt er 34,00 €. KASSIVO gibt 17,00 € zuerst dem Buchungsmonat März und den Rest dem ältesten offenen Monat, dem Februar. Beides automatisch, Art „Rückstand“. Zahlt er im März nur 17,00 €, geht das auf den März, und der Februar bleibt „Überfällig“.</p>
 </div>
 <div class="callout callout-example">
-  <p><strong>Beispiel:</strong> Teilzahlung. Am 15.01.2026 gehen 10,00 € ein. KASSIVO verteilt sie automatisch auf den Januar (Art „Teilzahlung“). Der Januar steht auf „Teilweise“, nach Monatsende auf „Überfällig“. Gehen die fehlenden 7,00 € am 25.01.2026 ein, ergänzen sie automatisch den Januar, er ist „Bezahlt“. Kommen sie erst am 10.02.2026, zählen sie für den Februar (Buchungsmonat zuerst), und der Januar bleibt offen. Gehören sie zum Januar, wählen Sie auf <a href="/auto">Automatisch verteilt</a> „Rückgängig“ und tragen Sie auf der Seite „Verteilung“ den Januar ein.</p>
+  <p><strong>Beispiel:</strong> Teilzahlung. Am 15.01.2026 gehen 10,00 € ein. KASSIVO verteilt sie automatisch auf den Januar (Art „Teilzahlung“). Der Januar steht auf „Teilweise“, nach Monatsende auf „Überfällig“. Gehen die fehlenden 7,00 € am 25.01.2026 ein, ergänzen sie automatisch den Januar, er ist „Bezahlt“. Kommen sie erst am 03.02.2026, vervollständigen sie ebenfalls den Januar (angefangener Monat zuerst), der Februar bleibt unberührt offen. Dasselbe gilt, wenn Max den Februar mit 17,00 € bezahlt hat und die 7,00 € erst im März kommen: Sie gehen in den Januar.</p>
 </div>
 <div class="callout callout-example">
   <p><strong>Beispiel:</strong> 20,00 € sind eine Ausnahme zur Prüfung. Am 15.01.2026 gehen 20,00 € ein. KASSIVO schlägt 17,00 € für 2026-01 und 3,00 € für 2026-02 vor, bestätigt aber nicht. In „Offene Vorschläge“ steht „Betrag passt nicht zu ganzen Monatsbeiträgen“. Bis Sie bestätigen, zählt nichts davon als bezahlt.</p>
@@ -82,7 +92,8 @@
   <li><strong>Wie KASSIVO rechnet:</strong> Fällig sind die Monate ab dem späteren von Prüfungsstart und „Zahlt ab“-Monat des Mitglieds bis zum Austrittsmonat. Ein Rest ohne offenen Monat geht in den zuletzt verteilten Monat. Gibt es keinen, geht er in den Buchungsmonat. So entspricht die Summe immer dem Betrag. Die Verteilung reicht höchstens 36 Monate über den späteren von Startmonat und Buchungsmonat hinaus.</li>
   <li><strong>Reihenfolge:</strong> Beim Import und beim Knopf „Offene Vorschläge jetzt automatisch verteilen“ verteilt KASSIVO die Zahlungen nach Buchungsdatum, älteste zuerst. Spätere Zahlungen sehen so die früheren.</li>
   <li><strong>Warnung „Monat bereits bezahlt“:</strong> Sie erscheint in der Zeile eines Vorschlags, wenn der Monat inzwischen durch bestätigte Zahlungen voll bezahlt ist. Prüfen Sie dann den Monat. Sonst zahlen Sie doppelt.</li>
-  <li><strong>Prüfungsstart ändern</strong> verteilt offene Vorschläge nach den Regeln neu und lässt bestätigte Verteilungen unverändert.</li>
+  <li><strong>Prüfungsstart ändern</strong> berechnet alle abgeleiteten Verteilungen neu, auch automatisch bestätigte. Zahlungen, die jetzt vor dem Prüfungsstart liegen, verlieren ihre automatische Verteilung. Manuelle Verteilungen und Vorschläge bleiben unverändert. Die Meldung zählt nur Zahlungen, deren Verteilung sich wirklich geändert hat, zum Beispiel „Prüfungsstart gespeichert. 3 Zahlungen neu verteilt, 2 liegen vor dem Prüfungsstart.“</li>
+  <li><strong>Umhängen:</strong> Hängen Sie eine Zahlung auf ein anderes Mitglied oder auf „— keins —“, berechnet KASSIVO die abgeleiteten Verteilungen beider Mitglieder ab dieser Zahlung neu.</li>
   <li>Beträge je Zeile: 0,01 € bis 100.000,00 €. Ein Monat darf nur einmal vorkommen.</li>
   <li>Eine Verteilung, die Sie bestätigt haben, sperrt das Umhängen der Zahlung auf ein anderes Mitglied. Heben Sie sie vorher auf (<a href="/wiki/zuordnung">Zahlungen zuordnen</a>). Eine automatische Verteilung sperrt nicht: Beim Umhängen rechnet KASSIVO sie für das neue Mitglied neu.</li>
 </ul>

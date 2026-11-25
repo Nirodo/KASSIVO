@@ -106,7 +106,7 @@ Der cmd-Befehl `set` setzt in PowerShell keine Umgebungsvariable. KASSIVO starte
 
 Ausführlicher im Wiki unter "Erste Schritte" (`/wiki/start`).
 
-1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Am besten den ersten vollen Monat wählen, den der Kontoexport abdeckt: Beginnt der Export mitten im Monat, fehlen frühere Zahlungen dieses Monats und er erschiene als überfällig. Zahlungen, die vor dem Prüfungsstart-Monat gebucht sind (zum Beispiel am 20.03. bei Prüfungsstart 2026-04), bleiben dem Mitglied zugeordnet, werden aber nicht auf Monate verteilt und erscheinen nicht als Vorschlag. Wird der Prüfungsstart später geändert, verteilt KASSIVO offene Vorschläge neu; bestätigte Verteilungen bleiben unverändert.
+1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Am besten den ersten vollen Monat wählen, den der Kontoexport abdeckt: Beginnt der Export mitten im Monat, fehlen frühere Zahlungen dieses Monats und er erschiene als überfällig. Zahlungen, die vor dem Prüfungsstart-Monat gebucht sind (zum Beispiel am 20.03. bei Prüfungsstart 2026-04), bleiben dem Mitglied zugeordnet, werden aber nicht auf Monate verteilt und erscheinen nicht als Vorschlag. Wird der Prüfungsstart später geändert, berechnet KASSIVO alle automatischen Verteilungen und Vorschläge neu; von Ihnen bestätigte Verteilungen bleiben unverändert.
 2. **Mitglieder und Beiträge anlegen** (Mitglieder, Einstellungen).
 3. **Kontoexport importieren** (Import).
 4. **"Unklar" zuordnen**: jede Zahlung einem Mitglied zuordnen, mit "Absender merken". Weitere unklare Zahlungen derselben IBAN werden dann gleich mit zugeordnet. Der Knopf "Unklare automatisch zuordnen" wendet Gelerntes erneut auf die ganze Liste an, auch auf Zahlungen, die Sie mit "— keins —" auf Unklar zurückgesetzt haben. Zahlt eine IBAN für mehrere Mitglieder (z. B. ein Elternteil für zwei Kinder), wird sie nicht automatisch zugeordnet.
@@ -145,11 +145,12 @@ KASSIVO ordnet einen neuen Zahlungseingang automatisch zu, wenn die Absender-IBA
 
 **Verteilung**
 
-Nur bestätigte Verteilungen zählen als bezahlt. KASSIVO verteilt so:
+Nur bestätigte Verteilungen zählen als bezahlt. Grundsatz: Was KASSIVO selbst berechnet (automatisch verteilt oder vorgeschlagen), ist abgeleitet und wird neu berechnet, wenn sich Prüfungsstart oder Zuordnung ändern. Was Sie entschieden haben ("Verteilung bestätigen", "Rückgängig", "Verteilung aufheben", "Neu vorschlagen"), ist manuell und wird nie automatisch geändert. KASSIVO verteilt so:
 
 1. Zahlungen vor dem Prüfungsstart werden nicht verteilt (sie bleiben dem Mitglied zugeordnet).
-2. Zuerst der Buchungsmonat, falls dort etwas fehlt. Ein Rest geht an die ältesten offenen Monate (Rückstand), danach an folgende Monate (Vorauszahlung, höchstens 36 Monate voraus). Ist der Buchungsmonat schon bezahlt, beginnt KASSIVO beim ältesten offenen Monat.
-3. Ist alles verteilt und bekommt jeder Monat seinen vollen Fehlbetrag, oder ist es eine einzelne Teilzahlung, bestätigt KASSIVO selbst (automatisch verteilt). Sonst bleibt ein Vorschlag mit Grund zur Prüfung.
+2. Ist ein früherer Monat angefangen (teilweise bezahlt) und übersteigt die Zahlung den Rest nicht, vervollständigt sie den ältesten solchen Monat.
+3. Sonst zuerst der Buchungsmonat, falls dort etwas fehlt. Ein Rest geht an die ältesten offenen Monate (Rückstand), danach an folgende Monate (Vorauszahlung, höchstens 36 Monate voraus). Ist der Buchungsmonat schon bezahlt, beginnt KASSIVO beim ältesten offenen Monat.
+4. Ist alles verteilt, sind es höchstens 12 Monate und bekommt jeder Monat seinen vollen Fehlbetrag, oder ist es eine einzelne Teilzahlung, bestätigt KASSIVO selbst (automatisch verteilt). Sonst bleibt ein Vorschlag mit Grund zur Prüfung (zum Beispiel "Mehr als 12 Monate im Voraus").
 
 Beispiele bei 17,00 € Monatsbeitrag und Prüfungsstart 2026-01:
 
@@ -161,6 +162,8 @@ Beispiele bei 17,00 € Monatsbeitrag und Prüfungsstart 2026-01:
 | 204,00 € am 15.01.2026 | Januar bis Dezember je 17,00 €, automatisch verteilt |
 | 34,00 € am 03.03.2026, Januar bezahlt, Februar offen | März und Februar (Rückstand), automatisch verteilt |
 | 10,00 € am 15.01.2026 | Januar 10,00 €, automatisch verteilt; "Teilweise" |
+| danach 7,00 € am 03.02.2026 | Januar 7,00 € (vervollständigt den Januar), automatisch verteilt |
+| 221,00 € am 15.01.2026 (13 Monate) | Vorschlag zur Prüfung ("Mehr als 12 Monate im Voraus") |
 | 20,00 € am 15.01.2026 | Januar 17,00 € und Februar 3,00 €, Vorschlag zur Prüfung |
 | 17,00 € am 30.12.2025 | nicht verteilt (vor dem Prüfungsstart) |
 | 17,00 € am 30.12.2026, Dezember schon bezahlt | Januar 2027 (Vorauszahlung), automatisch verteilt |

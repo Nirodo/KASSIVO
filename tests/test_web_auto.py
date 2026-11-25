@@ -305,3 +305,10 @@ def test_import_result_explains_outside(client, db):
     assert "Automatisch zugeordnet: 2" in t
     assert "automatisch verteilt: 1, zur Prüfung: 0" in t
     assert "1 zugeordnete Zahlungen liegen vor dem Prüfungsstart" in t
+
+
+def test_allocate_page_says_repropose_only_proposes(client, db):
+    m, tx = _auto_tx(db)
+    t = _text(client.get(f"/transactions/{tx}/allocate").text)
+    assert "Schlägt nur vor und bestätigt nie." in t
+    assert "Danach steht die Zahlung als Vorschlag zur Prüfung bereit." in t
