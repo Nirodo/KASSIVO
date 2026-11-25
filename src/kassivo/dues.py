@@ -162,14 +162,82 @@ class _Plan:
         return not self.outside and self.reason is None
 
 
-def _start_month(conn, member_id: int, booking_month: str) -> tuple[str | None, str]:
-    """(Prüfungsstart, start). start = max(Prüfungsstart, Beitragsbeginn)."""
-    check_start = get_check_start(conn)
-    fee_start = conn.execute(
-        "select fee_start from member where id=?", (member_id,)
-    ).fetchone()["fee_start"]
-    bounds = [m for m in (check_start, fee_start) if m]
-    return check_start, (max(bounds) if bounds else booking_month)
+class _Member:
+    """Zwischenspeicher eines Mitglieds: Soll je Monat und bestätigt Bezahltes je Monat.
+
+    Gilt nur, solange niemand außerhalb von _Ctx bestätigte Zeilen schreibt oder
+    löscht. Bezahlt: Monat -> {Buchung: Cent}, aus allocation.member_id wie
+    _confirmed_paid.
+    """
+
+    def __init__(self, conn, member_id: int):
+        m = conn.execute("select fee_start, austritt from member where id=?",
+                         (member_id,)).fetchone()
+        self.fee_start = m["fee_start"] if m else None
+        self.austritt = m["austritt"][:7] if m and m["austritt"] else None
+        self.exists = m is not None
+        self.types = [(r["valid_from"], r["type_id"]) for r in conn.execute(
+            "select valid_from, type_id from member_type_history where member_id=?"
+            " order by valid_from", (member_id,))]
+        self.fees: dict[int, list[tuple[str, int]]] = {}
+        for r in conn.execute("select type_id, valid_from, cents from fee_rate"
+                              " order by valid_from"):
+            self.fees.setdefault(r["type_id"], []).append((r["valid_from"], r["cents"]))
+        self._expected: dict[str, int] = {}
+        self.paid: dict[str, dict[int, int]] = {}
+        for r in conn.execute("select tx_id, month, cents from allocation"
+                              " where member_id=? and status='confirmed'", (member_id,)):
+            by_tx = self.paid.setdefault(r["month"], {})
+            by_tx[r["tx_id"]] = by_tx.get(r["tx_id"], 0) + r["cents"]
+
+    def expected(self, month: str) -> int:
+        """Wie members.expected_cents, ohne Abfragen."""
+        if month in self._expected:
+            return self._expected[month]
+        value = 0
+        if self.exists and not (self.fee_start and month < self.fee_start) and not (
+                self.austritt and month > self.austritt):
+            type_id = None
+            for valid_from, tid in self.types:
+                if valid_from <= month:
+                    type_id = tid
+            if type_id is not None:
+                for valid_from, cents in self.fees.get(type_id, ()):
+                    if valid_from <= month:
+                        value = cents
+        self._expected[month] = value
+        return value
+
+    def paid_without(self, month: str, tx_id: int) -> int:
+        by_tx = self.paid.get(month)
+        if not by_tx:
+            return 0
+        return sum(by_tx.values()) - by_tx.get(tx_id, 0)
+
+    def add(self, tx_id: int, allocs) -> None:
+        for month, cents in allocs:
+            by_tx = self.paid.setdefault(month, {})
+            by_tx[tx_id] = by_tx.get(tx_id, 0) + cents
+
+
+class _Ctx:
+    """Zwischenspeicher für einen Lauf: Prüfungsstart und Mitglieder."""
+
+    def __init__(self, conn):
+        self.conn = conn
+        self.check_start = get_check_start(conn)
+        self._members: dict[int, _Member] = {}
+
+    def member(self, member_id: int) -> _Member:
+        if member_id not in self._members:
+            self._members[member_id] = _Member(self.conn, member_id)
+        return self._members[member_id]
+
+
+def _start_month(ctx: _Ctx, member: _Member, booking_month: str) -> str:
+    """start = max(Prüfungsstart, Beitragsbeginn)."""
+    bounds = [m for m in (ctx.check_start, member.fee_start) if m]
+    return max(bounds) if bounds else booking_month
 
 
 def _order(booking_month: str, start: str):
@@ -177,34 +245,35 @@ def _order(booking_month: str, start: str):
     limit = add_months(max(start, booking_month), MAX_MONTHS_AHEAD)
     if booking_month >= start:
         yield booking_month
-    for month in month_range(start, limit):
+    month = start
+    while month <= limit:
         if month != booking_month:
             yield month
+        month = add_months(month, 1)
 
 
-def _shortfall(conn, tx, month: str) -> tuple[int, int]:
-    """(Soll, bestätigt bezahlt ohne diese Buchung)."""
-    return (expected_cents(conn, tx["member_id"], month),
-            _confirmed_paid(conn, tx["member_id"], month, exclude_tx=tx["id"]))
+def _part_paid_month(member: _Member, tx, start: str, booking_month: str) -> str | None:
+    """Regel 2: ältester angefangener Monat vor P, den der Betrag nicht übersteigt.
 
-
-def _part_paid_month(conn, tx, start: str, booking_month: str) -> str | None:
-    """Regel (d): ältester angefangener Monat vor P, den der Betrag nicht übersteigt."""
-    for month in month_range(start, add_months(booking_month, -1)) if booking_month > start else ():
-        expected, paid = _shortfall(conn, tx, month)
+    Nur Monate mit bestätigten Zahlungen kommen in Frage (paid > 0).
+    """
+    for month in sorted(m for m in member.paid if start <= m < booking_month):
+        expected, paid = member.expected(month), member.paid_without(month, tx["id"])
         if 0 < paid < expected and tx["amount_cents"] <= expected - paid:
             return month
     return None
 
 
-def _compute(conn, tx) -> _Plan:
+def _compute(conn, tx, ctx: _Ctx | None = None) -> _Plan:
     """Verteilung nach den Regeln im Modulkopf. Nur lesend."""
+    ctx = ctx or _Ctx(conn)
+    member = ctx.member(tx["member_id"])
     amount = tx["amount_cents"]
     booking_month = tx["booking_date"][:7]
-    check_start, start = _start_month(conn, tx["member_id"], booking_month)
-    if check_start and booking_month < check_start:
+    start = _start_month(ctx, member, booking_month)
+    if ctx.check_start and booking_month < ctx.check_start:
         return _Plan([], outside=True)
-    part = _part_paid_month(conn, tx, start, booking_month)
+    part = _part_paid_month(member, tx, start, booking_month)
     if part is not None:
         return _Plan([(part, amount)])  # vervollständigt (oder ergänzt) den Monat
 
@@ -213,8 +282,7 @@ def _compute(conn, tx) -> _Plan:
     for month in _order(booking_month, start):
         if remaining == 0:
             break
-        expected, paid = _shortfall(conn, tx, month)
-        shortfall = expected - paid
+        shortfall = member.expected(month) - member.paid_without(month, tx["id"])
         if shortfall <= 0:
             continue
         if first_shortfall is None:
@@ -251,42 +319,79 @@ def _has_manual(conn, tx_id: int) -> bool:
     ).fetchone() is not None
 
 
-def _insert(conn, tx, allocs, status: str, source: str) -> None:
-    conn.executemany(
-        "insert into allocation(tx_id, member_id, month, cents, status, source)"
-        " values(?,?,?,?,?,?)",
-        [(tx["id"], tx["member_id"], m, c, status, source) for m, c in allocs],
-    )
+def _insert(conn, tx, allocs, status: str, source: str) -> list[int]:
+    ids = []
+    for m, c in allocs:
+        ids.append(conn.execute(
+            "insert into allocation(tx_id, member_id, month, cents, status, source)"
+            " values(?,?,?,?,?,?)", (tx["id"], tx["member_id"], m, c, status, source)).lastrowid)
+    return ids
+
+
+class _Run(_Ctx):
+    """Zwischenspeicher für _passes: dazu bestätigte Buchungen und Vorschlagszeilen."""
+
+    def __init__(self, conn, ids):
+        super().__init__(conn)
+        wanted = set(ids)
+        self.confirmed: set[int] = set()
+        self.proposed: dict[int, list[int]] = {}
+        for r in conn.execute("select id, tx_id, status from allocation"):
+            if r["tx_id"] not in wanted:
+                continue
+            if r["status"] == "confirmed":
+                self.confirmed.add(r["tx_id"])
+            else:
+                self.proposed.setdefault(r["tx_id"], []).append(r["id"])
 
 
 def propose_allocations(conn, tx_id: int, *, commit: bool = True,
-                        auto: bool = True) -> list[tuple[str, int]]:
+                        auto: bool = True, ctx: _Run | None = None) -> list[tuple[str, int]]:
     """Verteilung berechnen und speichern. Eindeutiges wird mit auto=True bestätigt.
 
     auto=False speichert immer einen Vorschlag des Nutzers (source='manual', für
     Rückgängig, Verteilung aufheben und Neu vorschlagen). Gibt die gespeicherte
-    Verteilung zurück, leer vor dem Prüfungsstart.
+    Verteilung zurück, leer vor dem Prüfungsstart. ctx: Zwischenspeicher von
+    _passes (gleiches Ergebnis, weniger Abfragen).
     """
     tx = _incoming_tx(conn, tx_id)
-    if _has_confirmed(conn, tx_id):
-        return _stored(conn, tx_id)  # Bestätigtes bleibt unangetastet
-    conn.execute(
-        "delete from allocation where tx_id=? and status='proposed'", (tx_id,)
-    )
-    plan = _compute(conn, tx)
+    if ctx is None:
+        if _has_confirmed(conn, tx_id):
+            return _stored(conn, tx_id)  # Bestätigtes bleibt unangetastet
+        conn.execute(
+            "delete from allocation where tx_id=? and status='proposed'", (tx_id,)
+        )
+    else:
+        if tx_id in ctx.confirmed:
+            return _stored(conn, tx_id)
+        old = ctx.proposed.pop(tx_id, [])
+        for i in range(0, len(old), 500):
+            chunk = old[i:i + 500]
+            conn.execute(f"delete from allocation where id in ({','.join('?' * len(chunk))})",
+                         chunk)
+    plan = _compute(conn, tx, ctx)
     if auto and plan.clean:
         _insert(conn, tx, plan.allocs, "confirmed", "auto")
+        if ctx is not None:
+            ctx.confirmed.add(tx_id)
+            ctx.member(tx["member_id"]).add(tx_id, plan.allocs)
     else:
-        _insert(conn, tx, plan.allocs, "proposed", "auto" if auto else "manual")
+        rows = _insert(conn, tx, plan.allocs, "proposed", "auto" if auto else "manual")
+        if ctx is not None and rows:
+            ctx.proposed[tx_id] = rows
     if commit:
         conn.commit()
     return plan.allocs
 
 
 def _snapshot(conn, ids) -> dict[int, list[tuple]]:
-    return {t: [tuple(r) for r in conn.execute(
-        "select month, cents, status, source from allocation where tx_id=? order by month, id",
-        (t,))] for t in ids}
+    """Zeilen je Buchung in einer Abfrage."""
+    out: dict[int, list[tuple]] = {t: [] for t in ids}
+    for r in conn.execute("select tx_id, month, cents, status, source from allocation"
+                          " order by tx_id, month, id"):
+        if r["tx_id"] in out:
+            out[r["tx_id"]].append((r["month"], r["cents"], r["status"], r["source"]))
+    return out
 
 
 def _passes(conn, ids: list[int]) -> None:
@@ -295,23 +400,34 @@ def _passes(conn, ids: list[int]) -> None:
     Eine spätere Bestätigung kann einen früheren Vorschlag eindeutig machen; der
     nächste Lauf holt das nach. Höchstens len(ids) + 1 Läufe: jeder Lauf außer
     dem letzten bestätigt mindestens eine Buchung, die danach fest bleibt.
+    Ein Zwischenspeicher je Aufruf hält Soll und Bezahltes im Speicher.
     """
+    run = _Run(conn, ids)
     for _ in range(len(ids) + 1):
         new = 0
         for tx_id in ids:
-            if _has_confirmed(conn, tx_id):
+            if tx_id in run.confirmed:
                 continue
-            propose_allocations(conn, tx_id, commit=False, auto=True)
-            new += _has_confirmed(conn, tx_id)
+            propose_allocations(conn, tx_id, commit=False, auto=True, ctx=run)
+            new += tx_id in run.confirmed
         if not new:
             return
 
 
 def _chronological(conn, where: str, params=()) -> list[int]:
+    manual = {r[0] for r in conn.execute(
+        "select distinct tx_id from allocation where source='manual'")}
     return [r["id"] for r in conn.execute(
         'select t.id from "transaction" t where t.amount_cents > 0 and t.member_id is not null'
-        " and not exists(select 1 from allocation a where a.tx_id=t.id and a.source='manual')"
-        f" and {where} order by t.booking_date, t.id", params)]
+        f" and {where} order by t.booking_date, t.id", params) if r["id"] not in manual]
+
+
+def _delete_rows(conn, tx_ids) -> None:
+    ids = list(tx_ids)
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        conn.execute(f"delete from allocation where tx_id in ({','.join('?' * len(chunk))})",
+                     chunk)
 
 
 def rebuild_member(conn, member_id: int, exclude: int | None = None) -> None:
@@ -327,8 +443,7 @@ def rebuild_member(conn, member_id: int, exclude: int | None = None) -> None:
     Zahlungen verschieben, sonst wäre ein Monat doppelt bezahlt.
     """
     ids = [t for t in _chronological(conn, "t.member_id=?", (member_id,)) if t != exclude]
-    for t in ids:
-        conn.execute("delete from allocation where tx_id=?", (t,))
+    _delete_rows(conn, ids)
     _passes(conn, ids)
 
 
@@ -347,8 +462,9 @@ def auto_distribute_pending(conn) -> AutoResult:
     nichts). Bestätigtes und Zeilen mit source='manual' bleiben unangetastet.
     Buchungen vor dem Prüfungsstart, die schon keine Zeilen hatten, zählen nicht.
     """
-    ids = _chronological(conn, "not exists(select 1 from allocation a where a.tx_id=t.id"
-                         " and a.status='confirmed')")
+    confirmed_tx = {r[0] for r in conn.execute(
+        "select distinct tx_id from allocation where status='confirmed'")}
+    ids = [t for t in _chronological(conn, "1=1") if t not in confirmed_tx]
     try:
         before = _snapshot(conn, ids)
         _passes(conn, ids)
@@ -366,17 +482,17 @@ def auto_distribute_pending(conn) -> AutoResult:
 def redistribute_all(conn) -> tuple[int, int]:
     """Alle abgeleiteten Verteilungen neu berechnen (z. B. nach neuem Prüfungsstart).
 
-    Löscht alle Zeilen mit source='auto' (bestätigt und vorgeschlagen) der Buchungen
-    ohne Nutzerentscheidung und berechnet sie chronologisch bis zum Fixpunkt neu.
-    Alles oder nichts in einem Commit. Gibt (geändert, jetzt vor dem Prüfungsstart)
-    zurück: geändert zählt nur Buchungen, deren Zeilen sich wirklich geändert haben.
+    Löscht alle Zeilen der Buchungen ohne Nutzerentscheidung (nur source='auto')
+    und berechnet sie chronologisch bis zum Fixpunkt neu. Alles oder nichts in
+    einem Commit; die Schreibsperre bleibt bis dahin gehalten (Zwischen-Commits
+    würden das Alles-oder-nichts aufheben). Gibt (geändert, jetzt vor dem
+    Prüfungsstart) zurück: geändert zählt nur Buchungen, deren Zeilen sich
+    wirklich geändert haben.
     """
     ids = _chronological(conn, "1=1")
     try:
         before = _snapshot(conn, ids)
-        conn.execute("delete from allocation where source='auto' and tx_id in"
-                     ' (select id from "transaction" where member_id is not null)'
-                     " and tx_id not in (select tx_id from allocation where source='manual')")
+        _delete_rows(conn, ids)
         _passes(conn, ids)
         after = _snapshot(conn, ids)
     except Exception:
