@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from kassivo.db import connect
+from kassivo.ingest import mask_iban
 from kassivo.money import format_eur
 from kassivo.months import month_of, valid_month
 
@@ -16,6 +17,18 @@ templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.filters["eur"] = format_eur
 MONTH_ABBR = ("Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez")
 templates.env.filters["month_abbr"] = lambda n: MONTH_ABBR[n - 1]
+
+_FULL_IBAN_RE = re.compile(r"[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]{10,30}", re.ASCII)
+
+
+def mask_rule_text(text: str) -> str:
+    """Regeltext für die Liste: sieht er wie eine volle IBAN aus, nur gekürzt zeigen.
+    Gespeichert wird weiter der Originaltext."""
+    compact = "".join(text.split())
+    return mask_iban(compact) if _FULL_IBAN_RE.fullmatch(compact) else text
+
+
+templates.env.filters["rule_text"] = mask_rule_text
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 MIN_YEAR, MAX_YEAR = 1900, 2100

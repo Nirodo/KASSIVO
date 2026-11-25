@@ -193,7 +193,9 @@ KASSIVO ist für den Betrieb durch eine Person auf dem eigenen Rechner gebaut.
 - **Content-Security-Policy:** Die Seiten laden nur eigene Dateien (`default-src 'self'`) und lassen sich nicht einbetten (`frame-ancestors 'none'`). Dazu kommen `X-Content-Type-Options: nosniff` und `Referrer-Policy: same-origin`. Es gibt kein Inline-JavaScript.
 - **Uploads:** Größengrenzen (siehe Import), Dateityp-Prüfung am Inhalt, ZIP-Dateien werden nie entpackt, XML mit DOCTYPE oder ENTITY wird abgelehnt. Der Dateiname des Browsers wird nie verwendet.
 - IBANs erscheinen in Listen und Meldungen gekürzt.
-- **Konsolenausgabe:** Das Konsolenfenster protokolliert jede Anfrage mit ihrer Adresse (Uvicorn-Zugriffsprotokoll), auch Suchtexte wie `/transactions?q=Name`. Konsolenausgaben nie ungeprüft in Issues oder Nachrichten einfügen, solche Zeilen vorher entfernen.
+- **Sec-Fetch-Site:** Zusätzlich zur Origin-Prüfung lehnt KASSIVO ändernde Anfragen ab, wenn der Browser mit `Sec-Fetch-Site` meldet, dass sie von einer anderen Seite stammen (`cross-site`, `same-site`).
+- **Konsolenausgabe:** Das Konsolenfenster protokolliert Anfragen (Uvicorn-Zugriffsprotokoll) ohne Suchtexte: aus `/transactions?q=Name` wird `/transactions`. Fehlermeldungen können trotzdem Namen oder Beträge enthalten, Konsolenausgaben deshalb nie ungeprüft in Issues oder Nachrichten einfügen.
+- IBANs in Kategorie-Regeln erscheinen in der Regelliste gekürzt; gespeichert bleibt der volle Text.
 
 **Nicht geschützt:** Es gibt keine Anmeldung. Wer an Ihrem Rechner angemeldet ist und `http://127.0.0.1:8000` öffnet, sieht und ändert alle Daten, solange KASSIVO läuft. Die Datenbank ist nicht verschlüsselt. Schützen Sie den Rechner (Benutzerkonto, Bildschirmsperre, Festplattenverschlüsselung), betreiben Sie KASSIVO nicht auf einem gemeinsam genutzten Rechner oder Server und legen Sie Datenbank und Sicherungen nicht in einen Cloud-Ordner.
 
@@ -221,6 +223,7 @@ src/kassivo/
   forecast.py          Prognose
   iban.py              IBAN-Normalisierung
   ingest.py            Import und Duplikaterkennung
+  logconfig.py         Konsolenprotokoll ohne Suchtexte (Filter für das Uvicorn-Zugriffsprotokoll)
   matching.py          Zuordnung von Umsätzen zu Mitgliedern
   members.py           Mitglieder und Mitgliedsarten
   money.py             Geldbeträge (ganze Cent)
@@ -228,7 +231,7 @@ src/kassivo/
   reports.py           Jahresreport
   settings.py          Ort der Datenbank (Standardordner, KASSIVO_DB, Cloud-Warnung)
   web/                 Weboberfläche
-    app.py             App-Fabrik, Host- und Origin-Prüfung, Sicherheits-Header, Fehlerseiten
+    app.py             App-Fabrik, Host-, Origin- und Sec-Fetch-Site-Prüfung, Sicherheits-Header, Fehlerseiten
     common.py          Gemeinsame Helfer: Vorlagen, DB je Anfrage, Eingabeprüfung
     backup_routes.py   Backup-Seite
     categories_routes.py  Kategorien und Regeln
