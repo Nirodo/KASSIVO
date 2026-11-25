@@ -11,7 +11,7 @@
   <li>Die IBAN gehört genau einem Mitglied. Gehört sie mehreren, ist sie <strong>mehrdeutig</strong> und die Zahlung bleibt in „Unklar“.</li>
   <li>Das Mitglied ist nicht vor der Zahlung ausgetreten. Liegt die Zahlung nach dem Austrittsdatum, bleibt sie in „Unklar“.</li>
 </ul>
-<p>Danach setzt KASSIVO die Kategorie „Beiträge“, falls die Buchung noch keine Kategorie hat, und berechnet die Verteilung (siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>).</p>
+<p>Danach setzt KASSIVO die Kategorie „Beiträge“, falls die Buchung noch keine Kategorie hat, und verteilt die Zahlung auf Beitragsmonate. Eindeutige Zahlungen werden dabei automatisch verteilt, nur Ausnahmen bleiben ein Vorschlag (siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>).</p>
 
 <h2>So geht's</h2>
 <h3>Eine Zahlung zuordnen</h3>
@@ -20,7 +20,7 @@
   <li>Wählen Sie rechts in „Mitglied zuordnen“ das Mitglied.</li>
   <li>Lassen Sie „Absender merken“ angehakt, wenn dieser Absender künftig automatisch zu diesem Mitglied gehören soll.</li>
   <li>Wählen Sie „Zuordnen“. KASSIVO zeigt einen Hinweis und ordnet gleich alle weiteren Zahlungen derselben IBAN in „Unklar“ mit zu.</li>
-  <li>Prüfen Sie danach die <a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a> und bestätigen Sie sie.</li>
+  <li>Prüfen Sie danach die <a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>. Dort stehen nur die Ausnahmen. Was KASSIVO automatisch verteilt hat, sehen Sie unter <a href="/auto">Automatisch verteilt</a> und können es dort mit „Rückgängig“ zurücknehmen.</li>
 </ol>
 <h3>Unklare automatisch zuordnen</h3>
 <p>Der Knopf „Unklare automatisch zuordnen“ oben in „Unklar“ wendet gemerkte IBANs und die IBANs der Mitglieder noch einmal auf die ganze Liste an. Das hilft, nachdem Sie eine IBAN im Mitgliedsdatensatz ergänzt haben. KASSIVO meldet, wie viele Zahlungen zugeordnet wurden.</p>
@@ -28,7 +28,7 @@
 <ol class="steps">
   <li>Öffnen Sie <a href="/transactions">Buchungen</a> und suchen Sie die Zahlung (Filter oder Suche helfen).</li>
   <li>Wählen Sie in der Spalte „Mitglied“ ein anderes Mitglied oder „— keins —“ und dann „Zuordnen“. Mit „— keins —“ steht die Zahlung wieder in „Unklar“. Sie bleibt dort nur, bis KASSIVO sie wieder zuordnet (siehe „Achtung“ unten).</li>
-  <li>Meldet KASSIVO „… hat bestätigte Verteilung: Verteilung zuerst aufheben“, öffnen Sie über „Verteilung“ die Verteilungsseite, haken Sie „Ich bestätige, dass die Verteilung aufgehoben wird“ an und wählen Sie „Verteilung aufheben“. Danach klappt das Umhängen.</li>
+  <li>Eine automatisch verteilte Zahlung können Sie direkt umhängen. KASSIVO verwirft dabei die automatische Verteilung und verteilt die Zahlung für das neue Mitglied neu. Haben Sie die Verteilung dagegen selbst bestätigt, meldet KASSIVO „… hat bestätigte Verteilung: Verteilung zuerst aufheben“. Öffnen Sie dann über „Verteilung“ die Verteilungsseite, haken Sie „Ich bestätige, dass die Verteilung aufgehoben wird“ an und wählen Sie „Verteilung aufheben“. Danach klappt das Umhängen.</li>
 </ol>
 
 <h3>Zahlungen, die kein Mitglied brauchen</h3>
@@ -45,12 +45,11 @@
   <p><strong>Beispiel:</strong> Zahlung von Dritten. Die Mutter von Erika Musterfrau überweist deren Beitrag von <code>XX00 FAKE 0000 0000 02</code>. KASSIVO kennt die IBAN nicht, die Zahlung steht in „Unklar“. Sie wählen Erika Musterfrau, lassen „Absender merken“ angehakt und wählen „Zuordnen“. Ab jetzt landen Überweisungen dieser IBAN automatisch bei Erika.</p>
 </div>
 <div class="callout callout-example">
-  <p><strong>Beispiel:</strong> Geschwister. Dieselbe Mutter zahlt später auch für Hans Musterfrau, von derselben IBAN, die bei Erika gemerkt ist. KASSIVO ordnet die Zahlung vom 05.02.2026 über 17,00 € deshalb Erika zu. Deckt sie genau Erikas Beitrag für den Februar, bestätigt KASSIVO sie sogar selbst. Dann hängen Sie sie so auf Hans um:</p>
+  <p><strong>Beispiel:</strong> Geschwister. Dieselbe Mutter zahlt später auch für Hans Musterfrau, von derselben IBAN, die bei Erika gemerkt ist. KASSIVO ordnet die Zahlung vom 05.02.2026 über 17,00 € deshalb Erika zu und verteilt sie automatisch auf Erikas Februar. So hängen Sie sie auf Hans um:</p>
   <ol class="steps">
-    <li>Öffnen Sie <a href="/transactions">Buchungen</a>, suchen Sie die Zahlung und wählen Sie „Verteilung“. Haken Sie „Ich bestätige, dass die Verteilung aufgehoben wird“ an und wählen Sie „Verteilung aufheben“. Ohne diesen Schritt meldet KASSIVO beim Umhängen: „… hat bestätigte Verteilung: Verteilung zuerst aufheben“.</li>
     <li>Wählen Sie in „Buchungen“ in der Spalte „Mitglied“ Hans Musterfrau und dann „Zuordnen“. Beachten Sie „Absender merken“: Die IBAN ist schon für Erika gemerkt. Ist das Häkchen gesetzt, gehört sie danach zwei Mitgliedern, und KASSIVO meldet: „Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird künftig nicht automatisch zugeordnet.“ Jede weitere Zahlung dieser IBAN bleibt in „Unklar“, bis Sie sie von Hand zuordnen.</li>
-    <li>KASSIVO schlägt für Hans einen neuen Vorschlag vor. Es nimmt dabei Hans' <em>frühesten</em> Monat mit Fehlbetrag, nicht den Buchungsmonat. Hat Hans noch den Januar offen, steht dort der Januar statt des Februars. Prüfen Sie den Monat auf der Seite „Verteilung“ und ändern Sie ihn bei Bedarf.</li>
-    <li>Wählen Sie „Verteilung bestätigen“.</li>
+    <li>KASSIVO verwirft die automatische Verteilung für Erika und verteilt die Zahlung für Hans neu, nach denselben Regeln: Buchungsmonat zuerst. Ist Hans' Februar offen, geht sie automatisch auf den Februar. Erikas Februar ist danach wieder offen.</li>
+    <li>Haben Sie Erikas Verteilung vorher selbst bestätigt, heben Sie sie zuerst auf („Verteilung“, „Verteilung aufheben“). Ohne diesen Schritt meldet KASSIVO beim Umhängen: „… hat bestätigte Verteilung: Verteilung zuerst aufheben“.</li>
   </ol>
 </div>
 
@@ -63,7 +62,7 @@
   <li><strong>Ausgetretene Mitglieder</strong> werden für Zahlungen nach dem Austrittsdatum nicht automatisch zugeordnet. Von Hand geht es weiterhin. Im Auswahlfeld steht „(ausgetreten)“ beim Namen.</li>
   <li>Die Liste „Buchungen“ zeigt 100 Buchungen je Seite. Mit „Weiter“ und „Zurück“ blättern Sie.</li>
   <li>Eine Zuordnung ändert nie die Buchung selbst, nur ihr Mitglied und ihre Verteilung.</li>
-  <li>Beim Umhängen auf ein anderes Mitglied verwirft KASSIVO die Vorschläge des alten Mitglieds und rechnet neu. Bestätigte Verteilungen sperren das Umhängen, bis Sie sie aufheben.</li>
+  <li>Beim Umhängen auf ein anderes Mitglied verwirft KASSIVO die Vorschläge und automatischen Verteilungen des alten Mitglieds und rechnet neu. Verteilungen, die Sie selbst bestätigt haben, sperren das Umhängen, bis Sie sie aufheben.</li>
 </ul>
 <div class="callout callout-warn">
   <p><strong>Achtung:</strong> Zahlungseingänge ohne Absender-IBAN (zum Beispiel Bareinzahlungen) und Sammelbuchungen werden nie automatisch zugeordnet. Sie stehen immer in „Unklar“.</p>

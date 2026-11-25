@@ -14,7 +14,7 @@
 <h3>Prüfungsstart festlegen</h3>
 <ol class="steps">
   <li>Tragen Sie im Abschnitt „Prüfungsstart“ bei „Prüfungsstart (Monat)“ den ersten Monat ein, der geprüft werden soll (JJJJ-MM).</li>
-  <li>Wählen Sie „Prüfungsstart speichern“. KASSIVO meldet danach: „Prüfungsstart gespeichert. N offene Vorschläge wurden neu berechnet.“</li>
+  <li>Wählen Sie „Prüfungsstart speichern“. KASSIVO meldet danach: „Prüfungsstart gespeichert. N Zahlungen neu verteilt.“</li>
 </ol>
 
 <h2>Beispiele</h2>
@@ -22,7 +22,7 @@
   <p><strong>Beispiel:</strong> Der Aktiv-Beitrag steigt von 17,00 € auf 18,00 €. Sie wählen Art „Aktiv“, Betrag <code>18,00</code>, „Gültig ab Monat“ <code>2027-01</code>. Alle Monate bis Dezember 2026 rechnen weiter mit 17,00 €, ab Januar 2027 mit 18,00 €. Im „Verlauf der Beiträge“ stehen beide Zeilen.</p>
 </div>
 <div class="callout callout-example">
-  <p><strong>Beispiel:</strong> Ihr Kontoexport beginnt am 15.03.2026. Setzen Sie den Prüfungsstart auf <code>2026-04</code>. Der März und alle früheren Monate zeigen dann „—“ und zählen weder in der Beitragsübersicht noch in der Prognose. Die Zahlungen aus dem März bleiben als Buchungen erhalten. Sind sie einem Mitglied zugeordnet, bekommen sie aber einen Vorschlag für den April (siehe „Achtung“ unten) und stehen in „Offene Vorschläge“. Prüfen Sie sie dort einzeln.</p>
+  <p><strong>Beispiel:</strong> Ihr Kontoexport beginnt am 15.03.2026. Setzen Sie den Prüfungsstart auf <code>2026-04</code>. Der März und alle früheren Monate zeigen dann „—“ und zählen weder in der Beitragsübersicht noch in der Prognose. Die Zahlungen aus dem März bleiben als Buchungen erhalten und bleiben ihren Mitgliedern zugeordnet. KASSIVO verteilt sie aber nicht auf Monate, und sie erscheinen nicht in „Offene Vorschläge“ (siehe „Achtung“ unten).</p>
 </div>
 
 <h2>Gut zu wissen</h2>
@@ -30,15 +30,15 @@
   <li><strong>Betrag:</strong> Erlaubt sind 0,01 € bis 100.000,00 €. Etwas anderes lehnt KASSIVO mit einer Fehlermeldung ab und speichert nichts.</li>
   <li><strong>Schreibweise:</strong> Der Punkt ist das Tausendertrennzeichen, das Komma trennt die Cent. <code>1.500</code> liest KASSIVO als 1.500,00 €. <code>17.00</code> lehnt es ab, schreiben Sie <code>17,00</code>.</li>
   <li><strong>Eine Änderung wirkt ab dem Gültigkeitsmonat.</strong> Frühere Monate behalten ihren Beitrag. Das gilt nur, solange Sie den Monat richtig wählen: Wählen Sie einen Monat in der Vergangenheit, ändern sich die Soll-Beträge ab diesem Monat. Speichern Sie für dieselbe Art und denselben Monat noch einmal, ersetzt der neue Betrag den alten.</li>
-  <li><strong>Prüfungsstart:</strong> Monate vor dem Prüfungsstart zählen nicht. Sie zeigen „—“, haben kein Soll, und neue Verteilungsvorschläge beginnen frühestens im Prüfungsstart-Monat.</li>
-  <li><strong>Neu berechnen:</strong> Ändern Sie den Prüfungsstart, berechnet KASSIVO die <em>offenen Vorschläge</em> neu. Bestätigte Verteilungen fasst es nie an.</li>
+  <li><strong>Prüfungsstart:</strong> Monate vor dem Prüfungsstart zählen nicht. Sie zeigen „—“, haben kein Soll, und Verteilungen beginnen frühestens im Prüfungsstart-Monat.</li>
+  <li><strong>Neu verteilen:</strong> Ändern Sie den Prüfungsstart, verteilt KASSIVO die <em>offenen Vorschläge</em> und Zahlungen ohne Verteilung nach den Regeln neu (siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>). Vorschläge für Zahlungen vor dem neuen Prüfungsstart verschwinden. Bestätigte Verteilungen und rückgängig gemachte Vorschläge fasst es nie an.</li>
   <li><strong>Solange kein Prüfungsstart gespeichert ist,</strong> zeigen Beitragsübersicht und Import den Hinweis „Prüfungsstart ist noch nicht festgelegt“ mit einem Link hierher. Auf dieser Seite steht dann „nicht gesetzt“. Gibt es schon Buchungen, nennt sie dazu den Monat der ältesten Buchung („abgeleitet“). KASSIVO rechnet in dem Fall mit diesem Monat. Legen Sie ihn trotzdem ausdrücklich fest.</li>
 </ul>
 <div class="callout callout-warn">
   <p><strong>Achtung:</strong> Wählen Sie als Prüfungsstart den ersten <em>vollen</em> Monat, den Ihr Kontoexport abdeckt. Beginnt der Export mitten im Monat, fehlen die früheren Zahlungen dieses Monats, und der Monat erschiene als überfällig.</p>
 </div>
 <div class="callout callout-warn">
-  <p><strong>Achtung:</strong> Eine Zahlung, die <em>vor</em> dem Prüfungsstart-Monat gebucht ist, geht nicht verloren. KASSIVO schlägt sie für den Prüfungsstart-Monat vor, weil dort der erste Monat mit Beitrag ist. Beispiel: Prüfungsstart ist <code>2026-04</code>, eine Zahlung über 17,00 € ist am 20.03.2026 gebucht. Der Vorschlag lautet 17,00 € für 2026-04. Bestätigen Sie ihn blind, gilt der April als bezahlt, und die echte Aprilzahlung bekommt einen Vorschlag für den Mai. Bestätigen Sie solche Vorschläge deshalb nicht ungeprüft. Ändern Sie den Monat auf der Seite „Verteilung“ oder wählen Sie dort „Verteilung aufheben“, wenn die Zahlung zu einem Monat vor dem Prüfungsstart gehört.</p>
+  <p><strong>Achtung:</strong> Eine Zahlung, die <em>vor</em> dem Prüfungsstart-Monat gebucht ist, geht nicht verloren, aber KASSIVO verteilt sie nicht. Sie bleibt dem Mitglied zugeordnet, steht in seiner Zahlungshistorie und erzeugt keinen Vorschlag. Beispiel: Prüfungsstart ist <code>2026-04</code>, eine Zahlung über 17,00 € ist am 20.03.2026 gebucht. Sie zählt für keinen Monat. Die Aprilzahlung vom 10.04.2026 geht automatisch auf den April. Gehört die Märzzahlung doch zum April (Vorauszahlung), tragen Sie das auf der Seite „Verteilung“ selbst ein. Eine falsch eingetragene Verteilung nehmen Sie dort mit „Verteilung aufheben“ zurück.</p>
 </div>
 
 <h2>Siehe auch</h2>

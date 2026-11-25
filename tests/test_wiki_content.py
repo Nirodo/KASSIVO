@@ -76,6 +76,15 @@ def test_faq_has_at_least_ten_questions(pages):
 
 @pytest.mark.parametrize("slug,words", [
     ("verteilung", ["Buchungsmonat", "34,00", "17,00", "Vorschlag", "bestätigt"]),
+    # #27: automatische Verteilung
+    ("verteilung", ["Rückgängig", "Prüfungsstart", "Vorauszahlung", "Rückstand", "Teilzahlung",
+                    "204,00", "20,00", "Automatisch verteilt", "Ausnahme"]),
+    ("begriffe", ["automatisch verteilt", "Prüfungszeitraum", "Vorschlag"]),
+    ("start", ["Ausnahmen prüfen", "Automatisch verteilt"]),
+    ("faq", ["Automatisch verteilt", "Rückgängig"]),
+    ("zuordnung", ["automatisch verteilt", "Rückgängig"]),
+    ("beitragsuebersicht", ["warten auf Ihre Prüfung", "Automatisch verteilt"]),
+    ("grenzen", ["Buchungsmonat zuerst"]),
     ("import", ["camt.052.001.08", "Duplikat", "Es wurde nichts importiert"]),
     ("zuordnung", ["mehrdeutig", "Absender merken", "ausgetreten", "Unklar"]),
     ("backup", ["journal", "kassivo.db", "backups"]),
@@ -85,7 +94,8 @@ def test_faq_has_at_least_ten_questions(pages):
     # Hinweise zu Nebenwirkungen und Grenzen (geschlossene Dokumentationslücken)
     ("beitraege", ["Vorschlag", "Prüfungsstart", "Verteilung aufheben", "1.500"]),
     ("start", ["Offene Vorschläge", "$env:KASSIVO_DB", "setx", "Eingabeaufforderung (cmd)"]),
-    ("zuordnung", ["Verteilung aufheben", "frühesten", "— keins —", "nie für das richtige Mitglied"]),
+    ("zuordnung", ["Verteilung aufheben", "Buchungsmonat zuerst", "— keins —",
+                   "nie für das richtige Mitglied"]),
     ("faq", ["mehrdeutig", "— keins —", "Bankreferenz"]),
     ("import", ["Bankreferenz", "später", "Regeln anwenden", "Unklare automatisch zuordnen", "übersprungen"]),
     ("grenzen", ["Bankreferenz", "übersprungen", "Barzahlungen", "mehrdeutig", "Längenbegrenzung",
@@ -98,7 +108,7 @@ def test_faq_has_at_least_ten_questions(pages):
     ("kategorien", ["17.00"]),
     ("sicherheit", ["/transactions?q=", "Konsolenausgabe"]),
     ("grenzen", ["FinTS", "0,00", "C24", "finAPI"]),
-    ("beitraege", ["Prüfungsstart", "Gültig ab Monat", "neu berechnet"]),
+    ("beitraege", ["Prüfungsstart", "Gültig ab Monat", "neu verteilt"]),
     ("kategorien", ["Priorität", "Ohne Kategorie", "Überschreiben", "Hauptverein"]),
     ("sicherheit", ["127.0.0.1", "keine Anmeldung", "Ungültiger Host", "OneDrive"]),
     ("start", ["python -m kassivo", "KASSIVO_DB", "Prüfungsstart", "Absender merken"]),
@@ -136,7 +146,9 @@ LABELS = {
                   "Mitglied zuordnen", "— keins —", "Verteilung aufheben",
                   "Ich bestätige, dass die Verteilung aufgehoben wird", "Offene Vorschläge",
                   "(ausgetreten)", "Weiter", "Zurück"],
-    "verteilung": ["Verteilung bestätigen", "Neu vorschlagen", "Verteilung aufheben",
+    "verteilung": ["Offene Vorschläge jetzt automatisch verteilen", "Rückgängig",
+                   "Automatisch verteilt", "Verteilung bestätigen", "Neu vorschlagen",
+                   "Verteilung aufheben",
                    "Verteilung bearbeiten", "Aktuelle Verteilung", "Beitragsstatus des Mitglieds",
                    "Monat bereits bezahlt", "Summe der Zeilen", "Die Summe passt."],
     "kategorien": ["Kategorie anlegen", "Regel anlegen", "Regeln anwenden",
@@ -181,6 +193,10 @@ MESSAGES = [
     ("zuordnung", "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird künftig "
                   "nicht automatisch zugeordnet."),
     ("beitraege", "Prüfungsstart gespeichert."),
+    ("verteilung", "Betrag passt nicht zu ganzen Monatsbeiträgen"),
+    ("verteilung", "Kein offener Monat (Mitglied ausgetreten oder Zahlung ohne fälligen Monat)"),
+    ("verteilung", "Rest ohne offenen Monat"),
+    ("verteilung", "Nur automatisch verteilte Zahlungen können rückgängig gemacht werden."),
     ("import", "Es wurde nichts importiert."),
     ("import", "Bitte eine Datei auswählen."),
     ("import", "Dateityp nicht erkannt. Erwartet wird eine ZIP- oder XML-Datei."),
@@ -296,8 +312,9 @@ def _rows(conn, tx):
 
 @pytest.mark.parametrize("day,cents,expected", [
     ("2026-01-15", 1700, [("2026-01", 1700, "confirmed")]),
-    ("2026-01-15", 3400, [("2026-01", 1700, "proposed"), ("2026-02", 1700, "proposed")]),
-    ("2026-01-15", 1000, [("2026-01", 1000, "proposed")]),
+    ("2026-01-15", 3400, [("2026-01", 1700, "confirmed"), ("2026-02", 1700, "confirmed")]),
+    ("2026-01-15", 20400, [(f"2026-{i:02d}", 1700, "confirmed") for i in range(1, 13)]),
+    ("2026-01-15", 1000, [("2026-01", 1000, "confirmed")]),
     ("2026-01-15", 2000, [("2026-01", 1700, "proposed"), ("2026-02", 300, "proposed")]),
 ])
 def test_distribution_examples(day, cents, expected):
@@ -307,16 +324,68 @@ def test_distribution_examples(day, cents, expected):
     assert _rows(conn, tx) == expected
 
 
+def test_distribution_20_euro_is_exception():
+    conn, mid = _setup()
+    tx = _pay(conn, mid, "2026-01-15", 2000)
+    dues.propose_allocations(conn, tx)
+    assert dues.review_reason(conn, tx) == "Betrag passt nicht zu ganzen Monatsbeiträgen"
+
+
 def test_distribution_rest_after_partial_payment():
     conn, mid = _setup()
     first = _pay(conn, mid, "2026-01-15", 1000)
     dues.propose_allocations(conn, first)
-    dues.confirm_allocations(conn, first, [("2026-01", 1000)])
-    rest = _pay(conn, mid, "2026-02-10", 700)
-    dues.propose_allocations(conn, rest)
-    assert _rows(conn, rest) == [("2026-01", 700, "proposed")]
+    assert _rows(conn, first) == [("2026-01", 1000, "confirmed")]
     assert dues.month_status(conn, mid, "2026-01", date(2026, 1, 20)).status == "PARTIAL"
     assert dues.month_status(conn, mid, "2026-01", date(2026, 2, 1)).status == "OVERDUE"
+    rest = _pay(conn, mid, "2026-01-25", 700)
+    dues.propose_allocations(conn, rest)
+    assert _rows(conn, rest) == [("2026-01", 700, "confirmed")]
+    assert dues.month_status(conn, mid, "2026-01", date(2026, 2, 1)).status == "PAID"
+
+
+def test_distribution_rest_in_next_month_counts_for_next_month():
+    conn, mid = _setup()
+    dues.propose_allocations(conn, _pay(conn, mid, "2026-01-15", 1000))
+    rest = _pay(conn, mid, "2026-02-10", 700)
+    dues.propose_allocations(conn, rest)
+    assert _rows(conn, rest) == [("2026-02", 700, "confirmed")]  # Buchungsmonat zuerst
+    assert dues.month_status(conn, mid, "2026-01", date(2026, 2, 11)).status == "OVERDUE"
+
+
+def test_distribution_second_payment_same_month():
+    conn, mid = _setup()
+    dues.propose_allocations(conn, _pay(conn, mid, "2026-01-05", 1700))
+    second = _pay(conn, mid, "2026-01-28", 1700)
+    dues.propose_allocations(conn, second)
+    assert _rows(conn, second) == [("2026-02", 1700, "confirmed")]
+    assert {r["tx_id"]: r["kind"] for r in dues.auto_rows(conn)}[second] == "Vorauszahlung"
+
+
+def test_distribution_arrears():
+    conn, mid = _setup()
+    dues.propose_allocations(conn, _pay(conn, mid, "2026-01-05", 1700))
+    march = _pay(conn, mid, "2026-03-03", 3400)  # Februar fehlt
+    dues.propose_allocations(conn, march)
+    assert _rows(conn, march) == [("2026-02", 1700, "confirmed"), ("2026-03", 1700, "confirmed")]
+    assert {r["tx_id"]: r["kind"] for r in dues.auto_rows(conn)}[march] == "Rückstand"
+
+
+def test_distribution_before_check_start():
+    conn, mid = _setup()
+    tx = _pay(conn, mid, "2025-12-30", 1700)
+    assert dues.propose_allocations(conn, tx) == []
+    assert _rows(conn, tx) == [] and dues.proposed_tx_count(conn) == 0
+
+
+def test_distribution_undo():
+    conn, mid = _setup()
+    tx = _pay(conn, mid, "2026-01-15", 1700)
+    dues.propose_allocations(conn, tx)
+    dues.undo_auto(conn, tx)
+    assert _rows(conn, tx) == [("2026-01", 1700, "proposed")]
+    dues.auto_distribute_pending(conn)
+    assert _rows(conn, tx) == [("2026-01", 1700, "proposed")]  # bleibt Vorschlag
 
 
 def test_distribution_payment_at_month_end():
@@ -328,7 +397,7 @@ def test_distribution_payment_at_month_end():
     conn.commit()
     tx = _pay(conn, mid, "2026-12-30", 1700)
     dues.propose_allocations(conn, tx)
-    assert _rows(conn, tx) == [("2027-01", 1700, "proposed")]
+    assert _rows(conn, tx) == [("2027-01", 1700, "confirmed")]  # Vorauszahlung
 
 
 def test_member_start_and_leave_examples():
@@ -363,18 +432,17 @@ def test_parse_cents_matches_wiki_amount_format():
         parse_cents("17.00")
 
 
-def test_payment_before_check_start_is_proposed_for_start_month():
+def test_payment_before_check_start_is_not_distributed():
     conn = connect(":memory:")
     conn.execute("insert into account(iban, label) values('XX00FAKE0000000099', 't')")
     dues.set_check_start(conn, "2026-04")
     mid = create_member(conn, "Max Mustermann", "Aktiv", date(2025, 12, 10))
     tx = _pay(conn, mid, "2026-03-20", 1700)
-    dues.propose_allocations(conn, tx)
-    assert _rows(conn, tx) == [("2026-04", 1700, "proposed")]
-    dues.confirm_allocations(conn, tx, [("2026-04", 1700)])
+    assert dues.propose_allocations(conn, tx) == []
+    assert _rows(conn, tx) == []
     april = _pay(conn, mid, "2026-04-10", 1700)
     dues.propose_allocations(conn, april)
-    assert _rows(conn, april) == [("2026-05", 1700, "proposed")]
+    assert _rows(conn, april) == [("2026-04", 1700, "confirmed")]
 
 
 def test_sibling_reassignment_flow():
@@ -386,13 +454,16 @@ def test_sibling_reassignment_flow():
     tx = _pay(conn, None, "2026-02-05", 1700)
     conn.execute('update "transaction" set cp_iban=? where id=?', ("XX00FAKE0000000002", tx))
     matching.assign_member(conn, tx, erika)
-    assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]
-    with pytest.raises(ValueError, match="hat bestätigte Verteilung: Verteilung zuerst aufheben"):
-        matching.assign_member(conn, tx, hans)
-    dues.clear_allocations(conn, tx)
-    matching.assign_member(conn, tx, hans)
-    assert _rows(conn, tx) == [("2026-01", 1700, "proposed")]  # frühester Fehlbetrag
+    assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]  # automatisch verteilt
+    matching.assign_member(conn, tx, hans)  # automatisch Verteiltes sperrt nicht
+    assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]  # Buchungsmonat für Hans
     assert matching.iban_is_ambiguous(conn, "XX00FAKE0000000002")
+    dues.confirm_allocations(conn, tx, [("2026-02", 1700)])  # Ihre Bestätigung sperrt
+    with pytest.raises(ValueError, match="hat bestätigte Verteilung: Verteilung zuerst aufheben"):
+        matching.assign_member(conn, tx, erika)
+    dues.clear_allocations(conn, tx)
+    matching.assign_member(conn, tx, erika)
+    assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]
 
 
 def test_keins_is_reassigned_by_auto_assign_and_ambiguity_is_permanent():
@@ -481,3 +552,64 @@ def test_unmatched_category_docs_issue_28(pages, slug, words):
     text = html.unescape(re.sub(r"<[^>]+>", " ", pages[slug]))
     for w in words:
         assert w in text, (slug, w)
+
+
+# --- #27: weitere zitierte Beispiele der automatischen Verteilung --------------------
+
+def test_glossary_example_march_april():
+    conn, mid = _setup()
+    for day in ("2026-01-05", "2026-02-05"):
+        dues.propose_allocations(conn, _pay(conn, mid, day, 1700))
+    tx = _pay(conn, mid, "2026-03-05", 3400)
+    dues.propose_allocations(conn, tx)
+    assert _rows(conn, tx) == [("2026-03", 1700, "confirmed"), ("2026-04", 1700, "confirmed")]
+    conn2, mid2 = _setup()
+    for day in ("2026-01-05", "2026-02-05"):
+        dues.propose_allocations(conn2, _pay(conn2, mid2, day, 1700))
+    odd = _pay(conn2, mid2, "2026-03-05", 2000)
+    dues.propose_allocations(conn2, odd)
+    assert _rows(conn2, odd) == [("2026-03", 1700, "proposed"), ("2026-04", 300, "proposed")]
+
+
+def test_overview_example_erika_february():
+    conn, _ = _setup()
+    erika = create_member(conn, "Erika Musterfrau", "Aktiv", date(2026, 1, 10))  # ab 2026-02
+    tx = _pay(conn, erika, "2026-02-05", 3400)
+    dues.propose_allocations(conn, tx)
+    assert _rows(conn, tx) == [("2026-02", 1700, "confirmed"), ("2026-03", 1700, "confirmed")]
+    odd = _pay(conn, erika, "2026-02-06", 2000)
+    dues.clear_allocations(conn, tx)
+    dues.propose_allocations(conn, odd)
+    assert _rows(conn, odd) == [("2026-02", 1700, "proposed"), ("2026-03", 300, "proposed")]
+
+
+def test_start_example_february_auto():
+    conn = connect(":memory:")
+    conn.execute("insert into account(iban, label) values('XX00FAKE0000000099', 't')")
+    dues.set_check_start(conn, "2026-02")
+    mid = create_member(conn, "Max Mustermann", "Aktiv", date(2026, 1, 10))
+    tx = _pay(conn, mid, "2026-02-03", 1700)
+    dues.propose_allocations(conn, tx)
+    assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]
+    assert [r["tx_id"] for r in dues.auto_rows(conn)] == [tx]
+
+
+def test_faq_example_march_without_february():
+    conn, mid = _setup()
+    dues.propose_allocations(conn, _pay(conn, mid, "2026-01-05", 1700))
+    tx = _pay(conn, mid, "2026-03-05", 1700)
+    dues.propose_allocations(conn, tx)
+    assert _rows(conn, tx) == [("2026-03", 1700, "confirmed")]
+    assert dues.month_status(conn, mid, "2026-02", date(2026, 3, 10)).status == "OVERDUE"
+
+
+def test_run_note_example_matches_code(pages):
+    from kassivo.web.common import _NOTES
+    assert _NOTES["run"].format(n=12, a=9, r=2, o=1) in _text(pages["verteilung"])
+    assert _NOTES["reproposed"].format(n=0).replace("0", "N", 1) in _text(pages["beitraege"])
+
+
+def test_auto_rows_limit_matches_wiki(pages):
+    import inspect
+    assert inspect.signature(dues.auto_rows).parameters["limit"].default == 200
+    assert "200 neuesten automatischen Verteilungen" in _text(pages["grenzen"])

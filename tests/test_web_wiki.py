@@ -102,7 +102,8 @@ def test_prev_next_links(client):
 
 
 KNOWN_PAGES = {"/", "/dues", "/members", "/members/new", "/transactions", "/unmatched",
-               "/categories", "/forecast", "/reports", "/import", "/backup", "/settings/fees"}
+               "/categories", "/forecast", "/reports", "/import", "/backup", "/settings/fees",
+               "/auto"}
 
 
 def test_no_dead_internal_links(client):
@@ -253,6 +254,7 @@ HELP_PAGES = {
     "/forecast": "prognose",
     "/reports": "reports",
     "/backup": "backup",
+    "/auto": "verteilung",
 }
 
 

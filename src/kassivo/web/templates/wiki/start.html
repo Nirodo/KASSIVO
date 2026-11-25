@@ -23,27 +23,27 @@
   <li><strong>Mitglieder und Beiträge anlegen.</strong> Unter <a href="/members">Mitglieder</a> wählen Sie „Mitglied anlegen“. Prüfen Sie unter <a href="/settings/fees">Einstellungen</a>, ob die Beiträge stimmen, und ändern Sie sie bei Bedarf mit „Beitrag speichern“. Siehe <a href="/wiki/mitglieder">Mitglieder</a>.</li>
   <li><strong>Kontoexport importieren.</strong> Erzeugen Sie im Online-Banking den Export „XML CAMT V8, gebuchte Umsätze“ und laden Sie ihn unter <a href="/import">Import</a> mit „Importieren“ hoch. Siehe <a href="/wiki/import">Kontoexport importieren</a>.</li>
   <li><strong>„Unklar“ zuordnen.</strong> Zahlungen, die KASSIVO keinem Mitglied sicher zuordnen konnte, stehen unter <a href="/unmatched">Unklar</a>. Wählen Sie das Mitglied, lassen Sie „Absender merken“ angehakt und wählen Sie „Zuordnen“. Siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>.</li>
-  <li><strong>„Offene Vorschläge“ bestätigen.</strong> Der Link „<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>“ steht in den Buchungen und in Unklar. Öffnen Sie dort je Zahlung „Verteilung“, prüfen Sie die Monate und wählen Sie „Verteilung bestätigen“. Erst bestätigte Verteilungen zählen als bezahlt. Siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>.</li>
+  <li><strong>Ausnahmen prüfen.</strong> Eindeutige Zahlungen verteilt KASSIVO selbst auf die Beitragsmonate. Was es so verteilt hat, sehen Sie unter <a href="/auto">Automatisch verteilt</a>. Nur echte Ausnahmen (zum Beispiel 20,00 € bei 17,00 € Beitrag) stehen unter „<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>“, mit dem Grund. Öffnen Sie dort je Zahlung „Verteilung“, prüfen Sie die Monate und wählen Sie „Verteilung bestätigen“. Siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>.</li>
   <li><strong>Ergebnis ansehen.</strong> <a href="/dues">Beiträge</a> zeigt, wer bezahlt hat, <a href="/forecast">Prognose</a> was noch kommt, <a href="/reports">Reports</a> das Jahr in Zahlen und Diagrammen.</li>
 </ol>
 
 <h2>Beispiele</h2>
 <div class="callout callout-example">
-  <p><strong>Beispiel:</strong> Der Kontoexport beginnt am 15.03.2026. Frühere Zahlungen von März fehlen. Wählen Sie deshalb <code>2026-04</code> als Prüfungsstart. Würden Sie <code>2026-03</code> wählen, erschiene der März bei vielen Mitgliedern als überfällig, obwohl sie früher im Monat gezahlt haben. Zahlungen aus dem März, die im Export stehen, bekommen einen Vorschlag für den April. Prüfen Sie sie in „Offene Vorschläge“, bevor Sie bestätigen (Näheres unter <a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>).</p>
+  <p><strong>Beispiel:</strong> Der Kontoexport beginnt am 15.03.2026. Frühere Zahlungen von März fehlen. Wählen Sie deshalb <code>2026-04</code> als Prüfungsstart. Würden Sie <code>2026-03</code> wählen, erschiene der März bei vielen Mitgliedern als überfällig, obwohl sie früher im Monat gezahlt haben. Zahlungen aus dem März, die im Export stehen, liegen vor dem Prüfungsstart. KASSIVO ordnet sie den Mitgliedern zu, verteilt sie aber nicht auf Monate (Näheres unter <a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>).</p>
 </div>
 <div class="callout callout-example">
-  <p><strong>Beispiel:</strong> Max Mustermann (Art Aktiv, Eintritt 10.01.2026) zahlt ab 2026-02. Der Prüfungsstart ist <code>2026-02</code>. Am 03.02.2026 geht 17,00 € von <code>XX00 FAKE 0000 0000 01</code> ein. Steht diese IBAN in seinem Mitgliedsdatensatz, ordnet KASSIVO die Zahlung beim Import selbst zu und bestätigt sie, weil sie genau den Februar deckt.</p>
+  <p><strong>Beispiel:</strong> Max Mustermann (Art Aktiv, Eintritt 10.01.2026) zahlt ab 2026-02. Der Prüfungsstart ist <code>2026-02</code>. Am 03.02.2026 geht 17,00 € von <code>XX00 FAKE 0000 0000 01</code> ein. Steht diese IBAN in seinem Mitgliedsdatensatz, ordnet KASSIVO die Zahlung beim Import selbst zu und verteilt sie automatisch auf den Februar. Sie steht danach unter „Automatisch verteilt“.</p>
 </div>
 
 <h2>Gut zu wissen</h2>
 <div class="callout callout-warn">
-  <p><strong>Achtung:</strong> Der Prüfungsstart ist die wichtigste Einstellung. Setzen Sie ihn vor dem ersten Import. Ändern Sie ihn später, berechnet KASSIVO offene Vorschläge neu. Bestätigte Verteilungen bleiben unverändert.</p>
+  <p><strong>Achtung:</strong> Der Prüfungsstart ist die wichtigste Einstellung. Setzen Sie ihn vor dem ersten Import. Ändern Sie ihn später, verteilt KASSIVO offene Vorschläge nach den Regeln neu. Bestätigte Verteilungen bleiben unverändert.</p>
 </div>
 <div class="callout callout-tip">
   <p><strong>Tipp:</strong> Legen Sie nach dem ersten Import eine Sicherung an (<a href="/backup">Backup</a>). Dann haben Sie einen sauberen Stand, auf den Sie zurückgehen können.</p>
 </div>
 <ul>
-  <li>Eine Zahlung bestätigt KASSIVO nur dann selbst, wenn sie genau den Beitrag des frühesten offenen Monats deckt und in diesem Monat gebucht ist. Alles andere schlägt KASSIVO nur vor.</li>
+  <li>KASSIVO verteilt eine Zahlung zuerst auf ihren Buchungsmonat, dann auf Rückstände, dann auf folgende Monate. Passt sie zu ganzen Monatsbeiträgen oder ist sie eine einzelne Teilzahlung, bestätigt KASSIVO sie selbst. Jede automatische Verteilung können Sie mit „Rückgängig“ zurücknehmen.</li>
   <li>KASSIVO liest nur Dateien ein. Es fragt kein Bankkonto ab.</li>
   <li>Alle Daten bleiben auf Ihrem Rechner. Siehe <a href="/wiki/sicherheit">Datenschutz und Sicherheit</a>.</li>
 </ul>
