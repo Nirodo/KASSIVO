@@ -1,6 +1,8 @@
 import sqlite3
 from pathlib import Path
 
+from kassivo import backup, settings
+
 SCHEMA = """
 create table if not exists account(
   id integer primary key, iban text not null unique, label text);
@@ -73,27 +75,230 @@ def _relax_member_iban(conn: sqlite3.Connection) -> None:
     cols = {r["name"]: r["notnull"] for r in conn.execute("pragma table_info(member_iban)")}
     if not cols.get("member_id"):
         return
-    conn.executescript("""
-        begin;
-        create table member_iban_new(
-          iban text primary key, member_id integer references member(id));
-        insert into member_iban_new(iban, member_id) select iban, member_id from member_iban;
-        drop table member_iban;
-        alter table member_iban_new rename to member_iban;
-        commit;
-    """)
+    # läuft in der Transaktion des Aufrufers (connect), daher kein executescript
+    conn.execute("create table member_iban_new("
+                 "iban text primary key, member_id integer references member(id))")
+    conn.execute("insert into member_iban_new(iban, member_id) "
+                 "select iban, member_id from member_iban")
+    conn.execute("drop table member_iban")
+    conn.execute("alter table member_iban_new rename to member_iban")
 
 
-def connect(path) -> sqlite3.Connection:
-    if str(path) != ":memory:":
+# --- Schema-Version und Migrationen ---------------------------------------------------
+#
+# Die Version steht in PRAGMA user_version. SCHEMA oben ist die Ausgangsfassung
+# (Version 1 = Schema von Release 1.1.1) und wird nicht mehr nachträglich geändert.
+# Neue Datenbanken entstehen aus SCHEMA und durchlaufen danach alle Migrationen,
+# genau wie bestehende Datenbanken.
+#
+# Neue Migration hinzufügen:
+#   1. Funktion _migrate_to_N(conn) schreiben. Sie führt nur einzelne conn.execute()
+#      aus, ruft nie commit() und nie executescript() auf (das würde die Transaktion
+#      vorzeitig beenden).
+#   2. In MIGRATIONS als {N: _migrate_to_N} eintragen.
+#   3. SCHEMA_VERSION auf N erhöhen.
+#   4. Test in tests/test_schema_version.py: Datenbank mit Version N-1 und Beispieldaten
+#      wird korrekt umgestellt.
+#
+# Jeder Schritt läuft in einer eigenen Transaktion (begin immediate ... commit), die
+# auch user_version setzt. Unter der Sperre wird die Version neu gelesen: hat eine
+# zweite KASSIVO-Instanz den Schritt schon ausgeführt, wird er übersprungen.
+# user_version liegt im Datenbank-Header und wird bei einem
+# Rollback mit zurückgesetzt (Test: test_failing_migration_rolls_back). Scheitert ein
+# Schritt, bleiben frühere Schritte erhalten, die Version zeigt den letzten
+# erfolgreichen Schritt.
+
+BASELINE_VERSION = 1
+SCHEMA_VERSION = 1
+MIGRATIONS: dict = {}
+
+
+class DatabaseOpenError(RuntimeError):
+    """Datenbank kann nicht geöffnet werden; die Meldung ist für Nutzer gedacht."""
+
+
+class SchemaTooNewError(DatabaseOpenError):
+    """Datenbank stammt aus einer neueren KASSIVO-Version."""
+
+
+class MigrationError(DatabaseOpenError):
+    """Umstellung des Datenbankformats fehlgeschlagen."""
+
+
+class DatabaseBusyError(DatabaseOpenError):
+    """Datenbank ist von einer anderen Verbindung gesperrt."""
+
+
+class InvalidDatabaseError(DatabaseOpenError):
+    """Datei ist keine KASSIVO-Datenbank."""
+
+
+E_BUSY = ("Die Datenbank ist von einem anderen Programm oder einer zweiten KASSIVO-Instanz "
+          "geöffnet. Bitte das andere Fenster schließen und erneut starten.")
+E_INVALID = "Die Datei ist keine gültige KASSIVO-Datenbank."
+
+
+def schema_version(conn: sqlite3.Connection) -> int:
+    # fetchall: Anweisung ganz abarbeiten, damit keine Lesesperre offen bleibt
+    return conn.execute("pragma user_version").fetchall()[0][0]
+
+
+def current_schema_version(migrations) -> int:
+    return max(SCHEMA_VERSION, max(migrations, default=0))
+
+
+def _has_user_tables(conn: sqlite3.Connection) -> bool:
+    return conn.execute(
+        "select count(*) from sqlite_master where type='table' and name not like 'sqlite_%'"
+    ).fetchall()[0][0] > 0
+
+
+def _set_version(conn: sqlite3.Connection, version: int) -> None:
+    conn.execute(f"pragma user_version = {int(version)}")
+
+
+def _statements(script: str):
+    """Zerlegt ein SQL-Skript in einzelne Anweisungen (für execute in einer Transaktion)."""
+    buf = ""
+    for line in script.splitlines(keepends=True):
+        buf += line
+        if sqlite3.complete_statement(buf):
+            yield buf.strip()
+            buf = ""
+
+
+def _too_new(version: int, target: int) -> SchemaTooNewError:
+    return SchemaTooNewError(
+        "Die Datenbank stammt aus einer neueren KASSIVO-Version "
+        f"(Schema {version}, diese Version kennt {target}). Bitte KASSIVO aktualisieren.")
+
+
+def _cause(exc: BaseException) -> str:
+    """Kurze Ursache für die Meldung. Bei OSError nur der Typ (die Meldung enthält oft Pfade)."""
+    name = type(exc).__name__
+    text = str(exc).strip()
+    if isinstance(exc, OSError) or not text:
+        return f"Ursache: {name}."
+    return f"Ursache: {name}: {text[:200]}"
+
+
+def _lock(conn: sqlite3.Connection, target: int) -> int:
+    """Schreibsperre holen und die Version unter der Sperre neu lesen."""
+    conn.execute("begin immediate")
+    version = schema_version(conn)
+    if version > target:
+        conn.rollback()
+        raise _too_new(version, target)
+    return version
+
+
+def _stamp_baseline(conn: sqlite3.Connection, target: int) -> bool:
+    """Version 0: neu anlegen oder Altbestand 1.0.0 bis 1.1.1 übernehmen. True = neu angelegt."""
+    if _lock(conn, target) != 0:
+        conn.rollback()  # eine andere Instanz war schneller
+        return False
+    try:
+        fresh = not _has_user_tables(conn)
+        for stmt in _statements(SCHEMA):
+            conn.execute(stmt)
+        _relax_member_iban(conn)
+        _seed(conn)
+        _set_version(conn, BASELINE_VERSION)
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    return fresh
+
+
+def _pre_migration_backup(conn, path, backup_dir) -> str:
+    dest = Path(backup_dir) if backup_dir is not None else settings.backup_dir(Path(path))
+    try:
+        return backup.backup_db(conn, dest).name
+    except Exception as exc:
+        raise MigrationError(
+            "Die Sicherung vor der Umstellung des Datenbankformats ist fehlgeschlagen. "
+            f"Das Datenformat wurde nicht umgestellt. {_cause(exc)}") from exc
+
+
+def _migrate(conn, path, migrations, target: int, backup_dir, do_backup: bool) -> None:
+    """Führt ausstehende Schritte aus. Jeder Schritt liest die Version unter der Sperre neu,
+    damit eine zweite Instanz keinen Schritt doppelt ausführt."""
+    version = _lock(conn, target)
+    if version >= target:
+        conn.rollback()  # eine andere Instanz hat schon umgestellt: keine Sicherung nötig
+        return
+    name = None
+    if do_backup:
+        try:
+            # Sperre bleibt gehalten: niemand schreibt, die Kopie liest einen festen Stand
+            name = _pre_migration_backup(conn, path, backup_dir)
+        except BaseException:
+            conn.rollback()
+            raise
+    step = version + 1
+    while step <= target:
+        if not conn.in_transaction:
+            version = _lock(conn, target)
+            if version >= step:
+                conn.rollback()
+                step = version + 1
+                continue
+        try:
+            migrations[step](conn)
+            _set_version(conn, step)
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            hint = f" Vorher angelegte Sicherung: {name}." if name else ""
+            raise MigrationError(
+                f"Die Umstellung des Datenbankformats auf Schema {step} ist fehlgeschlagen. "
+                f"Die Datenbank bleibt auf Schema {step - 1}.{hint} {_cause(exc)}") from exc
+        step += 1
+
+
+def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0) -> sqlite3.Connection:
+    """Öffnet die Datenbank, legt sie bei Bedarf an und stellt das Datenformat um.
+
+    Fehler mit Meldung für Nutzer (alle DatabaseOpenError): SchemaTooNewError,
+    MigrationError, DatabaseBusyError, InvalidDatabaseError."""
+    migrations = MIGRATIONS if migrations is None else migrations
+    target = current_schema_version(migrations)
+    if sorted(migrations) != list(range(BASELINE_VERSION + 1, target + 1)):
+        raise ValueError("Migrationen müssen lückenlos ab Version 2 nummeriert sein.")
+    memory = str(path) == ":memory:"
+    if not memory:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.executescript(SCHEMA)
-    _relax_member_iban(conn)
-    _seed(conn)
-    conn.commit()
+    conn = sqlite3.connect(str(path), timeout=timeout)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        version = schema_version(conn)
+        if version > target:
+            raise _too_new(version, target)
+        if version >= BASELINE_VERSION and not _has_user_tables(conn):
+            raise InvalidDatabaseError(E_INVALID)
+        fresh = False
+        if version == 0:
+            fresh = _stamp_baseline(conn, target)
+            version = schema_version(conn)
+        if version < target:
+            _migrate(conn, path, migrations, target, backup_dir,
+                     do_backup=not memory and not fresh)
+    except sqlite3.OperationalError as exc:
+        conn.close()
+        text = str(exc).lower()
+        if "locked" in text or "busy" in text:
+            raise DatabaseBusyError(E_BUSY) from exc
+        raise
+    except sqlite3.DatabaseError as exc:
+        conn.close()
+        if "not a database" in str(exc).lower():
+            raise InvalidDatabaseError(E_INVALID) from exc
+        raise
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 

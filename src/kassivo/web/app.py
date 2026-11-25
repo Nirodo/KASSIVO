@@ -7,6 +7,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from kassivo.db import connect
 from kassivo.web import (
     backup_routes, categories_routes, dues_routes, import_routes, members_routes, reports_routes,
     settings_routes, transactions_routes, wiki_routes,
@@ -28,6 +29,9 @@ def _hostname(host: str) -> str:
 
 def create_app(db_path, extra_hosts=()) -> FastAPI:
     """extra_hosts: zusätzliche Hostnamen, nur für Tests ("testserver")."""
+    # Einmal beim Start öffnen: Migration oder Ablehnung (zu neue Datenbank) passiert hier,
+    # nicht erst bei der ersten Anfrage.
+    connect(db_path).close()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db_path = Path(db_path)
     allowed = ALLOWED_HOSTS | frozenset(extra_hosts)
