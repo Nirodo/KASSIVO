@@ -205,7 +205,7 @@ Echte Bankdateien und Datenbanken gehören nie ins Git-Repository, in Issues ode
 pytest
 ```
 
-Die Tests verwenden nur erfundene Daten. Dazu gehören Prüfungen, dass die Hilfeseiten des Wikis und dieses README zu Beschriftungen, Meldungen und Grenzen im Code passen.
+Die Tests laufen zusätzlich bei jedem Pull Request automatisch auf GitHub. Die Tests verwenden nur erfundene Daten. Dazu gehören Prüfungen, dass die Hilfeseiten des Wikis und dieses README zu Beschriftungen, Meldungen und Grenzen im Code passen.
 
 ## Projektstruktur
 
