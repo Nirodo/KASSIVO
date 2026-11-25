@@ -472,3 +472,53 @@ def test_import_zero_only_upload_shows_warning(client):
     assert r.status_code == 200
     assert "Import abgeschlossen" in r.text and "Neu: 0" in r.text and "Duplikate: 0" in r.text
     assert "1 Eintrag mit 0,00 € übersprungen" in r.text
+
+
+# --- #9: früher Abbruch per Content-Length -------------------------------------
+
+MULTIPART = {"content-type": "multipart/form-data; boundary=zz"}
+
+
+def test_import_rejects_oversized_content_length_before_body(client, db, monkeypatch):
+    monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 100)
+    from kassivo.web import import_routes
+    length = 100 + import_routes.UPLOAD_OVERHEAD_BYTES + 1
+    r = client.post("/import", content=b"x", headers={**MULTIPART, "content-length": str(length)})
+    assert r.status_code == 413
+    assert "Die Datei ist zu groß (Grenze 100 MB)" in r.text and "Es wurde nichts importiert." in r.text
+    assert _count(db, "transaction") == 0 and _count(db, "import_batch") == 0
+    assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_import_content_length_within_margin_goes_to_handler(client, db, monkeypatch):
+    monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 10**6)
+    r = _upload(client, _zip())
+    assert r.status_code == 200 and _count(db, "transaction") == 2
+
+
+def test_import_without_content_length_falls_back_to_handler_cap(client, db, monkeypatch):
+    monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 100)
+
+    def chunks():
+        yield b'--zz\r\nContent-Disposition: form-data; name="file"; filename="a.zip"\r\n\r\n'
+        yield b"PK\x03\x04" + b"x" * 5000
+        yield b"\r\n--zz--\r\n"
+    r = client.post("/import", content=chunks(), headers=MULTIPART)
+    assert r.status_code == 413 and "zu groß" in r.text
+    assert _count(db, "transaction") == 0
+
+
+def test_other_paths_ignore_content_length_guard(client, monkeypatch):
+    monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 100)
+    r = client.post("/members", content=b"x", headers={"content-length": "100000000"})
+    assert r.status_code != 413
+
+
+def test_invalid_content_length_is_ignored_by_guard():
+    from kassivo.web import import_routes
+
+    class Req:
+        headers = {"content-length": "abc"}
+        method = "POST"
+        url = type("U", (), {"path": "/import"})()
+    assert import_routes.upload_too_large(Req()) is False

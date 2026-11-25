@@ -1,5 +1,7 @@
 """Import-Service. Nur erfundene Daten."""
+import io
 import zipfile
+import zlib
 
 import pytest
 
@@ -367,3 +369,157 @@ def test_dedupe_keys_unchanged_by_zero_entry():
     plain = parse_camt052(make_camt(IBAN, 0, e, DAYS[0]))
     mixed = parse_camt052(make_camt(IBAN, 0, [e[0], z, e[1]], DAYS[0]))
     assert len(plain.entries) == 2 and _dedupe_keys(plain) == _dedupe_keys(mixed)
+
+
+# --- #8 Duplikaterkennung, #9 Robustheit -------------------------------------
+
+def _one(conn, tmp_path, entries, day=DAYS[0], name="a.xml", opening=0):
+    z = write_zip(tmp_path, {name: make_camt(IBAN, opening, entries, day)}, name + ".zip")
+    return import_path(conn, z)
+
+
+def test_same_ref_other_amount_is_duplicate_with_one_warning(conn, tmp_path):
+    _one(conn, tmp_path, [dict(amount=1700, ref="R1", name="Max Muster", purpose="Geheim")])
+    r = _one(conn, tmp_path, [dict(amount=9900, ref="R1", booking_date=DAYS[0], name="Max Muster", purpose="Geheim"),
+                              dict(amount=1700, ref="R1", booking_date=DAYS[0], name="Max Muster", purpose="Geheim")],
+             day=DAYS[1], name="b.xml")
+    assert (r.new, r.duplicates) == (0, 2)
+    w = [x for x in r.warnings if "Bankreferenz" in x]
+    assert len(w) == 1
+    assert ("1 Buchung(en) mit bereits bekannter Bankreferenz, aber anderem Betrag "
+            "oder Datum wurden nicht übernommen") in w[0]
+    assert IBAN not in w[0] and "R1" not in w[0] and "9900" not in w[0] and "Geheim" not in w[0]
+    assert f"{IBAN[:4]}…{IBAN[-4:]}" in w[0]
+
+
+def test_same_ref_other_date_warns(conn, tmp_path):
+    _one(conn, tmp_path, [dict(amount=1700, ref="R1")])
+    r = _one(conn, tmp_path, [dict(amount=1700, ref="R1", booking_date=DAYS[2])], day=DAYS[1], name="b.xml")
+    assert r.duplicates == 1 and sum("Bankreferenz" in x for x in r.warnings) == 1
+    assert tx_count(conn) == 1
+
+
+def test_exact_reimport_has_no_ref_warning(conn, tmp_path):
+    e = [dict(amount=1700, ref="R1")]
+    _one(conn, tmp_path, e)
+    r = _one(conn, tmp_path, e)
+    assert r.duplicates == 1 and not any("Bankreferenz" in x for x in r.warnings)
+
+
+def test_same_ref_conflict_inside_one_file_warns(conn, tmp_path):
+    r = _one(conn, tmp_path, [dict(amount=1700, ref="R1"), dict(amount=1800, ref="R1")])
+    assert (r.new, r.duplicates) == (1, 1) and sum("Bankreferenz" in x for x in r.warnings) == 1
+
+
+def test_same_booking_without_ref_in_later_file_is_duplicate_by_design(conn, tmp_path):
+    """Dokumentierte Grenze: der Zähler n beginnt je Datei neu."""
+    e = dict(amount=1700, name="Max Muster", cp_iban=OTHER_IBAN, purpose="Beitrag", ref=None)
+    assert _one(conn, tmp_path, [e]).new == 1
+    r = _one(conn, tmp_path, [e, e], name="b.xml")
+    assert (r.new, r.duplicates) == (1, 1)
+    assert tx_count(conn) == 2
+
+
+def test_zip_corrupt_stream_raises_camt_error(conn, tmp_path):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("kaputt.xml", make_camt(IBAN, 0, [dict(amount=1700, ref="R1")], DAYS[0]) * 20)
+    raw = bytearray(buf.getvalue())
+    start = raw.index(b"kaputt.xml") + len("kaputt.xml")
+    for i in range(start + 10, start + 60):
+        raw[i] ^= 0xFF  # Deflate-Strom zerstören, Verzeichnis bleibt intakt
+    p = tmp_path / "bad.zip"
+    p.write_bytes(bytes(raw))
+    with pytest.raises(CamtError, match="kaputt.xml"):
+        import_path(conn, p)
+    assert tx_count(conn) == 0
+    assert conn.execute("select count(*) from import_batch").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("exc", [EOFError("Compressed file ended"), zlib.error("Error -3 while decompressing")])
+def test_zip_stream_errors_map_to_camt_error(conn, tmp_path, monkeypatch, exc):
+    p = write_zip(tmp_path, {"a.xml": b"<x/>"})
+
+    def boom(self, *a, **k):
+        raise exc
+    monkeypatch.setattr(zipfile.ZipExtFile, "read", boom)
+    with pytest.raises(CamtError, match=r"a\.xml: nicht lesbar") as ei:
+        import_path(conn, p)
+    assert "Compressed" not in str(ei.value) and "Error -3" not in str(ei.value)
+
+
+def test_missing_path_raises_camt_error_without_absolute_path(conn, tmp_path):
+    for name in ("gibt-es-nicht.zip", "weg.xml", "weg-ordner"):
+        with pytest.raises(CamtError, match="Datei nicht gefunden") as ei:
+            import_path(conn, tmp_path / name)
+        assert name in str(ei.value) and str(tmp_path) not in str(ei.value)
+
+
+def test_file_vanishing_between_listing_and_reading(conn, tmp_path, monkeypatch):
+    d = tmp_path / "ordner"
+    d.mkdir()
+    (d / "a.xml").write_bytes(make_camt(IBAN, 0, [dict(amount=1700, ref="R1")], DAYS[0]))
+    (d / "b.xml").write_bytes(make_camt(IBAN, 0, [dict(amount=1700, ref="R2")], DAYS[0]))
+    real_open = open
+
+    def vanish(self, mode="r", *a, **k):
+        if self.name == "b.xml":
+            self.unlink()
+        return real_open(self, mode, *a, **k)
+    monkeypatch.setattr("pathlib.Path.open", vanish)
+    with pytest.raises(CamtError, match=r"b\.xml") as ei:
+        import_path(conn, d)
+    assert str(tmp_path) not in str(ei.value) and tx_count(conn) == 0
+
+
+def test_file_is_read_bounded_not_whole(tmp_path, monkeypatch):
+    monkeypatch.setattr(ingest, "MAX_XML_BYTES", 100)
+    p = tmp_path / "x.xml"
+    p.write_bytes(b"<a>" + b"x" * 5000)
+    reads = []
+    real_open = open
+
+    class Spy:
+        def __init__(self, f):
+            self.f = f
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            self.f.close()
+
+        def read(self, n=-1):
+            reads.append(n)
+            return self.f.read(n)
+    monkeypatch.setattr("pathlib.Path.open", lambda self, mode="r", *a, **k: Spy(real_open(self, mode)))
+    monkeypatch.setattr("pathlib.Path.stat", lambda self, **k: (_ for _ in ()).throw(AssertionError("stat")))
+    with pytest.raises(CamtError, match="zu groß"):
+        ingest._read_file(p)
+    assert reads == [101]
+
+
+def test_missing_status_gives_one_masked_warning(conn, tmp_path):
+    xml = make_camt(IBAN, 0, [dict(amount=1700, ref="A1"), dict(amount=500, ref="A2"),
+                              dict(amount=300, ref="A3")], DAYS[0], closing=300)
+    xml = xml.replace(b"<Sts><Cd>BOOK</Cd></Sts>", b"", 2)
+    r = import_path(conn, write_zip(tmp_path, {"a.xml": xml}))
+    assert r.new == 1
+    w = [x for x in r.warnings if "ohne Status" in x]
+    assert len(w) == 1 and "2 Einträge ohne Status übersprungen" in w[0]
+    assert IBAN not in w[0] and f"{IBAN[:4]}…{IBAN[-4:]}" in w[0]
+
+
+def test_pending_entry_gives_no_status_warning(conn, tmp_path):
+    r = _one(conn, tmp_path, [dict(amount=1700, ref="A1", status="PDNG")])
+    assert not any("ohne Status" in x for x in r.warnings)
+
+
+def test_import_inside_open_transaction_is_programming_error(conn, tmp_path):
+    p = write_zip(tmp_path, day_files())
+    conn.execute("insert into account(iban, label) values('DE99','x')")
+    assert conn.in_transaction
+    with pytest.raises(RuntimeError):
+        import_path(conn, p)
+    conn.rollback()
+    assert import_path(conn, p).new == 5

@@ -5,6 +5,7 @@ parsen, dann schreiben. Meldungen enthalten nie volle IBAN, Namen oder Zweck.
 """
 import hashlib
 import zipfile
+import zlib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from kassivo.camt import CamtError, ParsedStatement, parse_camt052
 MAX_XML_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_BYTES = 200 * 1024 * 1024
 MAX_FILES = 5000
+NOT_FOUND = "Datei nicht gefunden oder nicht lesbar"
 NO_XML = "Keine XML-Dateien gefunden"
 TOO_BIG_TOTAL = "Import insgesamt zu groß"
 
@@ -46,6 +48,8 @@ def _read_zip(path: Path) -> list[tuple[str, bytes]]:
         z = zipfile.ZipFile(path)
     except zipfile.BadZipFile:
         raise CamtError(f"{path.name}: kein gültiges ZIP") from None
+    except OSError:
+        raise CamtError(f"{NOT_FOUND}: {path.name}") from None
     with z:
         infos = [i for i in z.infolist() if not i.is_dir() and _is_xml(i.filename)]
         _check_count(len(infos))
@@ -58,7 +62,7 @@ def _read_zip(path: Path) -> list[tuple[str, bytes]]:
             try:
                 with z.open(info) as f:
                     data = f.read(MAX_XML_BYTES + 1)
-            except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError):
+            except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError, zlib.error, EOFError):
                 raise CamtError(f"{info.filename}: nicht lesbar") from None
             if len(data) > MAX_XML_BYTES:
                 raise CamtError(f"{info.filename}: Datei zu groß")
@@ -70,12 +74,27 @@ def _read_zip(path: Path) -> list[tuple[str, bytes]]:
 
 
 def _read_file(path: Path) -> tuple[str, bytes]:
-    if path.stat().st_size > MAX_XML_BYTES:
+    """Begrenzt lesen: eine nach der Prüfung gewachsene Datei wird nie ganz geladen."""
+    try:
+        with path.open("rb") as f:
+            data = f.read(MAX_XML_BYTES + 1)
+    except OSError:  # gelöscht oder gesperrt, auch zwischen Auflisten und Lesen
+        raise CamtError(f"{NOT_FOUND}: {path.name}") from None
+    if len(data) > MAX_XML_BYTES:
         raise CamtError(f"{path.name}: Datei zu groß")
-    return path.name, path.read_bytes()
+    return path.name, data
 
 
 def _collect(path: Path) -> list[tuple[str, bytes]]:
+    if not path.exists():
+        raise CamtError(f"{NOT_FOUND}: {path.name}")
+    try:
+        return _collect_existing(path)
+    except OSError:  # Ordner nicht lesbar oder Datei verschwunden
+        raise CamtError(f"{NOT_FOUND}: {path.name}") from None
+
+
+def _collect_existing(path: Path) -> list[tuple[str, bytes]]:
     if path.is_dir():
         files = sorted(p for p in path.iterdir() if p.is_file() and _is_xml(p.name))
         _check_count(len(files))
@@ -138,6 +157,19 @@ def _zero_warning(st: ParsedStatement) -> str | None:
     return f"Konto {mask_iban(st.account_iban)}, {st.skipped_date.isoformat()}: {n} {wort} mit 0,00 € übersprungen"
 
 
+def _nostatus_warning(st: ParsedStatement) -> str | None:
+    if not st.skipped_nostatus:
+        return None
+    n = st.skipped_nostatus
+    wort = "Eintrag" if n == 1 else "Einträge"
+    return f"Konto {mask_iban(st.account_iban)}: {n} {wort} ohne Status übersprungen"
+
+
+def _refconflict_warning(st: ParsedStatement, n: int, day: str) -> str:
+    return (f"Konto {mask_iban(st.account_iban)}, {day}: {n} Buchung(en) mit bereits bekannter "
+            "Bankreferenz, aber anderem Betrag oder Datum wurden nicht übernommen")
+
+
 def _account_id(conn, iban: str, label: str) -> int:
     row = conn.execute("select id from account where iban=?", (iban,)).fetchone()
     if row:
@@ -145,10 +177,21 @@ def _account_id(conn, iban: str, label: str) -> int:
     return conn.execute("insert into account(iban, label) values(?,?)", (iban, label)).lastrowid
 
 
+def _ref_conflict(conn, acc: int, key: str, tx) -> bool:
+    """Gleiche Bankreferenz, aber anderer Betrag oder anderes Buchungsdatum als gespeichert."""
+    row = conn.execute(
+        'select amount_cents, booking_date from "transaction" where account_id=? and dedupe_key=?',
+        (acc, key),
+    ).fetchone()
+    return row is not None and (row[0], row[1]) != (tx.amount_cents, tx.booking_date.isoformat())
+
+
 def import_path(conn, path: Path, bank_label: str = "Sparkasse") -> ImportResult:
+    if conn.in_transaction:  # `with conn` würde fremde offene Änderungen mit-committen
+        raise RuntimeError("import_path darf nicht innerhalb einer offenen Transaktion laufen")
     path = Path(path)
     statements = _parse_all(_collect(path))  # wirft, bevor geschrieben wird
-    warnings = [w for st in statements for w in (_balance_warning(st), _zero_warning(st)) if w]
+    warnings = [w for st in statements for w in (_balance_warning(st), _zero_warning(st), _nostatus_warning(st)) if w]
     new_ids: list[int] = []
     dups = 0
     with conn:  # eine Transaktion: commit bei Erfolg, rollback bei jedem Fehler
@@ -157,6 +200,7 @@ def import_path(conn, path: Path, bank_label: str = "Sparkasse") -> ImportResult
             (path.name, datetime.now().isoformat(timespec="seconds")),
         ).lastrowid
         for st in statements:
+            conflicts: list[str] = []  # Buchungstage der Bankreferenz-Konflikte
             acc = _account_id(conn, st.account_iban, bank_label)
             for tx, key in zip(st.entries, _dedupe_keys(st)):
                 cur = conn.execute(
@@ -172,6 +216,10 @@ def import_path(conn, path: Path, bank_label: str = "Sparkasse") -> ImportResult
                     new_ids.append(cur.lastrowid)
                 else:
                     dups += 1
+                    if tx.bank_ref and _ref_conflict(conn, acc, key, tx):
+                        conflicts.append(tx.booking_date.isoformat())
+            if conflicts:
+                warnings.append(_refconflict_warning(st, len(conflicts), max(conflicts)))
         conn.execute(
             "update import_batch set new_count=?, dup_count=? where id=?",
             (len(new_ids), dups, batch_id),

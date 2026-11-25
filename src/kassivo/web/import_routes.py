@@ -12,7 +12,21 @@ from kassivo.web.common import get_conn, render
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+UPLOAD_OVERHEAD_BYTES = 1024 * 1024  # Multipart-Rahmen kommt zur Dateigröße hinzu
 CHUNK = 1024 * 1024
+TOO_BIG = "Die Datei ist zu groß (Grenze 100 MB). Es wurde nichts importiert."
+
+
+def upload_too_large(request) -> bool:
+    """Früh ablehnen: Starlette spoolt den ganzen Multipart-Body auf die Platte, bevor der
+    Handler läuft. Ohne (oder mit ungültigem) Content-Length greift die Grenze im Handler."""
+    if request.method != "POST" or request.url.path != "/import":
+        return False
+    try:
+        length = int(request.headers.get("content-length", ""))
+    except ValueError:
+        return False
+    return length > MAX_UPLOAD_BYTES + UPLOAD_OVERHEAD_BYTES
 
 
 def _sniff(head: bytes) -> str | None:
@@ -50,7 +64,7 @@ async def import_submit(
                     head = chunk[:1024]
                 total += len(chunk)
                 if total > MAX_UPLOAD_BYTES:
-                    return _form(request, conn, 413, "Die Datei ist zu groß (Grenze 100 MB). Es wurde nichts importiert.")
+                    return _form(request, conn, 413, TOO_BIG)
                 out.write(chunk)
         kind = _sniff(head)
         if kind is None:
