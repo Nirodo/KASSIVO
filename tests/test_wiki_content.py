@@ -89,6 +89,9 @@ def test_faq_has_at_least_ten_questions(pages):
     ("verteilung", ["abgeleitet", "manuell", "Mehr als 12 Monate", "angefangen",
                     "schlägt nur vor", "manuellen Vorschlag"]),
     ("begriffe", ["abgeleitet", "manuell"]),
+    # Fix-Runde 2: Entscheidungen verschieben automatische Zahlungen, ehrliche Grenzen
+    ("verteilung", ["doppelt bezahlt", "Import ihn vorverlegt", "Grenze bei „— keins —“",
+                    "Prüfungsstart erneut"]),
     ("beitraege", ["abgeleitet", "manuell"]),
     ("import", ["camt.052.001.08", "Duplikat", "Es wurde nichts importiert"]),
     ("zuordnung", ["mehrdeutig", "Absender merken", "ausgetreten", "Unklar"]),
@@ -651,3 +654,27 @@ def test_auto_rows_limit_matches_wiki(pages):
     assert inspect.signature(dues.auto_rows).parameters["limit"].default == auto_routes.PAGE_SIZE
     assert auto_routes.PAGE_SIZE == 100
     assert "100 automatische Verteilungen je Seite" in _text(pages["grenzen"])
+
+
+
+def test_keins_limit_described_in_wiki_matches_code():
+    from kassivo import matching
+    conn, mid = _setup()
+    tx = _pay(conn, mid, "2026-01-15", 1700)
+    dues.propose_allocations(conn, tx)
+    dues.undo_auto(conn, tx)
+    matching.assign_member(conn, tx, None)
+    matching.assign_member(conn, tx, mid, learn=False)
+    assert _rows(conn, tx) == [("2026-01", 1700, "confirmed")]  # Schutz ist weg
+
+
+def test_resaving_check_start_recomputes_after_fee_change():
+    from kassivo.fees import set_fee
+    conn, mid = _setup()
+    tx = _pay(conn, mid, "2026-01-15", 1700)
+    dues.propose_allocations(conn, tx)
+    set_fee(conn, "Aktiv", 2000, "2026-01")
+    assert _rows(conn, tx) == [("2026-01", 1700, "confirmed")]  # nicht von selbst
+    dues.redistribute_all(conn)  # wie erneutes Speichern des Prüfungsstarts
+    assert _rows(conn, tx) == [("2026-01", 1700, "confirmed")]  # Teilzahlung bleibt eindeutig
+    assert dues.month_status(conn, mid, "2026-01", date(2026, 1, 20)).status == "PARTIAL"

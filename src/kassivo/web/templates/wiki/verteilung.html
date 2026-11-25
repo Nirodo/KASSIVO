@@ -5,7 +5,7 @@
 <h3>Abgeleitet oder manuell</h3>
 <p>KASSIVO unterscheidet zwei Herkünfte einer Verteilung:</p>
 <ul>
-  <li><strong>Abgeleitet (automatisch):</strong> Alles, was KASSIVO selbst berechnet hat, automatische Verteilungen und automatische Vorschläge. KASSIVO berechnet sie neu, sobald sich etwas ändert, von dem sie abhängen: der Prüfungsstart, die Zuordnung einer Zahlung zu einem Mitglied oder frühere Zahlungen desselben Mitglieds.</li>
+  <li><strong>Abgeleitet (automatisch):</strong> Alles, was KASSIVO selbst berechnet hat, automatische Verteilungen und automatische Vorschläge. KASSIVO berechnet alle abgeleiteten Verteilungen eines Mitglieds neu, sobald sich etwas ändert, von dem sie abhängen: der Prüfungsstart (beim Speichern oder wenn ein Import ihn vorverlegt), die Zuordnung einer Zahlung zu einem Mitglied oder Ihre Entscheidung bei einer anderen Zahlung desselben Mitglieds („Verteilung bestätigen“, „Rückgängig“, „Verteilung aufheben“). So ist kein Monat doppelt bezahlt.</li>
   <li><strong>Manuell (Ihre Entscheidung):</strong> Alles, was Sie selbst festgelegt haben: „Verteilung bestätigen“, „Rückgängig“, „Verteilung aufheben“ und „Neu vorschlagen“. Diese Verteilungen und Vorschläge fasst KASSIVO nie von selbst an, auch nicht beim Ändern des Prüfungsstarts oder beim Umhängen anderer Zahlungen.</li>
 </ul>
 
@@ -93,7 +93,9 @@
   <li><strong>Reihenfolge:</strong> Beim Import und beim Knopf „Offene Vorschläge jetzt automatisch verteilen“ verteilt KASSIVO die Zahlungen nach Buchungsdatum, älteste zuerst. Spätere Zahlungen sehen so die früheren.</li>
   <li><strong>Warnung „Monat bereits bezahlt“:</strong> Sie erscheint in der Zeile eines Vorschlags, wenn der Monat inzwischen durch bestätigte Zahlungen voll bezahlt ist. Prüfen Sie dann den Monat. Sonst zahlen Sie doppelt.</li>
   <li><strong>Prüfungsstart ändern</strong> berechnet alle abgeleiteten Verteilungen neu, auch automatisch bestätigte. Zahlungen, die jetzt vor dem Prüfungsstart liegen, verlieren ihre automatische Verteilung. Manuelle Verteilungen und Vorschläge bleiben unverändert. Die Meldung zählt nur Zahlungen, deren Verteilung sich wirklich geändert hat, zum Beispiel „Prüfungsstart gespeichert. 3 Zahlungen neu verteilt, 2 liegen vor dem Prüfungsstart.“</li>
-  <li><strong>Umhängen:</strong> Hängen Sie eine Zahlung auf ein anderes Mitglied oder auf „— keins —“, berechnet KASSIVO die abgeleiteten Verteilungen beider Mitglieder ab dieser Zahlung neu.</li>
+  <li><strong>Umhängen:</strong> Hängen Sie eine Zahlung auf ein anderes Mitglied oder auf „— keins —“, berechnet KASSIVO die abgeleiteten Verteilungen beider Mitglieder neu.</li>
+  <li><strong>Grenze bei „— keins —“:</strong> Ein manueller Vorschlag bleibt nur beim direkten Umhängen ein Vorschlag. Setzen Sie die Zahlung erst auf „— keins —“ und ordnen sie danach wieder zu, ist sie eine gewöhnliche neue Zuordnung und wird automatisch verteilt, wenn das Ergebnis eindeutig ist.</li>
+  <li><strong>Grenze bei Beitrag, Mitgliedsart und Austritt:</strong> Ändern Sie diese, rechnet KASSIVO bestehende automatische Verteilungen nicht von selbst neu. Speichern Sie danach den Prüfungsstart erneut (auch unverändert), dann verteilt KASSIVO alles Abgeleitete neu.</li>
   <li>Beträge je Zeile: 0,01 € bis 100.000,00 €. Ein Monat darf nur einmal vorkommen.</li>
   <li>Eine Verteilung, die Sie bestätigt haben, sperrt das Umhängen der Zahlung auf ein anderes Mitglied. Heben Sie sie vorher auf (<a href="/wiki/zuordnung">Zahlungen zuordnen</a>). Eine automatische Verteilung sperrt nicht: Beim Umhängen rechnet KASSIVO sie für das neue Mitglied neu.</li>
 </ul>

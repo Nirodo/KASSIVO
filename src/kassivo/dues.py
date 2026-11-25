@@ -7,11 +7,15 @@ Automatische Verteilung eines Zahlungseingangs (#27). Bezeichnungen:
 start = max(Prüfungsstart, Beitragsbeginn des Mitglieds), P = Buchungsmonat,
 offener Monat = Monat ab start mit Soll minus bestätigt (andere Buchungen) > 0.
 
-Grundsatz: Zeilen mit source='auto' (Vorschlag und bestätigt) sind abgeleitet
-und werden neu berechnet, sobald sich die Eingaben ändern (Prüfungsstart,
-Zuordnung, frühere Zahlungen). Zeilen mit source='manual' sind Entscheidungen
-des Nutzers (Bestätigen, Rückgängig, Verteilung aufheben, Neu vorschlagen) und
-werden von keinem automatischen Weg angefasst.
+Grundsatz: Zeilen mit source='auto' (Vorschlag und bestätigt) sind abgeleitet.
+Für ein Mitglied werden sie alle neu berechnet (rebuild_member, kanonisch wie
+redistribute_all), wenn sich seine Zuordnungen ändern oder der Nutzer bei einer
+seiner Zahlungen entscheidet (confirm_allocations, undo_auto,
+clear_allocations); für alle Mitglieder bei gespeichertem Prüfungsstart und
+wenn ein Import den abgeleiteten Prüfungsstart vorverlegt. Beitrags-, Art- und
+Austrittsänderungen lösen keine Neuberechnung aus. Zeilen mit source='manual'
+sind Entscheidungen des Nutzers (Bestätigen, Rückgängig, Verteilung aufheben,
+Neu vorschlagen) und werden von keinem automatischen Weg angefasst.
 
 1. Vor dem Prüfungsstart (P < Prüfungsstart): keine Verteilung, kein
    Vorschlag. Die Zahlung bleibt dem Mitglied zugeordnet (Historie).
