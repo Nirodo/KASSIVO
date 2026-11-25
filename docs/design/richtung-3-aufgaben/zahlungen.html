@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zahlungen – KASSIVO (Entwurf Aufgaben)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<div class="proto">Entwurf Richtung 3 „Aufgaben“ · alle Daten erfunden · <a href="../index.html">Zur Auswahl</a></div>
+<nav class="rail" aria-label="Hauptnavigation"><a class="brand" href="start.html">K<span class="sr-only">ASSIVO</span></a><ul>
+<li><a class="nav" href="start.html"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><span>Übersicht</span></a></li>
+<li><a class="nav" href="mitglieder.html"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><path d="M16 5a3.5 3.5 0 0 1 0 7M18 14c2.5.6 3.5 2.6 3.5 6"/></svg><span>Mitglieder</span></a></li>
+<li><a class="nav" href="zahlungen.html" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></svg><span>Zahlungen</span></a></li>
+<li><a class="nav" href="raster.html"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg><span>Auswertung</span></a></li>
+<li><a class="nav" href="../richtung-1-ruhig/einstellungen.html"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg><span>Einstellungen</span></a></li>
+</ul></nav>
+<nav class="bottombar" aria-label="Hauptnavigation"><ul>
+<li><a href="start.html"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><span>Übersicht</span></a></li>
+<li><a href="mitglieder.html"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><path d="M16 5a3.5 3.5 0 0 1 0 7M18 14c2.5.6 3.5 2.6 3.5 6"/></svg><span>Mitglieder</span></a></li>
+<li><a href="zahlungen.html" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></svg><span>Zahlungen</span></a></li>
+<li><a href="raster.html"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg><span>Auswertung</span></a></li>
+<li><a href="../richtung-1-ruhig/einstellungen.html"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg><span>Einstellungen</span></a></li>
+</ul></nav>
+<div class="main-wrap">
+<div class="brandbar">KASSIVO</div>
+<main id="main" class="page">
+<div class="page-head"><h1>Zahlungen</h1><a class="btn" href="import-ergebnis.html">Kontoauszug importieren</a></div>
+<nav class="tabs" aria-label="Unterbereiche"><a href="zahlungen.html" aria-current="page">Alle <span class="count">128</span></a>
+<a href="zahlungen.html">Eingänge <span class="count">96</span></a>
+<a href="zahlungen.html">Ausgänge <span class="count">32</span></a>
+<a href="zahlungen.html">Unklar <span class="count count-attn">3</span></a>
+<a href="zahlungen-pruefen.html">Prüfen <span class="count count-attn">3</span></a>
+<a href="zahlungen.html">Automatisch verteilt <span class="count">41</span></a></nav><form role="search" style="margin-bottom:var(--s4)"><label class="sr-only" for="q">Zahlungen durchsuchen</label><input id="q" class="search" type="search" placeholder="Name, Zweck oder Betrag suchen"></form><div role="group" aria-label="Zahlungsliste" style="border:1px solid var(--line-soft);border-radius:var(--radius);overflow:hidden">
+<div class="rowhead" aria-hidden="true"><span></span><span>Datum</span><span>Von / An</span><span>Betrag</span><span>Zuordnung</span></div>
+<ul class="rows" style="border:0;border-radius:0"><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Hannes Kasten auswählen"></span>
+<span class="date">24.11.</span><span class="who">Hannes Kasten<small>Beitrag November</small></span><span class="amt in">+10,00 €</span><span class="assign"><span class="chip chip-ok">automatisch</span> Beitrag Hannes Kasten · Nov</span></div></li><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Elke Vorbild auswählen"></span>
+<span class="date">24.11.</span><span class="who">Elke Vorbild<small>Beitrag Nov/Dez</small></span><span class="amt in">+20,00 €</span><span class="assign"><span class="chip chip-ok">automatisch</span> Beitrag Elke Vorbild · Nov–Dez</span></div></li><li class="selected"><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Unbekannt GmbH auswählen" checked></span>
+<span class="date">23.11.</span><span class="who">Unbekannt GmbH<small>XX00 FAKE 0001 0001 · „Spende Fest“</small></span><span class="amt in">+25,00 €</span><span class="assign"><select aria-label="Zuordnung für Zahlung 2"><option>Zuordnen …</option><option>Beitrag eines Mitglieds</option><option>Spende</option><option>Veranstaltung</option><option>Material</option><option>Miete</option><option>Nebenkosten</option><option>Sonstiges</option></select></span></div></li><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Stadtwerke Beispielstadt auswählen"></span>
+<span class="date">22.11.</span><span class="who">Stadtwerke Beispielstadt<small>Abschlag Strom</small></span><span class="amt ">−84,30 €</span><span class="assign"><span class="chip chip-ok">automatisch</span> Kategorie Nebenkosten</span></div></li><li class="attn"><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Lena Muster auswählen"></span>
+<span class="date">21.11.</span><span class="who">Lena Muster<small>Beitrag Lena</small></span><span class="amt in">+30,00 €</span><span class="assign"><a href="zahlungen-pruefen.html"><strong>Vorschlag prüfen</strong></a> <span class="chip chip-warn">prüfen</span></span></div></li><li class="selected"><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Druckerei Muster auswählen" checked></span>
+<span class="date">20.11.</span><span class="who">Druckerei Muster<small>Rechnung 2026-117</small></span><span class="amt ">−42,00 €</span><span class="assign"><select aria-label="Zuordnung für Zahlung 5"><option>Zuordnen …</option><option>Beitrag eines Mitglieds</option><option>Spende</option><option>Veranstaltung</option><option>Material</option><option>Miete</option><option>Nebenkosten</option><option>Sonstiges</option></select></span></div></li><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Piet Vorlage auswählen"></span>
+<span class="date">19.11.</span><span class="who">Piet Vorlage<small>Beitrag</small></span><span class="amt in">+5,00 €</span><span class="assign"><span class="chip chip-ok">automatisch</span> Beitrag Piet Vorlage · Nov (teilweise)</span></div></li><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Unbekannt auswählen"></span>
+<span class="date">18.11.</span><span class="who">Unbekannt<small>XX00 FAKE 0002 0002 · ohne Zweck</small></span><span class="amt in">+10,00 €</span><span class="assign"><select aria-label="Zuordnung für Zahlung 7"><option>Zuordnen …</option><option>Beitrag eines Mitglieds</option><option>Spende</option><option>Veranstaltung</option><option>Material</option><option>Miete</option><option>Nebenkosten</option><option>Sonstiges</option></select></span></div></li></ul></div><div class="bulk" role="region" aria-label="Aktionen für die Auswahl"><strong>2 ausgewählt</strong><button class="btn btn-secondary" type="button">Kategorie zuweisen</button><button class="btn btn-secondary" type="button">Als Beitrag verteilen</button><button class="btn btn-quiet" type="button">Auswahl aufheben</button></div>
+</main>
+</div>
+</body>
+</html>
