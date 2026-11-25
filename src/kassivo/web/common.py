@@ -113,8 +113,11 @@ _NOTES = {
     "undone": "Automatische Verteilung rückgängig gemacht. Die Zahlung steht jetzt unter"
               " „Offene Vorschläge“ und kann auf der Seite „Verteilung“ geändert und"
               " bestätigt werden.",
-    "run": "{n} geprüft: {a} automatisch verteilt, {r} bleiben zur Prüfung,"
-           " {o} liegen vor dem Prüfungsstart.",
+    "run": "{n} geprüft: {a} automatisch verteilt, {r} bleiben zur Prüfung.",
+    "run_outside": "{n} geprüft: {a} automatisch verteilt, {r} bleiben zur Prüfung,"
+                   " {o} liegen vor dem Prüfungsstart.",
+    "reproposed_outside": "Prüfungsstart gespeichert. {n} Zahlungen neu verteilt,"
+                          " {o} liegen vor dem Prüfungsstart.",
 }
 # Zahlen, die ein Hinweis zusätzlich zu n verwenden darf (nur ganze Zahlen)
 _NOTE_KEYS = ("a", "r", "o")

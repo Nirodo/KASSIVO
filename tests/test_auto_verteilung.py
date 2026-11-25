@@ -374,7 +374,8 @@ def test_auto_distribute_counts(conn):
     outside = _tx(conn, 1700, day="2026-01-05", member_id=m)
     ok = _tx(conn, 1700, day="2026-02-05", member_id=m)
     odd = _tx(conn, 2000, day="2026-03-05", member_id=m)
-    assert auto_distribute_pending(conn) == AutoResult(total=3, confirmed=1, review=1, outside=1)
+    # Fix-Runde 1 (f): Zahlungen vor dem Prüfungsstart ohne Zeilen zählen nicht mit
+    assert auto_distribute_pending(conn) == AutoResult(total=2, confirmed=1, review=1, outside=0)
     assert not conn.in_transaction
     assert _rows(conn, outside) == []
     assert _rows(conn, ok) == [("2026-02", 1700, "confirmed", "auto")]

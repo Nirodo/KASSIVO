@@ -8,7 +8,8 @@
   <li>Automatisch kategorisiert: {{ categorized }}</li>
   <li>Automatisch zugeordnet: {{ assigned }}</li>
   <li>Verteilung der neuen Zahlungen: automatisch verteilt: {{ auto_count }}, zur Prüfung: {{ review_count }}
-    (<a href="/auto">Automatisch verteilt</a> · <a href="/transactions?year=all&amp;proposed=1">{{ proposals }} offene Vorschläge insgesamt</a>)</li>
+    (<a href="/auto">Automatisch verteilt</a> · <a href="/transactions?year=all&amp;proposed=1">{{ proposals }} offene Vorschläge insgesamt</a>)
+    {%- if outside_count %}<br><span class="hint">{{ outside_count }} zugeordnete Zahlungen liegen vor dem Prüfungsstart und werden nicht auf Monate verteilt.</span>{% endif %}</li>
 </ul>
 {% if result.warnings %}
 <h2>Warnungen</h2>

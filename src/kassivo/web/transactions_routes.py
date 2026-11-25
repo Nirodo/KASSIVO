@@ -326,7 +326,7 @@ async def allocate_propose(request: Request, tx_id: int, next: str = Form(""),
     if err:
         return _error(request, err)
     try:
-        dues.propose_allocations(conn, tx_id)
+        dues.propose_allocations(conn, tx_id, auto=False)  # nur Vorschlag, nie bestätigt
     except ValueError as e:
         return _alloc_page(request, conn, tx, member, 422, errors=[str(e)], nxt=next)
     return _see_other(_allocate_url(tx_id, next))

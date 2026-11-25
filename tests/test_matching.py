@@ -404,6 +404,7 @@ def test_assign_from_none_deletes_stale_proposed(conn):
     a, b = _member(conn, "A"), _member(conn, "B")
     t = _tx(conn, 1700, MOM)
     _alloc(conn, t, a, "proposed")
+    conn.execute("update allocation set source='auto' where tx_id=?", (t,))  # Systemvorschlag
     assign_member(conn, t, b)
     assert _full(conn, t) == [(b, "2026-01", 1700, "confirmed")]
 

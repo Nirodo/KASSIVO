@@ -183,13 +183,46 @@ def test_run_distributes_and_shows_note(client, db):
     odd = _tx(db, m, 2000, "2026-03-05")
     r = client.post("/auto/run")
     assert r.status_code == 303
-    assert r.headers["location"] == "/transactions?year=all&proposed=1&note=run&n=3&a=1&r=1&o=1"
+    # Zahlungen vor dem Prüfungsstart ohne Zeilen zählen nicht mit (Fix-Runde 1, f)
+    assert r.headers["location"] == "/transactions?year=all&proposed=1&note=run&n=2&a=1&r=1"
     assert _rows(db, outside) == []
     assert _rows(db, ok) == [("2026-02", 1700, "confirmed", "auto")]
     assert [x[2] for x in _rows(db, odd)] == ["proposed", "proposed"]
     t = _text(client.get(r.headers["location"]).text)
-    assert ("3 geprüft: 1 automatisch verteilt, 1 bleiben zur Prüfung, "
+    assert "2 geprüft: 1 automatisch verteilt, 1 bleiben zur Prüfung." in t
+    assert "Prüfungsstart." not in t.split("2 geprüft")[1][:80]
+
+
+def test_run_counts_removed_outside_proposals(client, db):
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    old = _tx(db, m, 2000, "2026-01-05")
+    propose_allocations(db, old)  # Vorschlag
+    set_check_start(db, "2026-02")
+    r = client.post("/auto/run")
+    assert r.headers["location"] == (
+        "/transactions?year=all&proposed=1&note=run_outside&n=1&a=0&r=0&o=1")
+    assert _rows(db, old) == []
+    t = _text(client.get(r.headers["location"]).text)
+    assert ("1 geprüft: 0 automatisch verteilt, 0 bleiben zur Prüfung, "
             "1 liegen vor dem Prüfungsstart.") in t
+
+
+def test_check_start_note_counts_changed_and_outside(client, db):
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    jan = _tx(db, m, 3400, "2026-01-05")
+    feb = _tx(db, m, 1700, "2026-02-20")  # Februar schon bezahlt: geht auf März
+    for t in (jan, feb):
+        propose_allocations(db, t)
+    r = client.post("/settings/fees", data={"form": "check_start", "check_start": "2026-01"})
+    assert r.headers["location"] == "/settings/fees?note=reproposed&n=0"
+    r = client.post("/settings/fees", data={"form": "check_start", "check_start": "2026-02"})
+    assert r.headers["location"] == "/settings/fees?note=reproposed_outside&n=1&o=1"
+    assert _rows(db, jan) == []
+    assert _rows(db, feb) == [("2026-02", 1700, "confirmed", "auto")]  # jetzt Februar
+    t = _text(client.get(r.headers["location"]).text)
+    assert "Prüfungsstart gespeichert. 1 Zahlungen neu verteilt, 1 liegen vor dem Prüfungsstart." in t
 
 
 @pytest.mark.parametrize("query", [

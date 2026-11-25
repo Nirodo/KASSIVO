@@ -359,14 +359,34 @@ def test_stale_proposal_warning_and_repropose(client, db):
     _assign(client, b, m)            # 25,00: Vorschlag 03: 17,00 + 02: 8,00
     assert [(x["month"], x["cents"], x["status"]) for x in _alloc(db, b)] == [
         ("2026-02", 800, "proposed"), ("2026-03", 1700, "proposed")]
+    # "Neu vorschlagen" macht daraus einen Vorschlag des Nutzers (Fix-Runde 1, I3):
+    # automatische Neuberechnungen fassen ihn nicht mehr an
+    client.post(f"/transactions/{b}/allocate/propose")
+    assert {r[0] for r in db.execute("select source from allocation where tx_id=?", (b,))} == {
+        "manual"}
     _assign(client, a, m)            # 17,00 im März: März automatisch (#27)
     assert [(x["month"], x["status"]) for x in _alloc(db, a)] == [("2026-03", "confirmed")]
     assert "Monat bereits bezahlt" in client.get(f"/transactions/{b}/allocate").text
     assert "Monat bereits bezahlt" not in client.get(f"/transactions/{a}/allocate").text
     r = client.post(f"/transactions/{b}/allocate/propose")
     assert r.status_code == 303 and r.headers["location"] == f"/transactions/{b}/allocate"
-    assert [(x["month"], x["cents"]) for x in _alloc(db, b)] == [("2026-02", 1700),
-                                                                  ("2026-04", 800)]
+    assert [(x["month"], x["cents"], x["status"]) for x in _alloc(db, b)] == [
+        ("2026-02", 1700, "proposed"), ("2026-04", 800, "proposed")]
+
+
+def test_repropose_never_confirms(client, db):
+    _upload(client, [E_ERIKA])
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    tx = _tx_id(db, "Beitrag")
+    _assign(client, tx, m)
+    db.execute("delete from allocation where tx_id=?", (tx,))
+    db.commit()
+    r = client.post(f"/transactions/{tx}/allocate/propose")
+    assert r.status_code == 303
+    assert [tuple(r) for r in db.execute(
+        "select month, status, source from allocation where tx_id=?", (tx,))] == [
+        ("2026-03", "proposed", "manual")]
 
 
 def test_clear_requires_confirm(client, db):
@@ -378,7 +398,9 @@ def test_clear_requires_confirm(client, db):
     assert r.status_code == 422 and len(_alloc(db, tx)) == 1
     r = client.post(f"/transactions/{tx}/allocate/clear", data={"confirm": "yes"})
     assert r.status_code == 303 and r.headers["location"] == f"/transactions/{tx}/allocate"
-    assert _alloc(db, tx) == [] and _col(db, tx, "member_id") == m
+    # Fix-Runde 1 (I2): Aufheben hinterlässt einen Vorschlag des Nutzers
+    assert [(x["status"]) for x in _alloc(db, tx)] == ["proposed"]
+    assert _col(db, tx, "member_id") == m
 
 
 # --- Kategorien --------------------------------------------------------------

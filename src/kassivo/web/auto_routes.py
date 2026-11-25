@@ -31,5 +31,7 @@ async def auto_undo(request: Request, tx_id: int, conn=Depends(get_conn)):
 async def auto_run(conn=Depends(get_conn)):
     res = dues.auto_distribute_pending(conn)
     return RedirectResponse(
-        with_note(PROPOSED_URL, "run", res.total, a=res.confirmed, r=res.review, o=res.outside),
+        with_note(PROPOSED_URL, "run_outside", res.total, a=res.confirmed, r=res.review,
+                  o=res.outside) if res.outside else
+        with_note(PROPOSED_URL, "run", res.total, a=res.confirmed, r=res.review),
         status_code=303)

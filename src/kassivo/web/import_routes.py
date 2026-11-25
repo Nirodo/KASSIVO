@@ -76,8 +76,8 @@ async def import_submit(
             return _form(request, conn, 422, f"{e}. Es wurde nichts importiert.")
         categorized = categories.apply_rules(conn, result.new_tx_ids)
         assigned = matching.auto_assign(conn, result.new_tx_ids)
-    auto_count, review_count = distribution_counts(conn, result.new_tx_ids)
+    auto_count, review_count, outside_count = distribution_counts(conn, result.new_tx_ids)
     return render(request, "import_result.html", result=result,
                   categorized=categorized, assigned=assigned,
-                  auto_count=auto_count, review_count=review_count,
+                  auto_count=auto_count, review_count=review_count, outside_count=outside_count,
                   proposals=proposed_tx_count(conn))

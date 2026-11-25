@@ -474,7 +474,10 @@ def test_clear_undoes_auto_confirm(conn):
     assert tuple(_tx_row(conn, t)) == before
     assert conn.execute(
         "select iban, member_id from member_iban").fetchall() == learned
-    assert _rows(conn, t) == []  # kein neuer Vorschlag
+    # Fix-Runde 1 (#27): Aufheben hinterlässt einen Vorschlag des Nutzers (manual)
+    assert _rows(conn, t) == [("2026-01", 1700, "proposed", m)]
+    assert conn.execute("select distinct source from allocation where tx_id=?",
+                        (t,)).fetchall()[0][0] == "manual"
     assert not conn.in_transaction
 
 
@@ -485,7 +488,9 @@ def test_clear_then_reassign_other_member(conn):
     clear_allocations(conn, t)
     assign_member(conn, t, b)
     assert _tx_row(conn, t)["member_id"] == b
-    assert month_status(conn, b, "2026-01", JAN).status == "PAID"
+    # Vorschlag des Nutzers zieht als Vorschlag mit um (Fix-Runde 1, I4)
+    assert _rows(conn, t) == [("2026-01", 1700, "proposed", b)]
+    assert month_status(conn, b, "2026-01", JAN).status == "OPEN"
     assert month_status(conn, a, "2026-01", JAN).status == "OPEN"
 
 
@@ -504,7 +509,7 @@ def test_clear_two_proposed_rows(conn):
     t = _tx(conn, 3400, member_id=m)
     propose_allocations(conn, t)
     assert clear_allocations(conn, t) == 2
-    assert _rows(conn, t) == []
+    assert _rows(conn, t) == [("2026-01", 1700, "proposed", m), ("2026-02", 1700, "proposed", m)]
 
 
 def test_clear_without_rows_returns_0(conn):

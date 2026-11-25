@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
 from kassivo.dues import (
-    check_start_is_set, get_check_start, repropose_pending, set_check_start,
+    check_start_is_set, get_check_start, redistribute_all, set_check_start,
 )
 from kassivo.fees import fee_at, set_fee
 from kassivo.money import parse_cents
@@ -48,9 +48,11 @@ async def fees_submit(
             errors["check_start"] = E_MONTH
             return _page(request, conn, 422, errors, {"check_start": check_start}, form)
         set_check_start(conn, month)
-        # Vorschläge hingen am alten Start; Bestätigtes bleibt, wie es ist
-        n = repropose_pending(conn)
-        return RedirectResponse(with_note("/settings/fees", "reproposed", n), status_code=303)
+        # Abgeleitetes (auto) folgt dem neuen Start; Entscheidungen (manual) bleiben
+        n, outside = redistribute_all(conn)
+        url = (with_note("/settings/fees", "reproposed_outside", n, o=outside) if outside
+               else with_note("/settings/fees", "reproposed", n))
+        return RedirectResponse(url, status_code=303)
     values = {"type_name": type_name, "amount": amount, "valid_from": valid_from}
     cents = 0
     try:

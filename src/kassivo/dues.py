@@ -137,8 +137,11 @@ def _stored(conn, tx_id: int) -> list[tuple[str, int]]:
 REASON_AMOUNT = "Betrag passt nicht zu ganzen Monatsbeiträgen"
 REASON_NO_MONTH = "Kein offener Monat (Mitglied ausgetreten oder Zahlung ohne fälligen Monat)"
 REASON_REST = "Rest ohne offenen Monat"
-REASON_MANUAL = "Automatische Verteilung rückgängig gemacht: bitte prüfen und bestätigen"
+REASON_TOO_MANY = "Mehr als 12 Monate im Voraus"
+REASON_MANUAL = "Von Ihnen zur Prüfung gestellt: bitte Verteilung prüfen und bestätigen"
 REASON_OUTSIDE = "Liegt vor dem Prüfungsstart: wird beim automatischen Verteilen entfernt"
+REASON_STALE = "Wird beim nächsten Lauf automatisch verteilt"
+MAX_AUTO_MONTHS = 12
 
 
 @dataclass(frozen=True)
@@ -172,21 +175,39 @@ def _order(booking_month: str, start: str):
             yield month
 
 
+def _shortfall(conn, tx, month: str) -> tuple[int, int]:
+    """(Soll, bestätigt bezahlt ohne diese Buchung)."""
+    return (expected_cents(conn, tx["member_id"], month),
+            _confirmed_paid(conn, tx["member_id"], month, exclude_tx=tx["id"]))
+
+
+def _part_paid_month(conn, tx, start: str, booking_month: str) -> str | None:
+    """Regel (d): ältester angefangener Monat vor P, den der Betrag nicht übersteigt."""
+    for month in month_range(start, add_months(booking_month, -1)) if booking_month > start else ():
+        expected, paid = _shortfall(conn, tx, month)
+        if 0 < paid < expected and tx["amount_cents"] <= expected - paid:
+            return month
+    return None
+
+
 def _compute(conn, tx) -> _Plan:
     """Verteilung nach den Regeln im Modulkopf. Nur lesend."""
-    member_id, amount = tx["member_id"], tx["amount_cents"]
+    amount = tx["amount_cents"]
     booking_month = tx["booking_date"][:7]
-    check_start, start = _start_month(conn, member_id, booking_month)
+    check_start, start = _start_month(conn, tx["member_id"], booking_month)
     if check_start and booking_month < check_start:
         return _Plan([], outside=True)
+    part = _part_paid_month(conn, tx, start, booking_month)
+    if part is not None:
+        return _Plan([(part, amount)])  # vervollständigt (oder ergänzt) den Monat
 
     allocs: dict[str, int] = {}
     remaining, full, first_shortfall = amount, True, None
     for month in _order(booking_month, start):
         if remaining == 0:
             break
-        shortfall = expected_cents(conn, member_id, month) - _confirmed_paid(
-            conn, member_id, month, exclude_tx=tx["id"])
+        expected, paid = _shortfall(conn, tx, month)
+        shortfall = expected - paid
         if shortfall <= 0:
             continue
         if first_shortfall is None:
@@ -203,6 +224,8 @@ def _compute(conn, tx) -> _Plan:
         reason = REASON_REST
     elif not full and amount >= first_shortfall:
         reason = REASON_AMOUNT  # z. B. 20,00 = 17,00 + 3,00
+    elif len(allocs) > MAX_AUTO_MONTHS:
+        reason = REASON_TOO_MANY
     if remaining:
         last = max(allocs) if allocs else booking_month
         allocs[last] = allocs.get(last, 0) + remaining
@@ -212,6 +235,12 @@ def _compute(conn, tx) -> _Plan:
 def _has_confirmed(conn, tx_id: int) -> bool:
     return conn.execute(
         "select 1 from allocation where tx_id=? and status='confirmed'", (tx_id,)
+    ).fetchone() is not None
+
+
+def _has_manual(conn, tx_id: int) -> bool:
+    return conn.execute(
+        "select 1 from allocation where tx_id=? and source='manual'", (tx_id,)
     ).fetchone() is not None
 
 
@@ -228,7 +257,8 @@ def propose_allocations(conn, tx_id: int, *, commit: bool = True,
     """Verteilung berechnen und speichern. Eindeutiges wird mit auto=True bestätigt.
 
     auto=False speichert immer einen Vorschlag des Nutzers (source='manual', für
-    Rückgängig). Gibt die gespeicherte Verteilung zurück, leer vor dem Prüfungsstart.
+    Rückgängig, Verteilung aufheben und Neu vorschlagen). Gibt die gespeicherte
+    Verteilung zurück, leer vor dem Prüfungsstart.
     """
     tx = _incoming_tx(conn, tx_id)
     if _has_confirmed(conn, tx_id):
@@ -246,62 +276,116 @@ def propose_allocations(conn, tx_id: int, *, commit: bool = True,
     return plan.allocs
 
 
+def _snapshot(conn, ids) -> dict[int, list[tuple]]:
+    return {t: [tuple(r) for r in conn.execute(
+        "select month, cents, status, source from allocation where tx_id=? order by month, id",
+        (t,))] for t in ids}
+
+
+def _passes(conn, ids: list[int]) -> None:
+    """Abgeleitete Buchungen chronologisch berechnen, bis ein Lauf nichts mehr bestätigt.
+
+    Eine spätere Bestätigung kann einen früheren Vorschlag eindeutig machen; der
+    nächste Lauf holt das nach. Höchstens len(ids) + 1 Läufe: jeder Lauf außer
+    dem letzten bestätigt mindestens eine Buchung, die danach fest bleibt.
+    """
+    for _ in range(len(ids) + 1):
+        new = 0
+        for tx_id in ids:
+            if _has_confirmed(conn, tx_id):
+                continue
+            propose_allocations(conn, tx_id, commit=False, auto=True)
+            new += _has_confirmed(conn, tx_id)
+        if not new:
+            return
+
+
+def _chronological(conn, where: str, params=()) -> list[int]:
+    return [r["id"] for r in conn.execute(
+        'select t.id from "transaction" t where t.amount_cents > 0 and t.member_id is not null'
+        " and not exists(select 1 from allocation a where a.tx_id=t.id and a.source='manual')"
+        f" and {where} order by t.booking_date, t.id", params)]
+
+
+def rebuild_member_from(conn, member_id: int, booking_date: str, tx_id: int) -> None:
+    """Abgeleitete Verteilungen eines Mitglieds ab (Datum, Id) neu berechnen.
+
+    Ohne commit (läuft in der Transaktion des Aufrufers, z. B. assign_member).
+    Zeilen mit source='manual' bleiben unangetastet.
+    """
+    ids = _chronological(conn, "t.member_id=? and (t.booking_date > ? or"
+                         " (t.booking_date = ? and t.id >= ?))",
+                         (member_id, booking_date, booking_date, tx_id))
+    for t in ids:
+        conn.execute("delete from allocation where tx_id=?", (t,))
+    _passes(conn, ids)
+
+
 @dataclass(frozen=True)
 class AutoResult:
-    total: int      # geprüfte Buchungen
+    total: int      # Buchungen mit Ergebnis (verteilt, zur Prüfung, Vorschlag entfernt)
     confirmed: int  # automatisch verteilt
     review: int     # bleiben zur Prüfung
-    outside: int    # vor dem Prüfungsstart, ohne Verteilung
-
-
-# Buchungen, die automatische Läufe anfassen dürfen: Eingang mit Mitglied, ohne
-# Bestätigtes und ohne Vorschlag des Nutzers (also ohne Zeilen oder nur auto-Vorschläge).
-_PENDING_SQL = (
-    'select t.id from "transaction" t'
-    " where t.amount_cents > 0 and t.member_id is not null"
-    " and not exists(select 1 from allocation a where a.tx_id=t.id"
-    " and (a.status='confirmed' or a.source<>'auto'))"
-    " order by t.booking_date, t.id"
-)
+    outside: int    # Vorschlag entfernt, weil vor dem Prüfungsstart
 
 
 def auto_distribute_pending(conn) -> AutoResult:
-    """Regeln auf alle offenen Buchungen anwenden, alles oder nichts in einem Commit.
+    """Offene automatische Vorschläge und Buchungen ohne Verteilung neu berechnen.
 
-    Älteste zuerst, damit spätere Zahlungen die früheren Ergebnisse sehen.
-    Bestätigtes und Vorschläge nach Rückgängig bleiben unangetastet. Buchungen
-    ohne Zeilen zählen mit (zum Beispiel nach einem Import ohne Verteilung).
+    Alles oder nichts in einem Commit, bis zum Fixpunkt (ein zweiter Aufruf ändert
+    nichts). Bestätigtes und Zeilen mit source='manual' bleiben unangetastet.
+    Buchungen vor dem Prüfungsstart, die schon keine Zeilen hatten, zählen nicht.
     """
-    ids = [r["id"] for r in conn.execute(_PENDING_SQL)]
-    confirmed = review = outside = 0
+    ids = _chronological(conn, "not exists(select 1 from allocation a where a.tx_id=t.id"
+                         " and a.status='confirmed')")
     try:
-        for tx_id in ids:
-            if not propose_allocations(conn, tx_id, commit=False, auto=True):
-                outside += 1
-            elif _has_confirmed(conn, tx_id):
-                confirmed += 1
-            else:
-                review += 1
+        before = _snapshot(conn, ids)
+        _passes(conn, ids)
+        after = _snapshot(conn, ids)
     except Exception:
         conn.rollback()
         raise
     conn.commit()
-    return AutoResult(len(ids), confirmed, review, outside)
+    confirmed = sum(1 for t in ids if after[t] and after[t][0][2] == "confirmed")
+    review = sum(1 for t in ids if after[t] and after[t][0][2] == "proposed")
+    outside = sum(1 for t in ids if before[t] and not after[t])
+    return AutoResult(confirmed + review + outside, confirmed, review, outside)
+
+
+def redistribute_all(conn) -> tuple[int, int]:
+    """Alle abgeleiteten Verteilungen neu berechnen (z. B. nach neuem Prüfungsstart).
+
+    Löscht alle Zeilen mit source='auto' (bestätigt und vorgeschlagen) der Buchungen
+    ohne Nutzerentscheidung und berechnet sie chronologisch bis zum Fixpunkt neu.
+    Alles oder nichts in einem Commit. Gibt (geändert, jetzt vor dem Prüfungsstart)
+    zurück: geändert zählt nur Buchungen, deren Zeilen sich wirklich geändert haben.
+    """
+    ids = _chronological(conn, "1=1")
+    try:
+        before = _snapshot(conn, ids)
+        conn.execute("delete from allocation where source='auto' and tx_id in"
+                     ' (select id from "transaction" where member_id is not null)'
+                     " and tx_id not in (select tx_id from allocation where source='manual')")
+        _passes(conn, ids)
+        after = _snapshot(conn, ids)
+    except Exception:
+        conn.rollback()
+        raise
+    conn.commit()
+    changed = sum(1 for t in ids if after[t] and after[t] != before[t])
+    outside = sum(1 for t in ids if before[t] and not after[t])
+    return changed, outside
 
 
 def repropose_pending(conn) -> int:
-    """Wie auto_distribute_pending, z. B. nach geändertem Prüfungsstart.
-
-    Gibt die Zahl geprüfter Buchungen zurück. Verworfen: das in
-    set_check_start erledigen (die Einstellung bliebe nicht rein).
-    """
-    return auto_distribute_pending(conn).total
+    """Wie redistribute_all, gibt nur die Zahl geänderter Buchungen zurück."""
+    return redistribute_all(conn)[0]
 
 
 def review_reason(conn, tx_id: int) -> str | None:
     """Kurzer Grund, warum ein Vorschlag geprüft werden muss. Nur lesend.
 
-    None, wenn die Buchung keinen Vorschlag hat oder die Verteilung eindeutig ist.
+    None, wenn die Buchung keinen Vorschlag hat.
     """
     rows = conn.execute(
         "select status, source from allocation where tx_id=?", (tx_id,)).fetchall()
@@ -315,7 +399,9 @@ def review_reason(conn, tx_id: int) -> str | None:
     if any(r["source"] == "manual" for r in rows):
         return REASON_MANUAL
     plan = _compute(conn, tx)
-    return REASON_OUTSIDE if plan.outside else plan.reason
+    if plan.outside:
+        return REASON_OUTSIDE
+    return plan.reason or REASON_STALE
 
 
 def _kind(booking_month: str, allocs, expected: int) -> str:
@@ -329,14 +415,22 @@ def _kind(booking_month: str, allocs, expected: int) -> str:
     return "Normal"
 
 
-def auto_rows(conn, limit: int = 200) -> list[dict]:
+_AUTO_WHERE = (" where exists(select 1 from allocation a where a.tx_id=t.id"
+               " and a.status='confirmed' and a.source='auto')")
+
+
+def auto_count(conn) -> int:
+    """Zahl automatisch bestätigter Buchungen. Nur lesend."""
+    return conn.execute('select count(*) from "transaction" t' + _AUTO_WHERE).fetchone()[0]
+
+
+def auto_rows(conn, limit: int = 100, offset: int = 0) -> list[dict]:
     """Automatisch bestätigte Buchungen, neueste zuerst. Nur lesend."""
     txs = conn.execute(
         "select t.id, t.booking_date, t.amount_cents, t.cp_name, t.member_id,"
         ' m.name as member_name from "transaction" t join member m on m.id = t.member_id'
-        " where exists(select 1 from allocation a where a.tx_id=t.id"
-        " and a.status='confirmed' and a.source='auto')"
-        " order by t.booking_date desc, t.id desc limit ?", (int(limit),),
+        + _AUTO_WHERE + " order by t.booking_date desc, t.id desc limit ? offset ?",
+        (int(limit), int(offset)),
     ).fetchall()
     out = []
     for t in txs:
@@ -374,18 +468,32 @@ def undo_auto(conn, tx_id: int) -> None:
     conn.commit()
 
 
-def distribution_counts(conn, tx_ids) -> tuple[int, int]:
-    """(automatisch verteilt, zur Prüfung) unter den gegebenen Buchungen. Nur lesend."""
-    wanted = set(tx_ids)
-    auto, review = set(), set()
-    for r in conn.execute("select distinct tx_id, status, source from allocation"):
-        if r["tx_id"] not in wanted:
-            continue
-        if r["status"] == "proposed":
-            review.add(r["tx_id"])
-        elif r["source"] == "auto":
-            auto.add(r["tx_id"])
-    return len(auto - review), len(review)
+def distribution_counts(conn, tx_ids) -> tuple[int, int, int]:
+    """(automatisch verteilt, zur Prüfung, ohne Verteilung) unter den Buchungen.
+
+    "Ohne Verteilung": Eingang mit Mitglied ohne Zeilen (vor dem Prüfungsstart).
+    Nur lesend, in Blöcken abgefragt (Grenze der SQL-Parameter).
+    """
+    ids = sorted(set(tx_ids))
+    auto = review = outside = 0
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        marks = ",".join("?" * len(chunk))
+        for r in conn.execute(
+            "select t.id,"
+            " exists(select 1 from allocation a where a.tx_id=t.id and a.status='proposed') as p,"
+            " exists(select 1 from allocation a where a.tx_id=t.id and a.status='confirmed'"
+            " and a.source='auto') as c,"
+            " exists(select 1 from allocation a where a.tx_id=t.id) as any_row"
+            f' from "transaction" t where t.id in ({marks})'
+            " and t.amount_cents > 0 and t.member_id is not null", chunk):
+            if r["p"]:
+                review += 1
+            elif r["c"]:
+                auto += 1
+            elif not r["any_row"]:
+                outside += 1
+    return auto, review, outside
 
 
 def confirm_allocations(conn, tx_id: int, allocs: list[tuple[str, int]]) -> None:
@@ -413,18 +521,23 @@ def confirm_allocations(conn, tx_id: int, allocs: list[tuple[str, int]]) -> None
 
 
 def clear_allocations(conn, tx_id: int) -> int:
-    """Löscht alle Verteilungen (proposed und confirmed) einer Buchung.
+    """Hebt die Verteilung einer Buchung auf: daraus wird ein Vorschlag des Nutzers.
 
-    Macht eine falsche Zuordnung korrigierbar: danach greift die Sperre in
-    assign_member nicht mehr. member_id, Kategorie und gelernte IBAN bleiben,
-    es wird nichts neu vorgeschlagen. Gibt die Zahl gelöschter Zeilen zurück.
+    Löscht alle Zeilen (proposed und confirmed) und legt im selben Commit einen
+    Vorschlag mit source='manual' an, den automatische Läufe nie bestätigen. Vor
+    dem Prüfungsstart oder ohne Mitglied entstehen keine Zeilen. Die Sperre in
+    assign_member greift danach nicht mehr (nur Bestätigtes sperrt). Gibt die
+    Zahl gelöschter Zeilen zurück.
     """
-    if not conn.execute(
-        'select 1 from "transaction" where id=?', (tx_id,)
-    ).fetchone():
+    tx = conn.execute(
+        'select amount_cents, member_id from "transaction" where id=?', (tx_id,)
+    ).fetchone()
+    if tx is None:
         raise ValueError(f"unbekannte Buchung {tx_id}")
     try:
         n = conn.execute("delete from allocation where tx_id=?", (tx_id,)).rowcount
+        if tx["member_id"] is not None and tx["amount_cents"] > 0:
+            propose_allocations(conn, tx_id, commit=False, auto=False)
     except Exception:
         conn.rollback()
         raise
