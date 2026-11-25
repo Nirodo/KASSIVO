@@ -6,24 +6,8 @@
   var OTHER_COLOR = '#999999';
   var MAX_SLICES = 7;
   var MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
-  var euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-
-  function formatEuro(cents) {
-    return euro.format(cents / 100);
-  }
-
-  // Höchstens max Scheiben, absteigend; der Rest wird als "Weitere" zusammengefasst.
-  function topSlices(items, key, max) {
-    var sorted = items
-      .filter(function (i) { return i[key] > 0; })
-      .sort(function (a, b) { return b[key] - a[key]; });
-    var slices = sorted.slice(0, max).map(function (i) { return { name: i.name, cents: i[key] }; });
-    if (sorted.length > max) {
-      var rest = sorted.slice(max).reduce(function (sum, i) { return sum + i[key]; }, 0);
-      slices.push({ name: 'Weitere', cents: rest });
-    }
-    return slices;
-  }
+  var topSlices = window.ReportsLib.topSlices;
+  var formatEuro = window.ReportsLib.formatEuro;
 
   function cssColors() {
     var cs = getComputedStyle(document.documentElement);
@@ -32,7 +16,6 @@
   }
 
   function pie(canvas, slices, colors) {
-    var total = slices.reduce(function (s, x) { return s + x.cents; }, 0);
     return new Chart(canvas, {
       type: 'pie',
       data: {
@@ -40,7 +23,7 @@
         datasets: [{
           data: slices.map(function (s) { return s.cents; }),
           backgroundColor: slices.map(function (s, i) {
-            return i === MAX_SLICES ? OTHER_COLOR : PALETTE[i % PALETTE.length];
+            return s.other ? OTHER_COLOR : PALETTE[i % PALETTE.length];
           }),
           borderColor: colors.bg, borderWidth: 2
         }]
@@ -51,8 +34,13 @@
           legend: { position: 'bottom', labels: { color: colors.text } },
           tooltip: {
             callbacks: {
+              // Prozent beziehen sich auf die SICHTBAREN Scheiben (ausgeblendete Legendeneintraege
+              // zaehlen nicht mit); die Legende selbst zeigt weiter die Eurobetraege.
               label: function (ctx) {
-                var pct = (ctx.parsed / total * 100).toFixed(1).replace('.', ',');
+                var visible = slices.reduce(function (sum, x, i) {
+                  return ctx.chart.getDataVisibility(i) ? sum + x.cents : sum;
+                }, 0);
+                var pct = (ctx.parsed / visible * 100).toFixed(1).replace('.', ',');
                 return slices[ctx.dataIndex].name + ': ' + formatEuro(ctx.parsed) + ' (' + pct + ' %)';
               }
             }
@@ -93,21 +81,39 @@
     });
   }
 
+  function show(id, on) {
+    var el = document.getElementById(id);
+    if (el) { el.classList.toggle('hidden', !on); }
+  }
+
+  // Ohne Daten: Diagramm ausblenden, Hinweis zeigen.
+  function pieOrNote(kind, slices, colors) {
+    var empty = slices.length === 0;
+    show('chart-' + kind + '-box', !empty);
+    show('chart-' + kind + '-empty', empty);
+    return empty ? null : pie(document.getElementById('chart-' + kind), slices, colors);
+  }
+
   function init() {
     var box = document.getElementById('charts');
     if (!box) { return; }
-    var errorEl = document.getElementById('chart-error');
     var charts = [];
     var data = null;
 
     function draw() {
       charts.forEach(function (c) { c.destroy(); });
-      var colors = cssColors();
-      charts = [
-        pie(document.getElementById('chart-expense'), topSlices(data.by_category, 'expense_cents', MAX_SLICES), colors),
-        pie(document.getElementById('chart-income'), topSlices(data.by_category, 'income_cents', MAX_SLICES), colors),
-        bars(document.getElementById('chart-months'), data.by_month, colors)
-      ];
+      charts = [];
+      try {
+        var colors = cssColors();
+        charts = [
+          pieOrNote('expense', topSlices(data.by_category, 'expense_cents', MAX_SLICES), colors),
+          pieOrNote('income', topSlices(data.by_category, 'income_cents', MAX_SLICES), colors),
+          bars(document.getElementById('chart-months'), data.by_month, colors)
+        ].filter(Boolean);
+      } catch (err) {
+        console.error('Report: Diagramm konnte nicht gezeichnet werden:', err);
+        show('chart-error-draw', true);
+      }
     }
 
     fetch('/reports/data?year=' + encodeURIComponent(box.dataset.year), { credentials: 'same-origin' })
@@ -116,13 +122,11 @@
         data = d;
         draw();
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
-      })
-      .catch(function () {
-        if (errorEl) { errorEl.classList.remove('hidden'); }
+      }, function (err) {
+        console.error('Report: Daten konnten nicht geladen werden:', err);
+        show('chart-error-load', true);
       });
   }
 
-  window.topSlices = topSlices;
-  window.formatEuro = formatEuro;
   init();
 }());

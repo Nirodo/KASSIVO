@@ -13,15 +13,18 @@
 <p>Keine Buchungen in diesem Jahr.</p>
 {% else %}
 <div id="charts" data-year="{{ year }}">
-  <p id="chart-error" class="chart-error hidden" role="alert">Die Diagramme konnten nicht geladen werden. Die Tabellen unten enthalten dieselben Zahlen.</p>
+  <p id="chart-error-load" class="chart-error hidden" role="alert">Die Daten konnten nicht geladen werden. Die Tabellen unten enthalten dieselben Zahlen.</p>
+  <p id="chart-error-draw" class="chart-error hidden" role="alert">Das Diagramm konnte nicht gezeichnet werden. Die Tabellen unten enthalten dieselben Zahlen.</p>
   <div class="chart-grid">
     <section>
       <h2>Ausgaben nach Kategorie</h2>
-      <div class="chart-box"><canvas id="chart-expense" role="img" aria-label="Tortendiagramm: Ausgaben nach Kategorie, {{ year }}. Die Zahlen stehen in der Tabelle Kategorien unten."></canvas></div>
+      <div id="chart-expense-box" class="chart-box"><canvas id="chart-expense" role="img" aria-label="Tortendiagramm: Ausgaben nach Kategorie, {{ year }}. Die Zahlen stehen in der Tabelle Kategorien unten."></canvas></div>
+      <p id="chart-expense-empty" class="chart-empty hidden">Keine Ausgaben in diesem Jahr.</p>
     </section>
     <section>
       <h2>Einnahmen nach Kategorie</h2>
-      <div class="chart-box"><canvas id="chart-income" role="img" aria-label="Tortendiagramm: Einnahmen nach Kategorie, {{ year }}. Die Zahlen stehen in der Tabelle Kategorien unten."></canvas></div>
+      <div id="chart-income-box" class="chart-box"><canvas id="chart-income" role="img" aria-label="Tortendiagramm: Einnahmen nach Kategorie, {{ year }}. Die Zahlen stehen in der Tabelle Kategorien unten."></canvas></div>
+      <p id="chart-income-empty" class="chart-empty hidden">Keine Einnahmen in diesem Jahr.</p>
     </section>
   </div>
   <section>
@@ -33,6 +36,7 @@
 
 <section>
   <h2>Zahlen im Detail</h2>
+  <p>Die Beiträge je Mitglied zählen nach Beitragsmonat, die Einnahmen oben nach Buchungsdatum. Beide Summen können deshalb abweichen.</p>
   <div class="table-wrap">
   <table>
     <caption>Einnahmen und Ausgaben je Kategorie, {{ year }}</caption>
@@ -73,6 +77,7 @@
 </section>
 {% if not empty %}
 <script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/reports-lib.js"></script>
 <script src="/static/reports.js"></script>
 {% endif %}
 {% endblock %}

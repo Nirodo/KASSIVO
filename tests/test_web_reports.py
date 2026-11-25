@@ -2,6 +2,8 @@
 import hashlib
 import json
 import re
+import shutil
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -89,6 +91,7 @@ def test_report_scripts_local_only(client, db):
     h = client.get("/reports?year=2026").text
     assert re.findall(r"<script\b[^>]*>", h) == [
         '<script src="/static/vendor/chart.umd.min.js">',
+        '<script src="/static/reports-lib.js">',
         '<script src="/static/reports.js">',
     ]
     assert not re.search(r"<script(?![^>]*\bsrc=)", h)
@@ -144,7 +147,8 @@ def test_bad_host(client):
 
 
 @pytest.mark.parametrize("path", ["/reports", "/reports/data", "/reports?year=abc",
-                                  "/static/reports.js", "/static/vendor/chart.umd.min.js"])
+                                  "/static/reports.js", "/static/reports-lib.js",
+                                  "/static/vendor/chart.umd.min.js"])
 def test_security_headers(client, path):
     r = client.get(path)
     for h in HEADERS:
@@ -154,8 +158,9 @@ def test_security_headers(client, path):
 def test_static_served(client):
     r = client.get("/static/vendor/chart.umd.min.js")
     assert r.status_code == 200 and "javascript" in r.headers["content-type"]
-    r = client.get("/static/reports.js")
-    assert r.status_code == 200 and "javascript" in r.headers["content-type"]
+    for name in ("reports.js", "reports-lib.js"):
+        r = client.get("/static/" + name)
+        assert r.status_code == 200 and "javascript" in r.headers["content-type"]
 
 
 def test_vendor_integrity():
@@ -183,10 +188,53 @@ def test_vendor_license_file():
     assert "LICENSE.chartjs.txt" in (STATIC / "vendor" / "README.md").read_text(encoding="utf-8")
 
 
-def test_reports_js_safe():
-    js = (STATIC / "reports.js").read_text(encoding="utf-8")
+@pytest.mark.parametrize("name", ["reports.js", "reports-lib.js"])
+def test_reports_js_safe(name):
+    js = (STATIC / name).read_text(encoding="utf-8")
     assert "innerHTML" not in js and "outerHTML" not in js
     assert "insertAdjacentHTML" not in js and "document.write" not in js
     assert "eval(" not in js and "new Function" not in js
+    assert "http://" not in js and "https://" not in js
+
+
+def test_reports_js_uses_lib_and_year():
+    js = (STATIC / "reports.js").read_text(encoding="utf-8")
     assert "topSlices" in js and "formatEuro" in js
     assert "data-year" in js or "dataset.year" in js
+    assert "s.other" in js and "i === MAX_SLICES" not in js
+    assert "getDataVisibility" in js and "console.error" in js
+    lib = (STATIC / "reports-lib.js").read_text(encoding="utf-8")
+    assert "other: true" in lib
+
+
+def test_empty_notes_and_separate_errors_prepared(client, db):
+    _tx(db, "2026-03-05", -3000, "Miete")
+    h = client.get("/reports?year=2026").text
+    assert "Keine Einnahmen in diesem Jahr." in h and "Keine Ausgaben in diesem Jahr." in h
+    assert "Die Daten konnten nicht geladen werden." in h
+    assert "Das Diagramm konnte nicht gezeichnet werden." in h
+    for i in ("chart-income-empty", "chart-expense-empty", "chart-error-load", "chart-error-draw"):
+        assert re.search(rf"id=\"{i}\"[^>]*class=\"[^\"]* ?hidden", h), i
+    assert 'id="chart-income-box"' in h and 'id="chart-expense-box"' in h
+
+
+def test_only_income_year_renders_containers(client, db):
+    _tx(db, "2026-03-05", 1700, "Beiträge")
+    h = client.get("/reports?year=2026").text
+    assert h.count("<canvas") == 3 and 'id="chart-expense-empty"' in h
+
+
+def test_by_member_explanation(client, db):
+    _tx(db, "2026-03-05", 1700)
+    h = client.get("/reports?year=2026").text
+    assert "Die Beiträge je Mitglied zählen nach Beitragsmonat" in h
+    assert "Einnahmen oben nach Buchungsdatum" in h
+
+
+@pytest.mark.skipif(shutil.which("node") is None,
+                    reason="Node.js nicht installiert: JavaScript-Tests übersprungen")
+def test_js_unit_tests():
+    script = Path(__file__).parent / "js" / "reports.test.mjs"
+    r = subprocess.run(["node", "--test", str(script)], capture_output=True, text=True,
+                       encoding="utf-8", timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr

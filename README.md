@@ -241,7 +241,7 @@ src/kassivo/
     wiki_routes.py     Wiki im Programm (feste Themenliste, nur lesend)
     templates/         HTML-Vorlagen (Jinja2)
       wiki/            Vorlagen der Wiki-Themen
-    static/            style.css, reports.js
+    static/            style.css, reports.js, reports-lib.js
       vendor/          chart.umd.min.js (Chart.js, lokal), LICENSE.chartjs.txt, README.md
 tests/                 pytest, nur erfundene Daten
 docs/                  Entwurf und Plan
