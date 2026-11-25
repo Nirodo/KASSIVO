@@ -18,14 +18,32 @@ templates.env.filters["eur"] = format_eur
 MONTH_ABBR = ("Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez")
 templates.env.filters["month_abbr"] = lambda n: MONTH_ABBR[n - 1]
 
-_FULL_IBAN_RE = re.compile(r"[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]{10,30}", re.ASCII)
+# Gesamtlänge der IBAN je Land (häufige Länder). Unbekannte Länder werden nie gekürzt.
+_IBAN_LENGTH = {"AT": 20, "BE": 16, "CH": 21, "DE": 22, "DK": 18, "ES": 24, "FI": 18, "FR": 27,
+                "GB": 22, "IE": 22, "IT": 27, "LU": 20, "NL": 18, "NO": 15, "PL": 28, "PT": 25,
+                "SE": 24}
+_IBAN_CHARS_RE = re.compile(r"[A-Za-z0-9 \u00a0-]+", re.ASCII)
+_IBAN_COMPACT_RE = re.compile(r"[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]+", re.ASCII)
 
 
-def mask_rule_text(text: str) -> str:
-    """Regeltext für die Liste: sieht er wie eine volle IBAN aus, nur gekürzt zeigen.
+def mask_rule_text(text):
+    """Regeltext für die Liste: besteht er nur aus einer vollständigen IBAN, nur gekürzt zeigen.
+
+    Leerzeichen, geschützte Leerzeichen und Bindestriche zwischen Gruppen sind erlaubt.
+    Ein Vorwort ("IBAN DE89 ...") oder Nachwort ("... Max") verhindert das Kürzen, ebenso
+    ein unbekanntes Land oder eine falsche Länge. DE-IBANs haben nach dem Länderkürzel nur Ziffern.
     Gespeichert wird weiter der Originaltext."""
-    compact = "".join(text.split())
-    return mask_iban(compact) if _FULL_IBAN_RE.fullmatch(compact) else text
+    if not isinstance(text, str) or not _IBAN_CHARS_RE.fullmatch(text):
+        return text
+    compact = re.sub(r"[ \u00a0-]", "", text)
+    if not _IBAN_COMPACT_RE.fullmatch(compact):
+        return text
+    country = compact[:2].upper()
+    if _IBAN_LENGTH.get(country) != len(compact):
+        return text
+    if country == "DE" and not compact[2:].isdigit():
+        return text
+    return mask_iban(compact)
 
 
 templates.env.filters["rule_text"] = mask_rule_text

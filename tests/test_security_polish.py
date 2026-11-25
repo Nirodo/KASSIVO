@@ -78,6 +78,31 @@ def test_get_never_affected(client, value):
 def test_refusal_carries_security_headers(client):
     r = client.post("/members/new", data=NEW_MEMBER, headers={"Sec-Fetch-Site": "cross-site"})
     assert "Content-Security-Policy" in r.headers
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert r.headers["Referrer-Policy"] == "same-origin"
+
+
+def test_host_check_runs_before_fetch_site(client):
+    r = client.post("/members/new", data=NEW_MEMBER,
+                    headers={"Host": "evil.example", "Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 400 and "Ungültiger Host." in r.text
+
+
+def test_refused_member_post_changes_nothing(tmp_path):
+    c = make_client(tmp_path / "t.db")
+    r = c.post("/members/new", data=NEW_MEMBER, headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403 and REFUSAL in r.text
+    conn = connect(tmp_path / "t.db")
+    assert conn.execute("select count(*) from member").fetchone()[0] == 0
+
+
+def test_refused_import_changes_nothing(tmp_path):
+    c = make_client(tmp_path / "t.db")
+    r = c.post("/import", files={"file": ("a.xml", b"<x/>", "application/octet-stream")},
+               headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403 and REFUSAL in r.text
+    conn = connect(tmp_path / "t.db")
+    assert conn.execute("select count(*) from import_batch").fetchone()[0] == 0
 
 
 # --- Konsolenprotokoll ---
@@ -105,22 +130,33 @@ def test_filter_leaves_plain_path_and_odd_records():
     assert odd.getMessage() == "plain x?y"
 
 
-def test_log_config_filters_access_and_keeps_error_logger():
+@pytest.fixture
+def restore_uvicorn_loggers():
+    names = ("uvicorn", "uvicorn.access", "uvicorn.error")
+    saved = {n: (logging.getLogger(n).level, logging.getLogger(n).propagate,
+                 list(logging.getLogger(n).handlers), list(logging.getLogger(n).filters))
+             for n in names}
+    yield
+    for n, (level, prop, handlers, filters) in saved.items():
+        lg = logging.getLogger(n)
+        lg.setLevel(level)
+        lg.propagate = prop
+        lg.handlers[:] = handlers
+        lg.filters[:] = filters
+
+
+def test_log_config_filters_access_and_keeps_error_logger(restore_uvicorn_loggers):
     from kassivo.logconfig import build_log_config
     cfg = build_log_config()
     assert "uvicorn.error" in cfg["loggers"] and "uvicorn" in cfg["loggers"]
     assert cfg["handlers"]["access"]["filters"] == ["strip_query"]
     logging.config.dictConfig(cfg)
-    try:
-        h = logging.getLogger("uvicorn.access").handlers[0]
-        buf = io.StringIO()
-        h.setStream(buf)
-        logging.getLogger("uvicorn.access").info(
-            '%s - "%s %s HTTP/%s" %d', "127.0.0.1:1", "GET", "/transactions?q=Geheim", "1.1", 200)
-        assert "Geheim" not in buf.getvalue() and "/transactions" in buf.getvalue()
-    finally:
-        for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
-            logging.getLogger(name).handlers.clear()
+    h = logging.getLogger("uvicorn.access").handlers[0]
+    buf = io.StringIO()
+    h.setStream(buf)
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %d', "127.0.0.1:1", "GET", "/transactions?q=Geheim", "1.1", 200)
+    assert "Geheim" not in buf.getvalue() and "/transactions" in buf.getvalue()
 
 
 def test_main_passes_log_config(tmp_path, monkeypatch):
@@ -178,6 +214,34 @@ def test_rule_text_still_escaped(tmp_path):
     assert "&lt;b&gt;x&lt;/b&gt;" in html and "<b>x</b>" not in html
 
 
+@pytest.mark.parametrize("text,expected", [
+    ("DE89370400440532013000", "DE89…3000"),
+    ("DE89 3704 0044 0532 0130 00", "DE89…3000"),
+    ("de89370400440532013000", "de89…3000"),
+    ("DE89\u00a03704\u00a00044\u00a00532\u00a00130\u00a000", "DE89…3000"),
+    ("DE89-3704-0044-0532-0130-00", "DE89…3000"),  # Bindestriche wie Leerzeichen
+    ("GB29NWBK60161331926819", "GB29…6819"),
+    ("DE89370400440532013000 Max Mustermann", None),
+    ("DE89370400440532013000 Max", None),
+    ("IBAN DE89 3704 0044 0532 0130 00", None),  # Vorwort: nicht maskiert
+    ("RE2024000012345", None),
+    ("AB12CDEFGHIJKL", None),
+    ("DE8937040044053201300", None),  # zu kurz
+    ("DE893704004405320130000", None),  # zu lang
+    ("DE89A70400440532013000", None),  # Buchstabe nach Prüfziffern bei DE
+    ("Spende Verein", None),
+    ("", None),
+])
+def test_mask_rule_text(text, expected):
+    from kassivo.web.common import mask_rule_text
+    assert mask_rule_text(text) == (text if expected is None else expected)
+
+
+def test_mask_rule_text_non_string_unchanged():
+    from kassivo.web.common import mask_rule_text
+    assert mask_rule_text(None) is None
+
+
 def test_stored_rule_value_unchanged(tmp_path):
     _rules_page(tmp_path, "DE00000000000000000000")
     conn = connect(tmp_path / "t.db")
@@ -192,4 +256,6 @@ def test_docs_mention_new_protections():
     for text in (wiki, readme):
         assert "Sec-Fetch-Site" in text
         assert "ohne Suchtexte" in text
+        assert "Besteht eine Regel nur aus einer vollständigen IBAN" in text
         assert re.search(r"Regeln?.{0,80}gekürzt", text)
+        assert "einschließlich unbekannter Werte" in text

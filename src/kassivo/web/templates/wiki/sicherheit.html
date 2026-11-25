@@ -37,8 +37,8 @@
 <ul>
   <li><strong>Echte Bankdateien gehören nicht in Git.</strong> Das gilt auch für Issues, Pull Requests und Releases. Die <code>.gitignore</code> des Projekts schließt ZIP-, XML-, CSV- und Datenbankdateien aus. Wer an KASSIVO mitarbeitet, nutzt nur erfundene Beispieldaten.</li>
   <li><strong>Konsolenausgabe:</strong> Das Konsolenfenster, in dem KASSIVO läuft, protokolliert Anfragen ohne Suchtexte: Aus <code>/transactions?q=Name</code> wird nur <code>/transactions</code>. Fehlermeldungen können trotzdem Namen oder Beträge enthalten. Fügen Sie Konsolenausgaben deshalb nie ungeprüft in Issues oder Nachrichten ein.</li>
-  <li><strong>Schutz vor fremden Webseiten:</strong> Zusätzlich zur Origin-Prüfung lehnt KASSIVO ändernde Anfragen ab, wenn der Browser mit <code>Sec-Fetch-Site</code> meldet, dass sie von einer anderen Seite stammen.</li>
-  <li><strong>IBAN in Regeln:</strong> Steht in einer Kategorie-Regel eine vollständige IBAN, zeigt die Regelliste sie gekürzt an. Gespeichert bleibt der volle Text.</li>
+  <li><strong>Schutz vor fremden Webseiten:</strong> Zusätzlich zur Origin-Prüfung lehnt KASSIVO ändernde Anfragen ab, wenn der Browser mit <code>Sec-Fetch-Site</code> meldet, dass sie von einer anderen Seite stammen. Jeder andere Wert außer <code>same-origin</code> und <code>none</code> wird ebenfalls abgelehnt, einschließlich unbekannter Werte, falls ein künftiger Browser neue Werte sendet.</li>
+  <li><strong>IBAN in Regeln:</strong> Besteht eine Regel nur aus einer vollständigen IBAN, zeigt die Regelliste sie gekürzt an. Gespeichert bleibt der volle Text.</li>
   <li>Beispiele in diesem Wiki nutzen erfundene Namen und IBANs wie <code>XX00 FAKE 0000 0000 01</code>.</li>
   <li>Die Datenbank liegt standardmäßig unter Windows in <code>%LOCALAPPDATA%\KASSIVO\kassivo.db</code>, sonst in <code>~/.local/share/kassivo/kassivo.db</code>.</li>
 </ul>

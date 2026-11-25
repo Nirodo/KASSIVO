@@ -86,4 +86,5 @@ def test_main_prints_path_and_creates_parent(tmp_path, monkeypatch, capsys):
     assert str(target.resolve()) in out
     assert str(target.resolve().parent / "backups") in out
     assert target.parent.is_dir()
-    assert len(calls) == 1 and calls[0]["host"] == "127.0.0.1" and calls[0]["port"] == 8000
+    assert len(calls) == 1 and set(calls[0]) == {"host", "port", "log_config"}
+    assert calls[0]["host"] == "127.0.0.1" and calls[0]["port"] == 8000
