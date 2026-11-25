@@ -43,10 +43,15 @@ def _reserve(dest_dir: Path, stem: str) -> Path:
     """Legt den Zielnamen exklusiv an (xb), nimmt bei Kollision den nächsten Suffix."""
     for final in itertools.islice(_candidates(dest_dir, stem), MAX_ATTEMPTS):
         try:
-            with open(final, "xb"):
-                return final
+            f = open(final, "xb")
         except FileExistsError:
             continue
+        try:
+            f.close()
+        except BaseException:
+            final.unlink(missing_ok=True)  # eigene Reservierung nicht liegen lassen
+            raise
+        return final
     raise OSError(f"Kein freier Dateiname für {stem} nach {MAX_ATTEMPTS} Versuchen.")
 
 
@@ -69,6 +74,22 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
+def _cleanup_unpublished(tmp: Path, final: Path | None) -> None:
+    """Entfernt nur Unfertiges. Ob veröffentlicht wurde, sagt das Dateisystem: Eine
+    Reservierung ist immer 0 Byte groß, eine fertige Sicherung nie."""
+    try:
+        tmp.unlink(missing_ok=True)
+    except OSError:
+        pass  # darf den ursprünglichen Fehler nicht verdecken
+    if final is None:
+        return
+    try:
+        if final.stat().st_size == 0:
+            final.unlink()
+    except OSError:
+        pass
+
+
 def backup_db(conn: sqlite3.Connection, dest_dir: Path, now: datetime | None = None) -> Path:
     """Schreibt kassivo-JJJJMMTT-HHMMSS.db in dest_dir (nie überschreiben, atomar, dauerhaft)."""
     dest_dir = Path(dest_dir)
@@ -76,21 +97,13 @@ def backup_db(conn: sqlite3.Connection, dest_dir: Path, now: datetime | None = N
     stem = "kassivo-" + (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
     tmp = dest_dir / f".{stem}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
     final = None
-    published = False
     try:
         final = _reserve(dest_dir, stem)
         _copy(conn, tmp)
         _fsync_file(tmp)
         os.replace(tmp, final)
-        published = True
     except BaseException:
-        if not published:
-            for leftover in (tmp, final):  # nur unsere eigenen Dateien
-                if leftover is not None:
-                    try:
-                        leftover.unlink(missing_ok=True)
-                    except OSError:
-                        pass  # darf den ursprünglichen Fehler nicht verdecken
+        _cleanup_unpublished(tmp, final)
         raise
     _fsync_dir(dest_dir)  # nach der Freigabe: nie die fertige Sicherung löschen
     return final

@@ -582,6 +582,48 @@ def test_wiki_readme_new_sentences():
     assert "Zeitstempel im Dateinamen" in (ROOT / "README.md").read_text(encoding="utf-8")
 
 
+# --- Fix-Runde 2 (Issue 14) ---
+
+def test_interrupt_right_after_replace_keeps_backup(src, tmp_path, monkeypatch):
+    real = os.replace
+
+    def replace_then_interrupt(a, b):
+        real(a, b)
+        raise KeyboardInterrupt
+    monkeypatch.setattr(os, "replace", replace_then_interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        backup_db(src, tmp_path / "o", now=NOW)
+    files = list((tmp_path / "o").iterdir())
+    assert [f.name for f in files] == ["kassivo-20260301-123045.db"]
+    b = sqlite3.connect(files[0])
+    assert _count(b, "member") == 1
+    b.close()
+
+
+def test_interrupt_before_replace_leaves_nothing(src, tmp_path, monkeypatch):
+    def boom(a, b):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(KeyboardInterrupt):
+        backup_db(src, tmp_path / "o", now=NOW)
+    assert list((tmp_path / "o").iterdir()) == []
+
+
+def test_reserve_interrupt_removes_own_reservation(tmp_path, monkeypatch):
+    class F:
+        def __init__(self, f):
+            self.f = f
+
+        def close(self):
+            self.f.close()
+            raise KeyboardInterrupt
+    real = open
+    monkeypatch.setattr(kb, "open", lambda *a, **k: F(real(*a, **k)), raising=False)
+    with pytest.raises(KeyboardInterrupt):
+        kb._reserve(tmp_path, "kassivo-20260301-000000")
+    assert list(tmp_path.iterdir()) == []
+
+
 # --- Wächter ---
 
 def test_gitignore_protects_data():
