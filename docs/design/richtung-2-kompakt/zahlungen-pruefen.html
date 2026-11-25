@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zahlungen prüfen – KASSIVO (Entwurf Kompakt)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<div class="proto">Entwurf Richtung 2 „Kompakt“ · alle Daten erfunden · <a href="../index.html">Zur Auswahl</a></div>
+<header class="bar"><div class="bar-in">
+<a class="brand" href="start.html">KASSIVO</a>
+<nav class="nav-desktop" aria-label="Hauptnavigation"><ul><li><a class="nav" href="start.html">Übersicht</a></li><li><a class="nav" href="mitglieder.html">Mitglieder</a></li><li><a class="nav" href="zahlungen.html" aria-current="page">Zahlungen</a></li><li><a class="nav" href="raster.html">Auswertung</a></li><li><a class="nav" href="einstellungen.html">Einstellungen</a></li></ul></nav>
+<div class="right"><form role="search"><label class="sr-only" for="gs">Alles durchsuchen</label><input id="gs" type="search" placeholder="Suchen …"></form><a class="round" href="#" aria-label="Hilfe">?</a><a class="round" href="#" aria-label="Benutzer">N</a></div>
+<details class="mnav"><summary>Menü</summary><div class="panel"><nav aria-label="Hauptmenü"><ul style="display:block"><li><a class="nav" href="start.html">Übersicht</a></li><li><a class="nav" href="mitglieder.html">Mitglieder</a></li><li><a class="nav" href="zahlungen.html" aria-current="page">Zahlungen</a></li><li><a class="nav" href="raster.html">Auswertung</a></li><li><a class="nav" href="einstellungen.html">Einstellungen</a></li></ul></nav></div></details>
+</div></header>
+<div class="layout">
+<aside class="side" aria-label="Bereichsmenü Zahlungen"><div class="ctx"><b>Verein Beispielstadt</b><span>Beitragsjahr 2026</span></div><div class="sn"><h2>Zahlungen</h2><ul><li><a href="zahlungen.html">Alle <span class="badge">128</span></a></li><li><a href="zahlungen.html">Eingänge <span class="badge">96</span></a></li><li><a href="zahlungen.html">Ausgänge <span class="badge">32</span></a></li></ul><h2>Zuordnen</h2><ul><li><a href="zahlungen.html">Unklar <span class="badge">3</span></a></li><li><a href="zahlungen-pruefen.html" aria-current="page">Prüfen <span class="badge">3</span></a></li><li><a href="zahlungen.html">Automatisch verteilt <span class="badge">41</span></a></li></ul><h2>Organisieren</h2><ul><li><a href="import-ergebnis.html">Kontoauszug importieren</a></li><li><a href="#">Letzte Änderungen</a></li></ul></div></aside>
+<div class="content">
+<details class="subnav"><summary>Zahlungen: Bereichsmenü <span class="caret"></span></summary><div class="ctx"><b>Verein Beispielstadt</b><span>Beitragsjahr 2026</span></div><div class="sn"><h2>Zahlungen</h2><ul><li><a href="zahlungen.html">Alle <span class="badge">128</span></a></li><li><a href="zahlungen.html">Eingänge <span class="badge">96</span></a></li><li><a href="zahlungen.html">Ausgänge <span class="badge">32</span></a></li></ul><h2>Zuordnen</h2><ul><li><a href="zahlungen.html">Unklar <span class="badge">3</span></a></li><li><a href="zahlungen-pruefen.html" aria-current="page">Prüfen <span class="badge">3</span></a></li><li><a href="zahlungen.html">Automatisch verteilt <span class="badge">41</span></a></li></ul><h2>Organisieren</h2><ul><li><a href="import-ergebnis.html">Kontoauszug importieren</a></li><li><a href="#">Letzte Änderungen</a></li></ul></div></details>
+<main id="main" class="page">
+<div class="page-head"><h1>Zahlungen prüfen</h1><p class="sub">3 Vorschläge warten auf Bestätigung</p></div><div class="actions"><details class="menu"><summary class="btn btn-green caret" role="button">Erfassen&nbsp;</summary><div class="drop"><a href="import-ergebnis.html">Kontoauszug importieren</a><a href="#">Zahlung erfassen</a><a href="#">Mitglied anlegen</a></div></details><div class="btngroup" role="group" aria-label="Weitere Aktionen"><button class="btn caret" type="button">Exportieren&nbsp;</button><button class="btn caret" type="button">Drucken&nbsp;</button><button class="btn caret" type="button">Extras&nbsp;</button></div></div><div class="phone-tabs" role="group" aria-label="Zahlungen filtern"><a class="filter" href="zahlungen.html">Alle</a><a class="filter" href="zahlungen.html">Eingänge</a><a class="filter" href="zahlungen.html">Ausgänge</a><a class="filter" href="zahlungen.html">Unklar 3</a><a class="filter" href="zahlungen-pruefen.html" aria-current="true">Prüfen 3</a><a class="filter" href="zahlungen.html">Automatisch verteilt 41</a></div><section class="card" aria-label="Vorschläge"><article class="proposal" aria-labelledby="p0"><div class="proposal-head"><h2 id="p0" style="margin:0;font-size:1rem">Lena Muster · +30,00 €</h2><span class="chip chip-warn">prüfen</span></div>
+<p class="muted small" style="margin:var(--s1) 0 0">21.11.2026 · Verwendungszweck „Beitrag Lena“ · Monatsbeitrag 12,00 €</p>
+<p class="why" role="note">Grund: Betrag passt nicht zu ganzen Monatsbeiträgen</p>
+<h3>Vorgeschlagene Verteilung</h3><ul class="split"><li><span>Beitrag Oktober</span><strong class="num">12,00 €</strong></li><li><span>Beitrag November</span><strong class="num">12,00 €</strong></li><li><span>Spende (Rest)</span><strong class="num">6,00 €</strong></li></ul><p class="hint">Vorschlag gelernt aus früheren Buchungen dieses Mitglieds.</p>
+<div class="btnrow"><button class="btn btn-green" type="button">Bestätigen</button><button class="btn btn-secondary" type="button">Ändern</button></div></article><article class="proposal" aria-labelledby="p1"><div class="proposal-head"><h2 id="p1" style="margin:0;font-size:1rem">Rolf Exempel · +50,00 €</h2><span class="chip chip-warn">prüfen</span></div>
+<p class="muted small" style="margin:var(--s1) 0 0">20.11.2026 · Verwendungszweck „Mitgliedsbeitrag Rolf“ · Monatsbeitrag 15,00 €</p>
+<p class="why" role="note">Grund: Betrag passt nicht zu ganzen Monatsbeiträgen</p>
+<h3>Vorgeschlagene Verteilung</h3><ul class="split"><li><span>Beitrag September</span><strong class="num">15,00 €</strong></li><li><span>Beitrag Oktober</span><strong class="num">15,00 €</strong></li><li><span>Beitrag November</span><strong class="num">15,00 €</strong></li><li><span>Spende (Rest)</span><strong class="num">5,00 €</strong></li></ul><p class="hint">Vorschlag gelernt aus früheren Buchungen dieses Mitglieds.</p>
+<div class="btnrow"><button class="btn btn-green" type="button">Bestätigen</button><button class="btn btn-secondary" type="button">Ändern</button></div></article><article class="proposal" aria-labelledby="p2"><div class="proposal-head"><h2 id="p2" style="margin:0;font-size:1rem">Greta Modell · +25,00 €</h2><span class="chip chip-warn">prüfen</span></div>
+<p class="muted small" style="margin:var(--s1) 0 0">17.11.2026 · Verwendungszweck „Greta Beitrag“ · Monatsbeitrag 10,00 €</p>
+<p class="why" role="note">Grund: Betrag passt nicht zu ganzen Monatsbeiträgen</p>
+<h3>Vorgeschlagene Verteilung</h3><ul class="split"><li><span>Beitrag Oktober</span><strong class="num">10,00 €</strong></li><li><span>Beitrag November</span><strong class="num">10,00 €</strong></li><li><span>Spende (Rest)</span><strong class="num">5,00 €</strong></li></ul><p class="hint">Vorschlag gelernt aus früheren Buchungen dieses Mitglieds.</p>
+<div class="btnrow"><button class="btn btn-green" type="button">Bestätigen</button><button class="btn btn-secondary" type="button">Ändern</button></div></article></section>
+</main>
+</div>
+</div>
+</body>
+</html>
