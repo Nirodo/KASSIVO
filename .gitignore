@@ -73,3 +73,6 @@ desktop.ini
 .superpowers/
 *.egg-info/
 .pytest_cache/
+
+# Fremdmaterial (Referenz-Screenshots), nie committen
+docs/design/referenz/
