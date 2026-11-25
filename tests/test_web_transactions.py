@@ -400,6 +400,8 @@ def test_clear_requires_confirm(client, db):
     assert r.status_code == 303 and r.headers["location"] == f"/transactions/{tx}/allocate"
     # Fix-Runde 1 (I2): Aufheben hinterlässt einen Vorschlag des Nutzers
     assert [(x["status"]) for x in _alloc(db, tx)] == ["proposed"]
+    assert [r[0] for r in db.execute("select source from allocation where tx_id=?", (tx,))] == [
+        "manual"]
     assert _col(db, tx, "member_id") == m
 
 

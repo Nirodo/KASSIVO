@@ -314,15 +314,19 @@ def _chronological(conn, where: str, params=()) -> list[int]:
         f" and {where} order by t.booking_date, t.id", params)]
 
 
-def rebuild_member_from(conn, member_id: int, booking_date: str, tx_id: int) -> None:
-    """Abgeleitete Verteilungen eines Mitglieds ab (Datum, Id) neu berechnen.
+def rebuild_member(conn, member_id: int, exclude: int | None = None) -> None:
+    """Alle abgeleiteten Verteilungen eines Mitglieds neu berechnen (kanonisch).
 
-    Ohne commit (läuft in der Transaktion des Aufrufers, z. B. assign_member).
-    Zeilen mit source='manual' bleiben unangetastet.
+    Ergibt für dieses Mitglied dasselbe wie redistribute_all. Ohne commit (läuft
+    in der Transaktion des Aufrufers). Zeilen mit source='manual' bleiben
+    unangetastet; exclude ist eine Buchung, die der Aufrufer selbst behandelt.
+
+    Verworfen: nur ab der geänderten Zahlung neu rechnen. Frühere Vorschläge
+    können durch spätere Bestätigungen eindeutig werden, und eine Bestätigung
+    des Nutzers in einem früheren Monat muss auch frühere automatische
+    Zahlungen verschieben, sonst wäre ein Monat doppelt bezahlt.
     """
-    ids = _chronological(conn, "t.member_id=? and (t.booking_date > ? or"
-                         " (t.booking_date = ? and t.id >= ?))",
-                         (member_id, booking_date, booking_date, tx_id))
+    ids = [t for t in _chronological(conn, "t.member_id=?", (member_id,)) if t != exclude]
     for t in ids:
         conn.execute("delete from allocation where tx_id=?", (t,))
     _passes(conn, ids)
@@ -466,8 +470,11 @@ def undo_auto(conn, tx_id: int) -> None:
     confirmed = [r for r in rows if r["status"] == "confirmed"]
     if not confirmed or any(r["source"] != "auto" for r in confirmed):
         raise ValueError("Nur automatisch verteilte Zahlungen können rückgängig gemacht werden.")
+    member_id = conn.execute('select member_id from "transaction" where id=?',
+                             (tx_id,)).fetchone()[0]
     try:
         conn.execute("delete from allocation where tx_id=?", (tx_id,))
+        rebuild_member(conn, member_id, exclude=tx_id)  # spätere Zahlungen folgen
         propose_allocations(conn, tx_id, commit=False, auto=False)
     except Exception:
         conn.rollback()
@@ -518,12 +525,17 @@ def confirm_allocations(conn, tx_id: int, allocs: list[tuple[str, int]]) -> None
         months.add(month)
     if sum(c for _, c in allocs) != tx["amount_cents"]:
         raise ValueError("Summe der Verteilung entspricht nicht dem Buchungsbetrag")
-    conn.execute("delete from allocation where tx_id=?", (tx_id,))
-    conn.executemany(
-        "insert into allocation(tx_id, member_id, month, cents, status, source)"
-        " values(?,?,?,?,'confirmed','manual')",
-        [(tx_id, tx["member_id"], m, c) for m, c in allocs],
-    )
+    try:
+        conn.execute("delete from allocation where tx_id=?", (tx_id,))
+        conn.executemany(
+            "insert into allocation(tx_id, member_id, month, cents, status, source)"
+            " values(?,?,?,?,'confirmed','manual')",
+            [(tx_id, tx["member_id"], m, c) for m, c in allocs],
+        )
+        rebuild_member(conn, tx["member_id"])  # automatische Zahlungen folgen
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
 
 
@@ -544,6 +556,7 @@ def clear_allocations(conn, tx_id: int) -> int:
     try:
         n = conn.execute("delete from allocation where tx_id=?", (tx_id,)).rowcount
         if tx["member_id"] is not None and tx["amount_cents"] > 0:
+            rebuild_member(conn, tx["member_id"], exclude=tx_id)
             propose_allocations(conn, tx_id, commit=False, auto=False)
     except Exception:
         conn.rollback()

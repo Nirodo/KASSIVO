@@ -63,8 +63,8 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
             ).fetchone() is not None
             conn.execute("delete from allocation where tx_id=?", (tx_id,))
             if tx["member_id"] is not None:
-                # spätere Zahlungen des alten Mitglieds sahen diese Zahlung
-                dues.rebuild_member_from(conn, tx["member_id"], tx["booking_date"], tx_id)
+                # die anderen Zahlungen des alten Mitglieds sahen diese Zahlung
+                dues.rebuild_member(conn, tx["member_id"])
         if member_id is not None:
             _set_fee_category_if_empty(conn, tx_id)
             iban = normalize_iban(tx["cp_iban"])
@@ -87,9 +87,11 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
                 )
             if changed:
                 if had_manual:
+                    dues.rebuild_member(conn, member_id, exclude=tx_id)
                     dues.propose_allocations(conn, tx_id, commit=False, auto=False)
-                # diese und spätere abgeleitete Zahlungen des neuen Mitglieds
-                dues.rebuild_member_from(conn, member_id, tx["booking_date"], tx_id)
+                else:
+                    # diese und die anderen abgeleiteten Zahlungen des neuen Mitglieds
+                    dues.rebuild_member(conn, member_id)
     except Exception:
         conn.rollback()
         raise
@@ -143,7 +145,7 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
         for r in conn.execute("select id, austritt from member where austritt is not null")
     }
     assigned = 0
-    first: dict[int, tuple[str, int]] = {}  # Mitglied -> früheste neue Zahlung
+    touched: set[int] = set()  # Mitglieder mit neuen Zahlungen
     rows = conn.execute(
         'select id, cp_iban, booking_date from "transaction"'
         " where amount_cents > 0 and member_id is null and cp_iban is not null"
@@ -166,11 +168,11 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
                 (member_id, tx["id"]),
             )
             _set_fee_category_if_empty(conn, tx["id"])
-            first.setdefault(member_id, (tx["booking_date"], tx["id"]))
+            touched.add(member_id)
             assigned += 1
-        # danach je Mitglied ab der frühesten neuen Zahlung chronologisch verteilen
-        for member_id, (day, first_id) in first.items():
-            dues.rebuild_member_from(conn, member_id, day, first_id)
+        # danach je Mitglied einmal chronologisch verteilen
+        for member_id in sorted(touched):
+            dues.rebuild_member(conn, member_id)
     except Exception:
         conn.rollback()
         raise

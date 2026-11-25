@@ -528,16 +528,18 @@ def test_clear_unknown_tx_raises(conn):
     assert not conn.in_transaction
 
 
-def test_clear_leaves_other_tx_untouched(conn):
+def test_clear_recomputes_later_auto_payment(conn):
     m = _anna(conn)
     ta = _tx(conn, 1700, member_id=m)
     tb = _tx(conn, 3400, day="2026-01-06", member_id=m)
     propose_allocations(conn, ta)
     propose_allocations(conn, tb)
-    before = _rows(conn, tb)
-    assert clear_allocations(conn, ta) == 1
-    assert _rows(conn, tb) == before == [
+    assert _rows(conn, tb) == [
         ("2026-02", 1700, "confirmed", m), ("2026-03", 1700, "confirmed", m)]
+    assert clear_allocations(conn, ta) == 1
+    # Fix-Runde 2 (#27): spätere automatische Zahlungen folgen der Entscheidung
+    assert _rows(conn, tb) == [
+        ("2026-01", 1700, "confirmed", m), ("2026-02", 1700, "confirmed", m)]
 
 
 def test_clear_failure_keeps_rows_and_no_open_transaction(conn):
@@ -692,8 +694,10 @@ def test_repropose_pending_leaves_confirmed_untouched_and_counts(conn):
                  (confirm_rows[0][0],))
     conn.commit()
     keep = [r for r in _all_allocs(conn) if r[1] in (ids[0], ids[1])]
+    # Fix-Runde 2 (#27): die Bestätigung hat die übrigen drei schon neu verteilt
+    assert all(r[5] == "confirmed" for r in _all_allocs(conn) if r[1] in ids[2:])
     set_check_start(conn, "2025-08")
-    assert repropose_pending(conn) == 3
+    assert repropose_pending(conn) == 0
     assert [r for r in _all_allocs(conn) if r[1] in (ids[0], ids[1])] == keep
 
 

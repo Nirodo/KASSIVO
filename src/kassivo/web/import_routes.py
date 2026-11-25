@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 
-from kassivo import categories, matching
+from kassivo import categories, dues, matching
 from kassivo.camt import CamtError
 from kassivo.dues import check_start_is_set, distribution_counts, proposed_tx_count
 from kassivo.ingest import import_path
@@ -70,12 +70,16 @@ async def import_submit(
         if kind is None:
             return _form(request, conn, 422, "Dateityp nicht erkannt. Erwartet wird eine ZIP- oder XML-Datei.")
         path = raw.rename(raw.with_name(f"upload.{kind}"))
+        derived_before = None if check_start_is_set(conn) else dues.get_check_start(conn)
         try:
             result = import_path(conn, path)
         except CamtError as e:
             return _form(request, conn, 422, f"{e}. Es wurde nichts importiert.")
         categorized = categories.apply_rules(conn, result.new_tx_ids)
         assigned = matching.auto_assign(conn, result.new_tx_ids)
+        if not check_start_is_set(conn) and dues.get_check_start(conn) != derived_before:
+            # abgeleiteter Prüfungsstart ist früher geworden: Abgeleitetes folgt
+            dues.redistribute_all(conn)
     auto_count, review_count, outside_count = distribution_counts(conn, result.new_tx_ids)
     return render(request, "import_result.html", result=result,
                   categorized=categorized, assigned=assigned,
