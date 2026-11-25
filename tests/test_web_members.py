@@ -465,3 +465,10 @@ def test_import_page_shows_zero_entry_warning(client):
     assert r.status_code == 200
     assert "Warnungen" in r.text and "1 Eintrag mit 0,00 € übersprungen" in r.text
     assert IBAN not in r.text
+
+
+def test_import_zero_only_upload_shows_warning(client):
+    r = _upload(client, _zip([{"amount": 0, "name": "Bankinfo", "ref": "Z1"}]))
+    assert r.status_code == 200
+    assert "Import abgeschlossen" in r.text and "Neu: 0" in r.text and "Duplikate: 0" in r.text
+    assert "1 Eintrag mit 0,00 € übersprungen" in r.text

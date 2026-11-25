@@ -1,4 +1,5 @@
 """Parser für Sparkasse-Exporte im Format camt.052.001.08 (ein Konto, ein Buchungstag)."""
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import date
@@ -8,6 +9,7 @@ NS = "urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"
 _N = {"c": NS}
 MAX_EUR = 10**9  # obere Grenze je Betrag; schützt vor riesigen Exponenten
 E_AMOUNT = "ungültiger Betrag"
+_AMOUNT_RE = re.compile(r"[0-9]+(\.[0-9]{1,2})?")
 
 
 class CamtError(ValueError):
@@ -47,24 +49,19 @@ def _cents(text: str | None, sign_ind: str | None) -> int:
 
     Der Text ist ohne Vorzeichen (das Vorzeichen steht in CdtDbtInd) und liegt
     in 0 <= Betrag <= 10**9 EUR; 0 (höchstens zwei Nachkommastellen) liefert 0,
-    der Aufrufer überspringt solche Einträge. NaN, Unendlich und
-    Überläufe werden zu CamtError mit fester Meldung (nie der Eingabetext).
+    der Aufrufer überspringt solche Einträge. Alles außer ASCII-Ziffern mit optionalem
+    Punkt und höchstens zwei Nachkommastellen (NaN, Exponent, Vorzeichen) wird zu CamtError mit fester Meldung (nie der Eingabetext).
     """
     if text is None or sign_ind not in ("CRDT", "DBIT"):
         raise CamtError("Betrag oder Soll/Haben-Kennzeichen fehlt")
     text = text.strip()
-    if text[:1] in ("+", "-"):
+    if not _AMOUNT_RE.fullmatch(text):  # xs:decimal ohne Vorzeichen, Exponent, Sonderziffern
         raise CamtError(E_AMOUNT)
-    try:
-        d = Decimal(text)
-        if not d.is_finite() or not (0 <= d <= MAX_EUR) or (d == 0 and d.as_tuple().exponent < -2):
-            raise CamtError(E_AMOUNT)
-        cents = d * 100
-        if cents != cents.to_integral_value():
-            raise CamtError(E_AMOUNT)
-    except (ArithmeticError, OverflowError):  # InvalidOperation, sNaN-Vergleich, Überlauf
-        raise CamtError(E_AMOUNT) from None
-    cents = int(cents)
+    cents = int(Decimal(text) * 100)
+    if cents == 0:
+        return 0  # Aufrufer überspringt Einträge mit 0,00
+    if cents > MAX_EUR * 100:
+        raise CamtError(E_AMOUNT)
     return -cents if sign_ind == "DBIT" else cents
 
 

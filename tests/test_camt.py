@@ -185,3 +185,42 @@ def test_pending_zero_entry_not_counted():
 
 def test_no_zero_entries_counts_zero():
     assert parse_camt052(mk([dict(amount=100)])).skipped_zero == 0
+
+
+@pytest.mark.parametrize("raw", ["0", "0.0", "0.00", "00", " 0.00 ", "0.00\n"])
+def test_zero_notation_accepted(raw):
+    assert parse_camt052(mk([dict(amount_raw=raw)])).skipped_zero == 1
+
+
+@pytest.mark.parametrize("raw", ["0E+5", "0e0", "0E-2", "0.", "00.000", "１.00", "1_0", "0,00",
+                                 "1E2", "5.", ""])
+def test_strict_notation_rejected(raw):
+    with pytest.raises(CamtError):
+        parse_camt052(mk([dict(amount_raw=raw)]))
+
+
+def test_leading_zeros_still_valid():
+    assert parse_camt052(mk([dict(amount_raw="00.50")])).entries[0].amount_cents == 50
+
+
+def test_zero_entry_both_directions():
+    xml = mk([dict(amount=0, ref="A")]).decode()
+    dbit = xml.replace("<CdtDbtInd>CRDT</CdtDbtInd><Sts>", "<CdtDbtInd>DBIT</CdtDbtInd><Sts>")
+    assert dbit != xml
+    for x in (xml, dbit):
+        st = parse_camt052(x.encode())
+        assert st.entries == [] and st.skipped_zero == 1
+
+
+def test_zero_entry_currency_attribute_is_ignored():
+    # Der Parser wertet Ccy nirgends aus (gilt auch für normale Beträge).
+    xml = mk([dict(amount=0, ref="A")]).decode().replace('<Amt Ccy="EUR">0.00', '<Amt Ccy="USD">0.00')
+    assert "USD" in xml
+    assert parse_camt052(xml.encode()).skipped_zero == 1
+
+
+def test_zero_entries_on_several_days_latest_date():
+    st = parse_camt052(mk([dict(amount=0, ref="A", booking_date="2025-01-03"),
+                           dict(amount=0, ref="B", booking_date="2025-01-09"),
+                           dict(amount=0, ref="C", booking_date="2025-01-05")]))
+    assert st.skipped_zero == 3 and st.skipped_date == date(2025, 1, 9)

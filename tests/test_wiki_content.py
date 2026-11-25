@@ -427,7 +427,7 @@ def test_dedupe_limits_described_in_wiki(tmp_path):
     assert (r.new, r.duplicates) == (2, 0)  # in derselben Datei bleiben beide
 
 
-def test_zero_amount_message_is_quoted_exactly(tmp_path):
+def test_invalid_amount_message_is_quoted_exactly(tmp_path):
     from kassivo.camt import CamtError
     from tests.helpers import IBAN, make_camt
     f = tmp_path / "a.xml"

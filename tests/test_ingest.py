@@ -357,3 +357,13 @@ def test_zero_plus_broken_file_writes_nothing(conn, tmp_path):
         import_path(conn, write_zip(tmp_path, files))
     assert conn.execute('select count(*) from "transaction"').fetchone()[0] == 0
     assert conn.execute("select count(*) from import_batch").fetchone()[0] == 0
+
+
+def test_dedupe_keys_unchanged_by_zero_entry():
+    from kassivo.camt import parse_camt052
+    from kassivo.ingest import _dedupe_keys
+    e = [dict(amount=1700, purpose="Beitrag", ref=None), dict(amount=1700, purpose="Beitrag", ref=None)]
+    z = dict(amount=0, purpose="Info", ref=None)
+    plain = parse_camt052(make_camt(IBAN, 0, e, DAYS[0]))
+    mixed = parse_camt052(make_camt(IBAN, 0, [e[0], z, e[1]], DAYS[0]))
+    assert len(plain.entries) == 2 and _dedupe_keys(plain) == _dedupe_keys(mixed)
