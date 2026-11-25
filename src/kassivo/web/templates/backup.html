@@ -23,6 +23,14 @@
   </table>
   </div>
   {% else %}<p>Noch keine Sicherung vorhanden.</p>{% endif %}
+  <h2>Alte Sicherungen aufräumen</h2>
+  <p>KASSIVO löscht nie von selbst. Hier löschen Sie ältere Sicherungen, die neueste bleibt immer erhalten. Das Löschen ist nicht rückgängig zu machen.</p>
+  <form method="post" action="/backup/cleanup">
+    <p><label for="keep">Die neuesten … Sicherungen behalten</label>
+    <input id="keep" name="keep" type="number" min="1" max="1000" value="10" required></p>
+    <p><label><input type="checkbox" name="confirm" value="1" required> Ich bestätige, dass ältere Sicherungen gelöscht werden</label></p>
+    <button type="submit">Alte Sicherungen aufräumen</button>
+  </form>
   <p>Datenbank-Schema: Version {{ schema }} (Programm: {{ program_schema }})</p>
 </section>
 {% endblock %}
