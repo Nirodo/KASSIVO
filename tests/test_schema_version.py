@@ -388,3 +388,13 @@ def test_backup_page_shows_schema_line(tmp_path):
     assert r.status_code == 200
     assert (f"Datenbank-Schema: Version {SCHEMA_VERSION} (Programm: {SCHEMA_VERSION})"
             in r.text)
+
+
+# --- Doku ---
+
+def test_readme_mentions_schema_backup():
+    from pathlib import Path
+    t = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    assert "automatisch eine Sicherung" in t and "neueren KASSIVO-Version" in t
+    assert "sichert nicht automatisch" not in t
+    assert "keine automatische Sicherung" not in t

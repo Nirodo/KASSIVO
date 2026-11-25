@@ -168,7 +168,9 @@ Eine Buchung hat höchstens eine Kategorie. Regeln prüfen, ob ein Feld (Verwend
 
 ## Backup und Wiederherstellung
 
-Sicherung: Seite `/backup` (Menüpunkt "Backup") öffnen und "Sicherung erstellen" wählen. Die Sicherung ist eine vollständige Kopie der Datenbank mit dem Namen `kassivo-JJJJMMTT-HHMMSS.db` in `<DB-Ordner>/backups`. Den genauen Pfad zeigt KASSIVO beim Start an. Die Seite listet die vorhandenen Sicherungen. Alte Sicherungen können von Hand gelöscht werden, KASSIVO löscht nichts selbst und sichert nicht automatisch.
+Sicherung: Seite `/backup` (Menüpunkt "Backup") öffnen und "Sicherung erstellen" wählen. Die Sicherung ist eine vollständige Kopie der Datenbank mit dem Namen `kassivo-JJJJMMTT-HHMMSS.db` in `<DB-Ordner>/backups`. Den genauen Pfad zeigt KASSIVO beim Start an. Die Seite listet die vorhandenen Sicherungen. Alte Sicherungen können von Hand gelöscht werden, KASSIVO löscht nichts selbst.
+
+Datenbankformat: Die Datenbank trägt eine Schema-Version (angezeigt auf der Seite `/backup`). Muss eine neue KASSIVO-Version das Format ändern, legt sie vorher automatisch eine Sicherung `kassivo-JJJJMMTT-HHMMSS.db` in `<DB-Ordner>/backups` an. Sonst sichert KASSIVO nicht automatisch. Eine Datenbank aus einer neueren KASSIVO-Version öffnet KASSIVO nicht: Es meldet das beim Start und beendet sich, die Datei bleibt unverändert.
 
 Wiederherstellung (von Hand):
 
@@ -280,7 +282,7 @@ Der Entwurf des Programms steht in `docs/superpowers/specs/2026-11-24-kassivo-de
 - Die Prognose betrachtet nur Mitgliedsbeiträge, keine wiederkehrenden Ausgaben.
 - Eine Datenbank ist eine Kasse (keine Mehrmandanten).
 - Buchungen, Mitglieder, Kategorien und Regeln lassen sich nicht löschen. Buchungen lassen sich nicht von Hand anlegen. Korrekturen laufen über Zuordnung und Verteilung.
-- Kein Knopf zum Wiederherstellen einer Sicherung, keine automatische Sicherung.
+- Kein Knopf zum Wiederherstellen einer Sicherung. Automatisch gesichert wird nur vor einer Änderung am Datenbankformat.
 - Die Diagramme im Report brauchen JavaScript im Browser. Die Tabellen gehen immer.
 - Adresse und Port sind fest (`127.0.0.1:8000`).
 - Python ab 3.10 erlaubt, getestet wird nur mit 3.15.
