@@ -490,10 +490,61 @@ def test_import_rejects_oversized_content_length_before_body(client, db, monkeyp
     assert r.headers["x-content-type-options"] == "nosniff"
 
 
-def test_import_content_length_within_margin_goes_to_handler(client, db, monkeypatch):
+def _post_forged(client, length, **headers):
+    """Kleiner echter Body, gefälschter Content-Length."""
+    return client.post("/import", files={"file": ("x.zip", _zip(), "application/zip")},
+                       headers={"content-length": str(length), **headers})
+
+
+def test_import_content_length_edge(client, db, monkeypatch):
+    from kassivo.web import import_routes
+    monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 5000)
+    edge = 5000 + import_routes.UPLOAD_OVERHEAD_BYTES
+    assert _post_forged(client, edge).status_code == 200  # genau Grenze: Handler (Datei real klein)
+    r = _post_forged(client, edge + 1)
+    assert r.status_code == 413 and "zu groß" in r.text
+
+
+def test_import_413_has_security_headers(client, monkeypatch):
+    from kassivo.web import import_routes
+    from kassivo.web.app import SECURITY_HEADERS
+    monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 100)
+    r = _post_forged(client, 100 + import_routes.UPLOAD_OVERHEAD_BYTES + 1)
+    assert r.status_code == 413
+    for k, v in SECURITY_HEADERS.items():
+        assert r.headers[k.lower()] == v
+
+
+def test_oversize_with_foreign_origin_or_host_keeps_other_rejections(client, db, monkeypatch):
+    monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 100)
+    big = 10**9
+    assert _post_forged(client, big, origin="http://evil.example").status_code == 403
+    assert _post_forged(client, big, host="evil.example").status_code == 400
+    assert _count(db, "import_batch") == 0
+
+
+def test_get_import_with_huge_content_length_is_ok(client, monkeypatch):
+    monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 100)
+    assert client.get("/import", headers={"content-length": "999999999999"}).status_code == 200
+
+
+@pytest.mark.parametrize("value", ["-5", "1_000", "+5", " 5", "5 5", "abc", "1e9", "0x10", "9" * 40, ""])
+def test_odd_content_length_never_gives_500(client, db, monkeypatch, value):
     monkeypatch.setattr("kassivo.web.import_routes.MAX_UPLOAD_BYTES", 10**6)
-    r = _upload(client, _zip())
-    assert r.status_code == 200 and _count(db, "transaction") == 2
+    r = client.post("/import", files={"file": ("x.zip", _zip(), "application/zip")},
+                    headers={"content-length": value})
+    assert r.status_code < 500 and r.status_code != 413
+
+
+@pytest.mark.parametrize("value", ["-5", "1_000", "+5", " 5", "abc", "9" * 40, ""])
+def test_guard_ignores_non_digit_content_length(value):
+    from kassivo.web import import_routes
+
+    class Req:
+        headers = {"content-length": value}
+        method = "POST"
+        url = type("U", (), {"path": "/import"})()
+    assert import_routes.upload_too_large(Req()) is False
 
 
 def test_import_without_content_length_falls_back_to_handler_cap(client, db, monkeypatch):

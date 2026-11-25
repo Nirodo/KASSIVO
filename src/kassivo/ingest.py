@@ -98,7 +98,13 @@ def _collect_existing(path: Path) -> list[tuple[str, bytes]]:
     if path.is_dir():
         files = sorted(p for p in path.iterdir() if p.is_file() and _is_xml(p.name))
         _check_count(len(files))
-        if sum(p.stat().st_size for p in files) > MAX_TOTAL_BYTES:
+        size = 0
+        for p in files:
+            try:
+                size += p.stat().st_size
+            except OSError:  # zwischen Auflisten und stat() verschwunden
+                raise CamtError(f"{NOT_FOUND}: {p.name}") from None
+        if size > MAX_TOTAL_BYTES:
             raise CamtError(TOO_BIG_TOTAL)
         found, total = [], 0
         for p in files:

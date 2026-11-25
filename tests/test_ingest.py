@@ -523,3 +523,45 @@ def test_import_inside_open_transaction_is_programming_error(conn, tmp_path):
         import_path(conn, p)
     conn.rollback()
     assert import_path(conn, p).new == 5
+
+
+def test_dedupe_key_format_is_pinned():
+    """Festwerte: eine Formatänderung würde bei bestehenden Datenbanken Duplikate erzeugen."""
+    from kassivo.camt import parse_camt052
+    from kassivo.ingest import _dedupe_keys
+    e = dict(amount=1700, name="Max Muster", cp_iban=OTHER_IBAN, purpose="Beitrag", ref=None)
+    keys = _dedupe_keys(parse_camt052(make_camt(IBAN, 0, [e, e], "2025-01-06")))
+    assert keys == [
+        "a7f59cd929835cdd870d687486ecb91d1f4a15d618e5fb3002e944a5f2adb059",
+        "e52a7bb69c5095034ca2f6d076c7ae79a73a7ad5d772a07ceb53d195c01a9f5b",
+    ]
+
+
+def test_file_vanishing_before_stat_reports_file_name(conn, tmp_path, monkeypatch):
+    d = tmp_path / "ordner"
+    d.mkdir()
+    (d / "a.xml").write_bytes(b"<x/>")
+    (d / "b.xml").write_bytes(b"<x/>")
+    real_stat = type(d).stat
+
+    def stat(self, *a, **k):
+        if self.name == "b.xml":
+            raise FileNotFoundError(str(self))
+        return real_stat(self, *a, **k)
+    monkeypatch.setattr("pathlib.Path.stat", stat)
+    monkeypatch.setattr("pathlib.Path.is_file", lambda self: True)
+    with pytest.raises(CamtError, match=r"b\.xml") as ei:
+        import_path(conn, d)
+    assert "ordner" not in str(ei.value) and str(tmp_path) not in str(ei.value)
+
+
+def test_unreadable_file_raises_camt_error(conn, tmp_path, monkeypatch):
+    p = tmp_path / "a.xml"
+    p.write_bytes(b"<x/>")
+
+    def deny(self, *a, **k):
+        raise PermissionError(13, "denied", str(self))
+    monkeypatch.setattr("pathlib.Path.open", deny)
+    with pytest.raises(CamtError, match="Datei nicht gefunden oder nicht lesbar: a.xml") as ei:
+        import_path(conn, p)
+    assert str(tmp_path) not in str(ei.value)

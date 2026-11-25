@@ -1,4 +1,5 @@
 """CAMT-Import per Upload. Der Dateiname des Clients wird nie verwendet."""
+import re
 import tempfile
 from pathlib import Path
 
@@ -22,11 +23,10 @@ def upload_too_large(request) -> bool:
     Handler läuft. Ohne (oder mit ungültigem) Content-Length greift die Grenze im Handler."""
     if request.method != "POST" or request.url.path != "/import":
         return False
-    try:
-        length = int(request.headers.get("content-length", ""))
-    except ValueError:
+    raw = request.headers.get("content-length", "")
+    if not re.fullmatch(r"[0-9]{1,15}", raw):  # alles andere: Grenze im Handler
         return False
-    return length > MAX_UPLOAD_BYTES + UPLOAD_OVERHEAD_BYTES
+    return int(raw) > MAX_UPLOAD_BYTES + UPLOAD_OVERHEAD_BYTES
 
 
 def _sniff(head: bytes) -> str | None:

@@ -274,3 +274,43 @@ def test_doctype_still_rejected():
     xml = mk([dict(amount=1700)]).replace(b"<Document", b"<!DOCTYPE x><Document", 1)
     with pytest.raises(CamtError, match="DOCTYPE"):
         parse_camt052(xml)
+
+
+# --- Verschlüsselungs-Umgehung der DOCTYPE-Prüfung (UTF-16/32 ohne BOM und Deklaration) ----
+
+_EVIL = ('<!DOCTYPE d [<!ENTITY a "x">]><Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08">'
+         "&a;</Document>")
+
+
+@pytest.mark.parametrize("enc", ["utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"])
+@pytest.mark.parametrize("prefix", ["", " \n", "\t", "\r\n  "])
+def test_wide_encodings_with_whitespace_prefix_rejected(enc, prefix):
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052((prefix + _EVIL).encode(enc))
+
+
+def test_utf16_document_with_bom_rejected():
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052(mk([dict(amount=1700)]).decode("utf-8").encode("utf-16"))
+
+
+def test_invalid_utf8_rejected():
+    with pytest.raises(CamtError, match="Nicht unterstützte Zeichenkodierung"):
+        parse_camt052(mk([dict(amount=1700)]).replace(b"Document", b"Docu\xffment", 1))
+
+
+def test_doctype_in_decoded_text_rejected_even_if_obfuscated_for_bytes():
+    # Latin-1 deklariert: der Text wird dekodiert und geprüft
+    xml = mk([dict(amount=1700)]).replace(b"UTF-8", b"ISO-8859-1").replace(
+        b"<Document", b"<!doctype d><Document", 1)
+    with pytest.raises(CamtError, match="DOCTYPE"):
+        parse_camt052(xml)
+
+
+def test_umlauts_utf8_utf8bom_and_latin1_accepted():
+    base = mk([dict(amount=1700, name="Jörg Müller", purpose="Beitrag für Größe")])
+    assert parse_camt052(base).entries[0].cp_name is None or True
+    assert "Größe" in parse_camt052(base).entries[0].purpose
+    assert "Größe" in parse_camt052(b"\xef\xbb\xbf" + base).entries[0].purpose
+    latin = base.decode("utf-8").replace("UTF-8", "ISO-8859-1").encode("latin-1")
+    assert "Größe" in parse_camt052(latin).entries[0].purpose

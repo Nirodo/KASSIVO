@@ -119,22 +119,30 @@ _OK_ENCODINGS = {b"utf-8", b"us-ascii", b"iso-8859-1"}
 E_ENCODING = "Nicht unterstützte Zeichenkodierung (erlaubt: UTF-8, US-ASCII, ISO-8859-1)"
 
 
-def _check_encoding(xml: bytes) -> None:
-    """Die DOCTYPE-Vorprüfung arbeitet auf Bytes und wäre mit UTF-16/32 zu umgehen.
+def _check_encoding(xml: bytes) -> str:
+    """Liefert den streng dekodierten Text; der DOCTYPE-Schutz läuft darauf mit.
 
-    Darum nur ASCII-kompatible Kodierungen zulassen (ein UTF-8-BOM ist erlaubt)."""
+    Die Bytes-Vorprüfung ließe sich mit UTF-16/32 umgehen (auch ohne BOM und Deklaration,
+    etwa mit Leerraum vor dem ersten "<"). Darum: Nullbyte in den ersten 64 Bytes, ein
+    BOM außer UTF-8 oder eine fremde Deklaration lehnt ab, der Rest muss streng als
+    UTF-8 (bei ISO-8859-1-Deklaration: Latin-1) dekodierbar sein."""
     body = xml[3:] if xml.startswith(b"\xef\xbb\xbf") else xml
-    if body.startswith(_BOMS) or body.startswith(_WIDE_START):
+    if b"\x00" in body[:64] or body.startswith(_BOMS) or body.startswith(_WIDE_START):
         raise CamtError(E_ENCODING)
     m = _DECL_RE.match(body)
-    if m and m.group(1).strip().lower() not in _OK_ENCODINGS:
+    declared = m.group(1).strip().lower() if m else b"utf-8"
+    if declared not in _OK_ENCODINGS:
         raise CamtError(E_ENCODING)
+    try:
+        return body.decode("latin-1" if declared == b"iso-8859-1" else "utf-8")
+    except UnicodeDecodeError:
+        raise CamtError(E_ENCODING) from None
 
 
 def parse_camt052(xml: bytes) -> ParsedStatement:
-    _check_encoding(xml)
+    text = _check_encoding(xml).upper()
     head = xml.upper()
-    if b"<!DOCTYPE" in head or b"<!ENTITY" in head:
+    if b"<!DOCTYPE" in head or b"<!ENTITY" in head or "<!DOCTYPE" in text or "<!ENTITY" in text:
         raise CamtError("DOCTYPE/ENTITY nicht erlaubt")
     try:
         root = ET.fromstring(xml)
