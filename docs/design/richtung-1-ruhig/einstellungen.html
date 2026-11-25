@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einstellungen – KASSIVO (Entwurf Ruhig)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<div class="proto">Entwurf Richtung 1 „Ruhig“ · alle Daten erfunden · <a href="../index.html">Zur Auswahl</a></div>
+<header class="topbar"><div class="topbar-in">
+<a class="brand" href="start.html">KASSIVO</a>
+<nav class="nav-desktop" aria-label="Hauptnavigation"><ul class="nav-list">
+<li><a href="start.html">Übersicht</a></li>
+<li><a href="mitglieder.html">Mitglieder</a></li>
+<li><a href="zahlungen.html">Zahlungen</a></li>
+<li><a href="raster.html">Auswertung</a></li>
+<li><a href="einstellungen.html" aria-current="page">Einstellungen</a></li>
+</ul></nav>
+<details class="nav-mobile"><summary>&#9776; Menü</summary><div class="panel"><nav aria-label="Hauptmenü"><ul>
+<li><a href="start.html">Übersicht</a></li>
+<li><a href="mitglieder.html">Mitglieder</a></li>
+<li><a href="zahlungen.html">Zahlungen</a></li>
+<li><a href="raster.html">Auswertung</a></li>
+<li><a href="einstellungen.html" aria-current="page">Einstellungen</a></li>
+</ul></nav></div></details>
+</div></header>
+<main id="main" class="page">
+<div class="page-head"><h1>Einstellungen</h1></div>
+<div class="settings"><nav aria-label="Abschnitte"><ul><li><a href="#beitraege">Beiträge &amp; Prüfungsstart</a></li><li><a href="#kategorien">Kategorien &amp; Regeln</a></li><li><a href="#backup">Backup</a></li><li><a href="#update">Update</a></li><li><a href="#hilfe">Hilfe &amp; Wiki</a></li></ul></nav>
+<div class="stack">
+<section class="card" id="beitraege" aria-labelledby="h1b"><h2 id="h1b">Beiträge &amp; Prüfungsstart</h2>
+<div class="field"><label for="b1">Standard-Monatsbeitrag</label><input id="b1" value="10,00"><p class="hint">Gilt für neue Mitglieder. Einzelne Beiträge stehen im Mitgliedsprofil.</p></div>
+<div class="field"><label for="b2">Prüfungsstart</label><input id="b2" type="date" value="2026-01-01"><p class="hint">Ab diesem Datum prüft KASSIVO Beiträge.</p></div>
+<button class="btn" type="button">Speichern</button></section>
+<section class="card" id="kategorien" aria-labelledby="h2b"><h2 id="h2b">Kategorien &amp; Regeln</h2><p>7 Kategorien, 4 Regeln, die Zahlungen automatisch zuordnen.</p><a class="btn btn-secondary" href="#">Kategorien verwalten</a></section>
+<section class="card" id="backup" aria-labelledby="h3b"><h2 id="h3b">Backup</h2><p>Letzte Sicherung: 24.11.2026, 18:02</p><a class="btn btn-secondary" href="#">Sicherung jetzt erstellen</a></section>
+<section class="card" id="update" aria-labelledby="h4b"><h2 id="h4b">Update</h2><p class="muted">Platzhalter: Hier erscheint später die Prüfung auf neue Versionen.</p></section>
+<section class="card" id="hilfe" aria-labelledby="h5b"><h2 id="h5b">Hilfe &amp; Wiki</h2><p>Anleitungen zu Import, Zuordnung und Beiträgen.</p><a class="btn btn-secondary" href="#">Wiki öffnen</a></section>
+</div></div>
+</main>
+</body>
+</html>
