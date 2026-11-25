@@ -661,7 +661,7 @@ def test_allocation_rejects_arabic_indic_digits(client, db):
     assert _alloc(db, tx) == before
 
 
-@pytest.mark.parametrize("raw", ["sNaN", "1E999999", "0.00"])
+@pytest.mark.parametrize("raw", ["sNaN", "1E999999", "+0.00", "0.001"])
 def test_import_bad_amount_is_422_not_500(client, db, raw):
     data = make_camt(IBAN, 0, [dict(E_ERIKA, amount_raw=raw)], "2026-03-01", with_balances=False)
     r = client.post("/import", files={"file": ("x.xml", data, "application/xml")})

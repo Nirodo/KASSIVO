@@ -130,6 +130,14 @@ def _balance_warning(st: ParsedStatement) -> str | None:
     return f"Saldo stimmt nicht: Konto {mask_iban(st.account_iban)}, {day}"
 
 
+def _zero_warning(st: ParsedStatement) -> str | None:
+    if not st.skipped_zero:
+        return None
+    n = st.skipped_zero
+    wort = "Eintrag" if n == 1 else "Einträge"
+    return f"Konto {mask_iban(st.account_iban)}, {st.skipped_date.isoformat()}: {n} {wort} mit 0,00 € übersprungen"
+
+
 def _account_id(conn, iban: str, label: str) -> int:
     row = conn.execute("select id from account where iban=?", (iban,)).fetchone()
     if row:
@@ -140,7 +148,7 @@ def _account_id(conn, iban: str, label: str) -> int:
 def import_path(conn, path: Path, bank_label: str = "Sparkasse") -> ImportResult:
     path = Path(path)
     statements = _parse_all(_collect(path))  # wirft, bevor geschrieben wird
-    warnings = [w for w in map(_balance_warning, statements) if w]
+    warnings = [w for st in statements for w in (_balance_warning(st), _zero_warning(st)) if w]
     new_ids: list[int] = []
     dups = 0
     with conn:  # eine Transaktion: commit bei Erfolg, rollback bei jedem Fehler

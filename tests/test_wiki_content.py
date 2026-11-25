@@ -87,8 +87,8 @@ def test_faq_has_at_least_ten_questions(pages):
     ("start", ["Offene Vorschläge", "$env:KASSIVO_DB", "setx", "Eingabeaufforderung (cmd)"]),
     ("zuordnung", ["Verteilung aufheben", "frühesten", "— keins —", "nie für das richtige Mitglied"]),
     ("faq", ["mehrdeutig", "— keins —", "Bankreferenz"]),
-    ("import", ["Bankreferenz", "später", "Regeln anwenden", "Unklare automatisch zuordnen", "für immer"]),
-    ("grenzen", ["Bankreferenz", "für immer", "Barzahlungen", "mehrdeutig", "Längenbegrenzung",
+    ("import", ["Bankreferenz", "später", "Regeln anwenden", "Unklare automatisch zuordnen", "übersprungen"]),
+    ("grenzen", ["Bankreferenz", "übersprungen", "Barzahlungen", "mehrdeutig", "Längenbegrenzung",
                  "Monat bereits bezahlt", "Austritt vor dem Eintritt"]),
     ("begriffe", ["Buchungsmonat", "Beitragsmonat", "Soll"]),
     ("prognose", ["ganze Monat des Datums"]),
@@ -427,11 +427,11 @@ def test_dedupe_limits_described_in_wiki(tmp_path):
     assert (r.new, r.duplicates) == (2, 0)  # in derselben Datei bleiben beide
 
 
-def test_zero_amount_message_is_quoted_exactly(tmp_path):
+def test_invalid_amount_message_is_quoted_exactly(tmp_path):
     from kassivo.camt import CamtError
     from tests.helpers import IBAN, make_camt
     f = tmp_path / "a.xml"
-    f.write_bytes(make_camt(IBAN, 0, [{"amount_raw": "0.00", "amount": 1, "ref": "R0"}], "2026-03-05"))
+    f.write_bytes(make_camt(IBAN, 0, [{"amount_raw": "-0.01", "amount": 1, "ref": "R0"}], "2026-03-05"))
     with pytest.raises(CamtError, match="a.xml: ungültiger Betrag"):
         ingest.import_path(connect(":memory:"), f)
 
