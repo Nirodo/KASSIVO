@@ -77,6 +77,7 @@ _NOTES = {
     "ambiguous": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
                  " künftig nicht automatisch zugeordnet.",
     "cleaned": "Gelöschte Sicherungen: {n}.",
+    "cleaned_partial": "Gelöschte Sicherungen: {n}. {m} konnten nicht gelöscht werden.",
     "reproposed": "Prüfungsstart gespeichert. {n} offene Vorschläge wurden neu berechnet.",
 }
 _COUNT_RE = re.compile(r"[0-9]{1,7}", re.ASCII)
@@ -86,14 +87,16 @@ def page_note(request: Request) -> str | None:
     """Hinweis nach einer Aktion. Nur feste Codes und eine Zahl, nie freier Text."""
     template = _NOTES.get(request.query_params.get("note", ""))
     n = request.query_params.get("n", "")
-    if template is None or not _COUNT_RE.fullmatch(n):
+    m = request.query_params.get("m", "0")
+    if template is None or not _COUNT_RE.fullmatch(n) or not _COUNT_RE.fullmatch(m):
         return None
-    return template.format(n=int(n))
+    return template.format(n=int(n), m=int(m))
 
 
-def with_note(url: str, code: str, n: int) -> str:
+def with_note(url: str, code: str, n: int, m: int | None = None) -> str:
     assert code in _NOTES
-    return f"{url}{'&' if '?' in url else '?'}note={code}&n={int(n)}"
+    extra = "" if m is None else f"&m={int(m)}"
+    return f"{url}{'&' if '?' in url else '?'}note={code}&n={int(n)}{extra}"
 
 
 templates.env.globals["page_note"] = page_note

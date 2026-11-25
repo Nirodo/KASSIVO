@@ -1,4 +1,5 @@
 """Sicherung der Datenbank: konsistente Kopie über die SQLite-Backup-API."""
+import itertools
 import os
 import re
 import stat
@@ -9,6 +10,7 @@ from pathlib import Path
 
 NAME_RE = re.compile(r"kassivo-(\d{8})-(\d{6})(?:-(\d+))?\.db", re.ASCII)
 MAX_LISTED = 50
+MAX_ATTEMPTS = 1000
 
 
 def _copy(conn: sqlite3.Connection, target: Path) -> None:
@@ -39,12 +41,13 @@ def _candidates(dest_dir: Path, stem: str):
 
 def _reserve(dest_dir: Path, stem: str) -> Path:
     """Legt den Zielnamen exklusiv an (xb), nimmt bei Kollision den nächsten Suffix."""
-    for final in _candidates(dest_dir, stem):
+    for final in itertools.islice(_candidates(dest_dir, stem), MAX_ATTEMPTS):
         try:
             with open(final, "xb"):
                 return final
         except FileExistsError:
             continue
+    raise OSError(f"Kein freier Dateiname für {stem} nach {MAX_ATTEMPTS} Versuchen.")
 
 
 def _fsync_file(path: Path) -> None:
@@ -73,17 +76,23 @@ def backup_db(conn: sqlite3.Connection, dest_dir: Path, now: datetime | None = N
     stem = "kassivo-" + (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
     tmp = dest_dir / f".{stem}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
     final = None
+    published = False
     try:
         final = _reserve(dest_dir, stem)
         _copy(conn, tmp)
         _fsync_file(tmp)
         os.replace(tmp, final)
-        _fsync_dir(dest_dir)
+        published = True
     except BaseException:
-        tmp.unlink(missing_ok=True)
-        if final is not None:
-            final.unlink(missing_ok=True)  # nur unsere eigene Reservierung
+        if not published:
+            for leftover in (tmp, final):  # nur unsere eigenen Dateien
+                if leftover is not None:
+                    try:
+                        leftover.unlink(missing_ok=True)
+                    except OSError:
+                        pass  # darf den ursprünglichen Fehler nicht verdecken
         raise
+    _fsync_dir(dest_dir)  # nach der Freigabe: nie die fertige Sicherung löschen
     return final
 
 
@@ -108,7 +117,7 @@ def _scan(dest_dir: Path | None) -> list[tuple]:
         except OSError:
             continue  # zwischenzeitlich gelöscht
         if stat.S_ISREG(st.st_mode) and st.st_size > 0:
-            found.append(((m[1], m[2], int(m[3] or 1)), p, st.st_size, m))
+            found.append(((m[1], m[2], int(m[3] or 1), p.name), p, st.st_size, m))
     found.sort(key=lambda t: t[0], reverse=True)
     return [(p, size, m) for _, p, size, m in found]
 
@@ -125,13 +134,18 @@ def list_backups(dest_dir: Path | None) -> list[dict]:
     return out
 
 
-def delete_old(dest_dir: Path | None, keep: int) -> int:
-    """Löscht alle außer den neuesten keep Sicherungen (mindestens 1 bleibt). Anzahl."""
-    deleted = 0
+def delete_old(dest_dir: Path | None, keep: int) -> tuple[int, int]:
+    """Löscht alle außer den neuesten keep Sicherungen (mindestens 1 bleibt).
+
+    Gibt (gelöscht, nicht löschbar) zurück. Eine inzwischen verschwundene Datei zählt nicht."""
+    deleted = failed = 0
     for p, _, _ in _scan(dest_dir)[max(1, keep):]:
         try:
             p.unlink()
+        except FileNotFoundError:
+            continue
         except OSError:
+            failed += 1
             continue
         deleted += 1
-    return deleted
+    return deleted, failed
