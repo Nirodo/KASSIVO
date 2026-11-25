@@ -44,8 +44,7 @@
                 var visible = slices.reduce(function (sum, x, i) {
                   return ctx.chart.getDataVisibility(i) ? sum + x.cents : sum;
                 }, 0);
-                var pct = (ctx.parsed / visible * 100).toFixed(1).replace('.', ',');
-                if (!(visible > 0)) { visible = 1; }
+                var pct = visible > 0 ? (ctx.parsed / visible * 100).toFixed(1).replace('.', ',') : '0,0';
                 return slices[ctx.dataIndex].name + ': ' + formatEuro(ctx.parsed) + ' (' + pct + ' %)';
               }
             }

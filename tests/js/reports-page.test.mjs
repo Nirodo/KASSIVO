@@ -43,7 +43,7 @@ function setup({ withLib = true, failOn = null, data = DATA } = {}) {
       constructor(canvas, cfg) {
         if (failOn && failOn.value === cfg.type + ':' + canvas.id) { throw new Error('boom'); }
         if (failOn && failOn.value === cfg.type && canvas.id === 'chart-months') { throw new Error('boom'); }
-        this.canvas = canvas; log.created.push(this);
+        this.canvas = canvas; this.cfg = cfg; log.created.push(this);
       }
       destroy() { log.destroyed.push(this); }
     },
@@ -97,4 +97,19 @@ test('späteres erfolgreiches draw blendet die Meldung aus', async () => {
   log.listeners[0]();
   assert.equal(hidden('chart-error-draw'), true);
   assert.equal(log.created.length, 5);
+});
+
+test('Tooltip-Prozente beziehen sich auf sichtbare Scheiben', async () => {
+  const data = { ...DATA, by_category: [{ name: 'A', income_cents: 0, expense_cents: 3000 },
+                                        { name: 'B', income_cents: 0, expense_cents: 1000 }] };
+  const { log } = setup({ data });
+  await tick(); await tick();
+  const label = log.created[0].cfg.options.plugins.tooltip.callbacks.label;
+  const mk = (vis, i) => ({ dataIndex: i, parsed: [3000, 1000][i],
+                            chart: { getDataVisibility: k => vis[k] } });
+  assert.match(label(mk([true, true], 0)), /^A: .* \(75,0 %\)$/);
+  assert.match(label(mk([true, false], 0)), /\(100,0 %\)$/);
+  const none = label(mk([false, false], 0));
+  assert.match(none, /\(0,0 %\)$/);
+  assert.doesNotMatch(none, /NaN|Infinity/);
 });

@@ -249,7 +249,9 @@ def test_by_member_explanation(client, db):
 @pytest.mark.skipif(shutil.which("node") is None,
                     reason="Node.js nicht installiert: JavaScript-Tests übersprungen")
 def test_js_unit_tests():
-    script = Path(__file__).parent / "js" / "reports.test.mjs"
-    r = subprocess.run(["node", "--test", str(script.parent)], capture_output=True, text=True,
+    js_dir = Path(__file__).parent / "js"
+    files = sorted(js_dir.glob("*.test.mjs"))
+    assert files, "keine JavaScript-Testdateien gefunden"
+    r = subprocess.run(["node", "--test", *map(str, files)], capture_output=True, text=True,
                        encoding="utf-8", timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
