@@ -35,8 +35,12 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
         "select 1 from member where id=?", (member_id,)
     ).fetchone():
         raise ValueError(f"unbekanntes Mitglied {member_id}")
+    # Gesperrt ist nur, was der Nutzer bestätigt hat. Eine automatische Verteilung
+    # (source='auto') hängt am alten Mitglied und wird beim Wechsel neu berechnet
+    # (#27, sonst blockiert die Vorauszahlung des Geschwisterkinds die Korrektur).
     if member_id != tx["member_id"] and conn.execute(
-        "select 1 from allocation where tx_id=? and status='confirmed'", (tx_id,)
+        "select 1 from allocation where tx_id=? and status='confirmed'"
+        " and source='manual'", (tx_id,)
     ).fetchone():
         raise ValueError(
             f"Buchung {tx_id} hat bestätigte Verteilung: Verteilung zuerst aufheben"
@@ -48,11 +52,9 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
         )
         changed = member_id != tx["member_id"]
         if changed:
-            # Vorschläge gehören zum alten Mitglied und wären jetzt falsch
-            conn.execute(
-                "delete from allocation where tx_id=? and status='proposed'",
-                (tx_id,),
-            )
+            # Vorschläge und automatische Verteilungen gehören zum alten Mitglied
+            # und wären jetzt falsch (Bestätigungen des Nutzers sperren oben)
+            conn.execute("delete from allocation where tx_id=?", (tx_id,))
         if member_id is not None:
             _set_fee_category_if_empty(conn, tx_id)
             iban = normalize_iban(tx["cp_iban"])

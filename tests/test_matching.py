@@ -321,7 +321,7 @@ def _full(conn, tx_id):
 
 def test_unassign_keeps_category_and_learned_iban(conn):
     m = _member(conn)
-    t = _tx(conn, 1000, MOM)  # Teilzahlung: nur Vorschlag, nichts bestätigt
+    t = _tx(conn, 2000, MOM)  # passt nicht zu ganzen Monaten: nur Vorschlag
     assign_member(conn, t, m)
     assign_member(conn, t, None)
     assert _row(conn, t)["member_id"] is None
@@ -333,7 +333,7 @@ def test_unassign_keeps_category_and_learned_iban(conn):
 
 def test_unassign_deletes_proposed_allocations(conn):
     m = _member(conn)
-    t = _tx(conn, 1000, MOM)
+    t = _tx(conn, 2000, MOM)
     assign_member(conn, t, m)
     _alloc(conn, t, m, "proposed")
     _alloc(conn, t, m, "proposed")
@@ -379,13 +379,13 @@ def test_reassign_same_member_keeps_allocations(conn):
 
 def test_reassign_other_member_deletes_proposed(conn):
     a, b = _member(conn, "A"), _member(conn, "B")
-    t = _tx(conn, 1000, MOM)
+    t = _tx(conn, 2000, MOM)
     assign_member(conn, t, a)
     _alloc(conn, t, a, "proposed")
     assign_member(conn, t, b)
     assert _row(conn, t)["member_id"] == b
     # alte Vorschläge von A weg, neuer Vorschlag für B
-    assert _full(conn, t) == [(b, "2026-01", 1000, "proposed")]
+    assert _full(conn, t) == [(b, "2026-01", 1700, "proposed"), (b, "2026-02", 300, "proposed")]
 
 
 def test_reassign_other_member_confirmed_still_raises(conn):
@@ -419,32 +419,32 @@ def test_assign_exact_amount_confirms_earliest_due_month(conn):
     assert st.status == "PAID"
 
 
-def test_assign_exact_amount_for_earlier_month_stays_proposed(conn):
+def test_assign_exact_amount_prefers_booking_month_over_arrears(conn):
     set_check_start(conn, "2026-01")
     m = _member(conn)
     t = _tx(conn, 1700, MOM, day="2026-03-04")
     assign_member(conn, t, m)
-    assert _full(conn, t) == [(m, "2026-01", 1700, "proposed")]
+    assert _full(conn, t) == [(m, "2026-03", 1700, "confirmed")]  # #27: Buchungsmonat zuerst
 
 
-def test_assign_double_amount_two_proposed_not_paid(conn):
+def test_assign_double_amount_two_months_auto(conn):
     m = _member(conn)
     t = _tx(conn, 3400, MOM)
     assign_member(conn, t, m)
     assert _full(conn, t) == [
-        (m, "2026-01", 1700, "proposed"), (m, "2026-02", 1700, "proposed")]
+        (m, "2026-01", 1700, "confirmed"), (m, "2026-02", 1700, "confirmed")]
     today = date(2026, 1, 15)
-    assert month_status(conn, m, "2026-01", today).status == "OPEN"
-    assert month_status(conn, m, "2026-02", today).status == "OPEN"
+    assert month_status(conn, m, "2026-01", today).status == "PAID"
+    assert month_status(conn, m, "2026-02", today).status == "PAID"
 
 
 def test_reassign_proposals_follow_new_member(conn):
     a, b = _member(conn, "A"), _member(conn, "B")
-    t = _tx(conn, 3400, MOM)
+    t = _tx(conn, 2000, MOM)  # Vorschlag (passt nicht zu ganzen Monaten)
     assign_member(conn, t, a)
     assign_member(conn, t, b)
     assert _full(conn, t) == [
-        (b, "2026-01", 1700, "proposed"), (b, "2026-02", 1700, "proposed")]
+        (b, "2026-01", 1700, "proposed"), (b, "2026-02", 300, "proposed")]
 
 
 def test_reassign_same_member_does_not_repropose(conn):
@@ -475,7 +475,7 @@ def test_assign_propose_error_changes_nothing(conn, monkeypatch):
     assert _allocs(conn, t) == []
 
 
-def test_auto_assign_creates_proposals(conn):
+def test_auto_assign_distributes(conn):
     m = _member(conn, iban=KID)
     t1 = _tx(conn, 1700, KID, day="2026-01-03")
     t2 = _tx(conn, 3400, KID, day="2026-02-03")
@@ -483,7 +483,7 @@ def test_auto_assign_creates_proposals(conn):
     conn.rollback()  # alles ist schon committet
     assert _full(conn, t1) == [(m, "2026-01", 1700, "confirmed")]
     assert _full(conn, t2) == [
-        (m, "2026-02", 1700, "proposed"), (m, "2026-03", 1700, "proposed")]
+        (m, "2026-02", 1700, "confirmed"), (m, "2026-03", 1700, "confirmed")]
 
 
 def test_auto_assign_oldest_booking_first(conn):
