@@ -16,6 +16,10 @@ from kassivo.web.common import HERE, render
 
 ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost"})
 UNSAFE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+# Sec-Fetch-Site setzt der Browser selbst. Zulässig sind eigene Seite ("same-origin"), direkte
+# Eingabe/Lesezeichen ("none") und ein fehlender Header (curl, Tests, alte Browser). "cross-site",
+# "same-site" und jeder unbekannte Wert werden bei ändernden Anfragen abgelehnt.
+ALLOWED_FETCH_SITES = frozenset({"same-origin", "none"})
 SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
@@ -43,8 +47,11 @@ def create_app(db_path, extra_hosts=()) -> FastAPI:
             resp = PlainTextResponse("Ungültiger Host.", status_code=400)
         else:
             origin = request.headers.get("origin")
-            if (request.method in UNSAFE_METHODS and origin is not None
-                    and urlsplit(origin).netloc != host):
+            fetch_site = request.headers.get("sec-fetch-site", "").strip().lower()
+            foreign_fetch = bool(fetch_site) and fetch_site not in ALLOWED_FETCH_SITES
+            if request.method in UNSAFE_METHODS and (
+                    foreign_fetch
+                    or (origin is not None and urlsplit(origin).netloc != host)):
                 resp = PlainTextResponse("Anfrage von fremder Herkunft abgelehnt.", status_code=403)
             else:
                 resp = await call_next(request)
