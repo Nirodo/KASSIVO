@@ -76,6 +76,7 @@ _NOTES = {
                " automatisch zugeordnet.",
     "ambiguous": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
                  " künftig nicht automatisch zugeordnet.",
+    "cleaned": "Gelöschte Sicherungen: {n}.",
     "reproposed": "Prüfungsstart gespeichert. {n} offene Vorschläge wurden neu berechnet.",
 }
 _COUNT_RE = re.compile(r"[0-9]{1,7}", re.ASCII)

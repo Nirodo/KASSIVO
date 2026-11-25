@@ -154,12 +154,12 @@ def test_get_does_not_create(client, db_path):
 
 def test_post_creates_and_shows_name_only(client, db_path):
     r = client.post("/backup")
-    assert r.status_code in (200, 303)
-    if r.status_code == 303:
-        assert r.headers["location"] == "/backup"
-        r = client.get("/backup")
+    assert r.status_code == 303
     files = list(_dir(db_path).iterdir())
     assert len(files) == 1 and NAME_RE.match(files[0].name)
+    assert r.headers["location"] == f"/backup?created={files[0].name}"
+    r = client.get(r.headers["location"])
+    assert "Sicherung erstellt:" in r.text
     assert files[0].name in r.text
     parent = str(db_path.parent)
     assert parent not in r.text
@@ -242,6 +242,218 @@ def test_failure_gives_500_page_without_leftovers(db_path, monkeypatch):
     monkeypatch.setattr("kassivo.backup._copy", boom)
     assert c.post("/backup").status_code == 500
     assert list(_dir(db_path).iterdir()) == []
+
+
+# --- Feinschliff (Issue 14) ---
+
+import kassivo.backup as kb
+from kassivo.backup import delete_old, format_size
+
+
+def test_reload_after_post_creates_no_second_backup(client, db_path):
+    loc = client.post("/backup").headers["location"]
+    client.get(loc)
+    client.get(loc)
+    assert len(list(_dir(db_path).iterdir())) == 1
+
+
+def test_created_param_validated_and_escaped(client):
+    for bad in ("<script>x</script>.db", "kassivo-1.db", "../kassivo-20260301-000000.db",
+                "kassivo-20260301-000000.db<b>"):
+        t = client.get("/backup", params={"created": bad}).text
+        assert "Sicherung erstellt:" not in t and "<script>x" not in t
+    t = client.get("/backup?created=kassivo-20260301-000000-2.db").text
+    assert "Sicherung erstellt:" in t
+
+
+@pytest.mark.parametrize("n,txt", [
+    (0, "0,0 KB"), (1024 * 1023, "1023,0 KB"), (1_048_523, "1023,9 KB"),
+    (1_048_524, "1023,9 KB"), (1_048_525, "1,0 MB"), (1_048_575, "1,0 MB"), (1_048_576, "1,0 MB"),
+    (1_572_864, "1,5 MB"),
+])
+def test_format_size_boundaries(n, txt):
+    assert format_size(n) == txt
+
+
+def test_interrupt_after_reservation_leaves_nothing(src, tmp_path, monkeypatch):
+    def boom(conn, target):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(kb, "_copy", boom)
+    with pytest.raises(KeyboardInterrupt):
+        backup_db(src, tmp_path / "o", now=NOW)
+    assert list((tmp_path / "o").iterdir()) == []
+
+
+def test_interrupt_in_tmp_name_leaves_nothing(src, tmp_path, monkeypatch):
+    class Boom:
+        @property
+        def hex(self):
+            raise KeyboardInterrupt
+    monkeypatch.setattr(kb.uuid, "uuid4", lambda: Boom())
+    with pytest.raises(KeyboardInterrupt):
+        backup_db(src, tmp_path / "o", now=NOW)
+    assert list((tmp_path / "o").iterdir()) == []
+
+
+def test_fsync_called(src, tmp_path, monkeypatch):
+    calls = []
+    real = os.fsync
+    monkeypatch.setattr(os, "fsync", lambda fd: (calls.append(fd), real(fd))[1])
+    backup_db(src, tmp_path / "o", now=NOW)
+    assert calls
+
+
+def test_fsync_failure_cleans_up(src, tmp_path, monkeypatch):
+    def boom(fd):
+        raise OSError("kaputt")
+    monkeypatch.setattr(os, "fsync", boom)
+    with pytest.raises(OSError):
+        backup_db(src, tmp_path / "o", now=NOW)
+    assert list((tmp_path / "o").iterdir()) == []
+
+
+def test_replace_failure_after_copy(src, tmp_path, monkeypatch):
+    copied = []
+    real = kb._copy
+    monkeypatch.setattr(kb, "_copy", lambda c, t: (real(c, t), copied.append(t))[0])
+
+    def boom(*a, **k):
+        raise OSError("replace kaputt")
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError, match="replace kaputt"):
+        backup_db(src, tmp_path / "o", now=NOW)
+    assert copied and list((tmp_path / "o").iterdir()) == []
+
+
+def test_listing_survives_deleted_file(tmp_path, monkeypatch):
+    for n in ("kassivo-20260101-000000.db", "kassivo-20260102-000000.db"):
+        (tmp_path / n).write_bytes(b"x")
+    real = Path.lstat
+
+    def flaky(self, *a, **k):
+        if self.name == "kassivo-20260102-000000.db":
+            raise FileNotFoundError
+        return real(self, *a, **k)
+    monkeypatch.setattr(Path, "lstat", flaky)
+    assert [i["name"] for i in list_backups(tmp_path)] == ["kassivo-20260101-000000.db"]
+    assert delete_old(tmp_path, 1) == 0
+
+
+def _symlink(link, target):
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks nicht erlaubt (z. B. Windows ohne Entwicklermodus)")
+
+
+def test_listing_and_cleanup_skip_symlinks(tmp_path):
+    real = tmp_path / "ziel.txt"
+    real.write_bytes(b"x")
+    _symlink(tmp_path / "kassivo-20260301-000000.db", real)
+    (tmp_path / "kassivo-20260101-000000.db").write_bytes(b"x")
+    assert [i["name"] for i in list_backups(tmp_path)] == ["kassivo-20260101-000000.db"]
+    assert delete_old(tmp_path, 1) == 0
+    assert (tmp_path / "kassivo-20260301-000000.db").is_symlink() and real.exists()
+
+
+def test_listing_ignores_directories(tmp_path):
+    (tmp_path / "kassivo-20260301-000000.db").mkdir()
+    assert list_backups(tmp_path) == []
+    assert delete_old(tmp_path, 1) == 0
+    assert (tmp_path / "kassivo-20260301-000000.db").is_dir()
+
+
+def _fill(d, names):
+    d.mkdir(parents=True, exist_ok=True)
+    for n in names:
+        (d / n).write_bytes(b"x")
+
+
+def test_delete_old_keeps_newest_with_suffix_order(tmp_path):
+    names = ["kassivo-20260301-000000.db", "kassivo-20260301-000000-2.db",
+             "kassivo-20260301-000000-10.db", "kassivo-20260201-000000.db"]
+    _fill(tmp_path, names)
+    assert delete_old(tmp_path, 2) == 2
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "kassivo-20260301-000000-10.db", "kassivo-20260301-000000-2.db"]
+
+
+def test_delete_old_foreign_untouched_and_zero_byte(tmp_path):
+    _fill(tmp_path, ["kassivo-20260101-000000.db", "kassivo-20260102-000000.db",
+                     "notes.txt", "kassivo-x.db", "kassivo-20260301-000000.db.tmp"])
+    (tmp_path / "kassivo-20260103-000000.db").write_bytes(b"")  # Reservierung
+    assert delete_old(tmp_path, 1) == 1
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert left == ["kassivo-20260102-000000.db", "kassivo-20260103-000000.db",
+                    "kassivo-20260301-000000.db.tmp", "kassivo-x.db", "notes.txt"]
+
+
+def test_delete_old_n_too_large_and_min_one(tmp_path):
+    _fill(tmp_path, ["kassivo-20260101-000000.db", "kassivo-20260102-000000.db"])
+    assert delete_old(tmp_path, 99) == 0
+    assert delete_old(tmp_path, 0) == 1  # neueste bleibt immer
+    assert [p.name for p in tmp_path.iterdir()] == ["kassivo-20260102-000000.db"]
+    assert delete_old(tmp_path / "gibtsnicht", 1) == 0
+
+
+def test_delete_old_beyond_listing_cap(tmp_path):
+    _fill(tmp_path, [f"kassivo-20260301-{i:06d}.db" for i in range(60)])
+    assert delete_old(tmp_path, 5) == 55
+    assert len(list(tmp_path.iterdir())) == 5
+
+
+def _cleanup(client, **data):
+    return client.post("/backup/cleanup", data=data)
+
+
+def test_cleanup_page_has_form(client):
+    t = client.get("/backup").text
+    assert 'action="/backup/cleanup"' in t and 'name="keep"' in t
+    assert 'name="confirm"' in t and "Alte Sicherungen aufräumen" in t
+    assert "nicht rückgängig" in t
+
+
+def test_cleanup_route_deletes_and_notes(client, db_path):
+    _fill(_dir(db_path), [f"kassivo-20260301-{i:06d}.db" for i in range(5)])
+    r = _cleanup(client, keep="2", confirm="1")
+    assert r.status_code == 303
+    assert r.headers["location"] == "/backup?note=cleaned&n=3"
+    assert "Gelöschte Sicherungen: 3" in client.get(r.headers["location"]).text
+    assert len(list(_dir(db_path).iterdir())) == 2
+
+
+@pytest.mark.parametrize("keep", ["", "0", "-1", "1001", "abc", "1.5", "١٢"])
+def test_cleanup_bad_keep_422(client, db_path, keep):
+    _fill(_dir(db_path), ["kassivo-20260101-000000.db", "kassivo-20260102-000000.db"])
+    assert _cleanup(client, keep=keep, confirm="1").status_code == 422
+    assert len(list(_dir(db_path).iterdir())) == 2
+
+
+def test_cleanup_without_confirm_422(client, db_path):
+    _fill(_dir(db_path), ["kassivo-20260101-000000.db", "kassivo-20260102-000000.db"])
+    assert _cleanup(client, keep="1").status_code == 422
+    assert len(list(_dir(db_path).iterdir())) == 2
+
+
+def test_cleanup_origin_blocked(client, db_path):
+    _fill(_dir(db_path), ["kassivo-20260101-000000.db", "kassivo-20260102-000000.db"])
+    r = client.post("/backup/cleanup", data={"keep": "1", "confirm": "1"},
+                    headers={"Origin": "http://evil.example"})
+    assert r.status_code == 403
+    assert len(list(_dir(db_path).iterdir())) == 2
+
+
+def test_cleanup_memory_db_422(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    c = TestClient(make_app(":memory:"), follow_redirects=False)
+    assert c.post("/backup/cleanup", data={"keep": "1", "confirm": "1"}).status_code == 422
+
+
+def test_wiki_and_readme_mention_cleanup():
+    w = (ROOT / "src/kassivo/web/templates/wiki/backup.html").read_text(encoding="utf-8")
+    assert "aufräumen" in w and "nicht rückgängig" in w
+    r = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "aufräumen" in r and "nicht rückgängig" in r
 
 
 # --- Wächter ---
