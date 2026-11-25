@@ -170,7 +170,7 @@ Eine Buchung hat höchstens eine Kategorie. Regeln prüfen, ob ein Feld (Verwend
 
 Sicherung: Seite `/backup` (Menüpunkt "Backup") öffnen und "Sicherung erstellen" wählen. Die Sicherung ist eine vollständige Kopie der Datenbank mit dem Namen `kassivo-JJJJMMTT-HHMMSS.db` in `<DB-Ordner>/backups`. Den genauen Pfad zeigt KASSIVO beim Start an. Die Seite listet die vorhandenen Sicherungen. Alte Sicherungen können von Hand gelöscht werden, KASSIVO löscht nichts selbst.
 
-Datenbankformat: Die Datenbank trägt eine Schema-Version (angezeigt auf der Seite `/backup`). Muss eine neue KASSIVO-Version das Format ändern, legt sie vorher automatisch eine Sicherung `kassivo-JJJJMMTT-HHMMSS.db` in `<DB-Ordner>/backups` an. Sonst sichert KASSIVO nicht automatisch. Eine Datenbank aus einer neueren KASSIVO-Version öffnet KASSIVO nicht: Es meldet das beim Start und beendet sich, die Datei bleibt unverändert.
+Datenbankformat: Die Datenbank trägt eine Schema-Version (angezeigt auf der Seite `/backup`). Muss eine neue KASSIVO-Version das Format ändern, legt sie vorher automatisch eine Sicherung `kassivo-JJJJMMTT-HHMMSS.db` in `<DB-Ordner>/backups` an. Sonst sichert KASSIVO nicht automatisch. Eine Datenbank aus einer neueren KASSIVO-Version öffnet KASSIVO nicht: Es meldet das beim Start und beendet sich, die Datei bleibt unverändert. Versionen bis 1.1.1 prüfen die Schema-Version nicht. Kehren Sie deshalb nach einem Update nicht mit derselben Datenbank zu einer älteren KASSIVO-Version zurück, und legen Sie vor jedem Update eine Sicherung an.
 
 Wiederherstellung (von Hand):
 

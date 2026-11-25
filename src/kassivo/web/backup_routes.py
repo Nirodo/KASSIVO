@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Request
 
 from kassivo.backup import backup_db, list_backups
-from kassivo.db import SCHEMA_VERSION, schema_version
+from kassivo import db
 from kassivo.settings import backup_dir
 from kassivo.web.common import get_conn, render
 
@@ -18,7 +18,8 @@ def _backup_dir(request: Request):
 def _page(request, conn, status=200, created=None, error=None):
     return render(request, "backup.html", status, created=created, error=error,
                   backups=list_backups(_backup_dir(request)),
-                  schema=schema_version(conn), program_schema=SCHEMA_VERSION)
+                  schema=db.schema_version(conn),
+                  program_schema=db.current_schema_version(db.MIGRATIONS))
 
 
 @router.get("/backup")

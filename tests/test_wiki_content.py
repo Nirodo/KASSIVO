@@ -79,7 +79,8 @@ def test_faq_has_at_least_ten_questions(pages):
     ("import", ["camt.052.001.08", "Duplikat", "Es wurde nichts importiert"]),
     ("zuordnung", ["mehrdeutig", "Absender merken", "ausgetreten", "Unklar"]),
     ("backup", ["journal", "kassivo.db", "backups"]),
-    ("backup", ["automatisch eine Sicherung", "neueren Version", "kassivo-"]),
+    ("backup", ["automatisch eine Sicherung", "neueren Version", "kassivo-", "bis 1.1.1",
+                "vor jedem Update eine Sicherung"]),
     ("grenzen", ["Datenbankformat"]),
     # Hinweise zu Nebenwirkungen und Grenzen (geschlossene Dokumentationslücken)
     ("beitraege", ["Vorschlag", "Prüfungsstart", "Verteilung aufheben", "1.500"]),
