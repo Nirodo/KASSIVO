@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const { topSlices, formatEuro } = require('../../src/kassivo/web/static/reports-lib.js');
 
 const items = (...pairs) => pairs.map(([name, c]) => ({ name, expense_cents: c }));
-const NB = ' ';
+const NB = ' '; // geschütztes Leerzeichen, wie Intl es ausgibt
 
 test('sortiert absteigend', () => {
   const r = topSlices(items(['a', 100], ['b', 300], ['c', 200]), 'expense_cents', 7);
@@ -61,4 +61,18 @@ test('formatEuro rundet und formatiert negativ', () => {
 test('formatEuro große Werte', () => {
   assert.equal(formatEuro(123456789), `1.234.567,89${NB}€`);
   assert.equal(formatEuro(100000000000), `1.000.000.000,00${NB}€`);
+});
+
+test('formatEuro: -0 wird 0, Nicht-Ganzzahlen werden weg von null gerundet', () => {
+  assert.equal(formatEuro(-0), `0,00${NB}€`);
+  assert.equal(formatEuro(0.5), `0,01${NB}€`);
+  assert.equal(formatEuro(-0.5), `-0,01${NB}€`);
+  assert.equal(formatEuro(1.4), `0,01${NB}€`);
+});
+
+test('topSlices: nur endliche Zahlen größer 0', () => {
+  const r = topSlices(items(['s', '50'], ['u', undefined], ['i', Infinity], ['n', null], ['ok', 3]),
+    'expense_cents', 7);
+  assert.deepEqual(r.map(s => s.name), ['ok']);
+  assert.deepEqual(topSlices(items(['a', 0], ['b', 0]), 'expense_cents', 7), []);
 });

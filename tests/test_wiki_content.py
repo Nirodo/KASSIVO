@@ -158,7 +158,9 @@ LABELS = {
                 "Einnahmen, Ausgaben und Saldo je Monat", "Beiträge für die Beitragsmonate",
                 "Die Daten konnten nicht geladen werden.",
                 "Das Diagramm konnte nicht gezeichnet werden.",
-                "Keine Einnahmen in diesem Jahr.", "Keine Ausgaben in diesem Jahr."],
+                "Keine Einnahmen in diesem Jahr.", "Keine Ausgaben in diesem Jahr.",
+                "Die Beiträge je Mitglied zählen nach Beitragsmonat, die Einnahmen oben nach "
+                "Buchungsdatum."],
     "backup": ["Sicherung erstellen", "Sicherung erstellt:", "Vorhandene Sicherungen"],
     "start": ["Prüfungsstart speichern", "Mitglied anlegen", "Beitrag speichern", "Importieren",
               "Absender merken", "Zuordnen", "Offene Vorschläge", "Verteilung bestätigen",

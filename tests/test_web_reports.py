@@ -201,7 +201,7 @@ def test_reports_js_uses_lib_and_year():
     js = (STATIC / "reports.js").read_text(encoding="utf-8")
     assert "topSlices" in js and "formatEuro" in js
     assert "data-year" in js or "dataset.year" in js
-    assert "s.other" in js and "i === MAX_SLICES" not in js
+    assert "ReportsLib" in js and "s.other" in js and "i === MAX_SLICES" not in js
     assert "getDataVisibility" in js and "console.error" in js
     lib = (STATIC / "reports-lib.js").read_text(encoding="utf-8")
     assert "other: true" in lib
@@ -213,15 +213,28 @@ def test_empty_notes_and_separate_errors_prepared(client, db):
     assert "Keine Einnahmen in diesem Jahr." in h and "Keine Ausgaben in diesem Jahr." in h
     assert "Die Daten konnten nicht geladen werden." in h
     assert "Das Diagramm konnte nicht gezeichnet werden." in h
-    for i in ("chart-income-empty", "chart-expense-empty", "chart-error-load", "chart-error-draw"):
-        assert re.search(rf"id=\"{i}\"[^>]*class=\"[^\"]* ?hidden", h), i
     assert 'id="chart-income-box"' in h and 'id="chart-expense-box"' in h
 
 
-def test_only_income_year_renders_containers(client, db):
+def test_data_income_only_year_has_no_expense(client, db):
     _tx(db, "2026-03-05", 1700, "Beiträge")
+    d = client.get("/reports/data?year=2026").json()
+    assert d["by_category"] and all(c["expense_cents"] == 0 for c in d["by_category"])
+
+
+def test_data_expense_only_year_has_no_income(client, db):
+    _tx(db, "2026-03-05", -3000, "Miete")
+    d = client.get("/reports/data?year=2026").json()
+    assert d["by_category"] and all(c["income_cents"] == 0 for c in d["by_category"])
+
+
+@pytest.mark.parametrize("amount", [1700, -3000])
+def test_notes_and_errors_hidden_initially(client, db, amount):
+    _tx(db, "2026-03-05", amount, "X")
     h = client.get("/reports?year=2026").text
-    assert h.count("<canvas") == 3 and 'id="chart-expense-empty"' in h
+    for i in ("chart-income-empty", "chart-expense-empty", "chart-error-load", "chart-error-draw"):
+        m = re.search(rf'<p id="{i}" class="([^"]*)" role="status"', h)
+        assert m and "hidden" in m.group(1).split(), i
 
 
 def test_by_member_explanation(client, db):
@@ -229,12 +242,14 @@ def test_by_member_explanation(client, db):
     h = client.get("/reports?year=2026").text
     assert "Die Beiträge je Mitglied zählen nach Beitragsmonat" in h
     assert "Einnahmen oben nach Buchungsdatum" in h
+    assert h.index("Die Beiträge je Mitglied zählen") > h.index("<h3>Beiträge je Mitglied</h3>")
+    assert h.index("Die Beiträge je Mitglied zählen") < h.index("<caption>Beiträge für")
 
 
 @pytest.mark.skipif(shutil.which("node") is None,
                     reason="Node.js nicht installiert: JavaScript-Tests übersprungen")
 def test_js_unit_tests():
     script = Path(__file__).parent / "js" / "reports.test.mjs"
-    r = subprocess.run(["node", "--test", str(script)], capture_output=True, text=True,
+    r = subprocess.run(["node", "--test", str(script.parent)], capture_output=True, text=True,
                        encoding="utf-8", timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr

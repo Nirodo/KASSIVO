@@ -6,8 +6,12 @@
   var OTHER_COLOR = '#999999';
   var MAX_SLICES = 7;
   var MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
-  var topSlices = window.ReportsLib.topSlices;
-  var formatEuro = window.ReportsLib.formatEuro;
+  var topSlices, formatEuro;
+
+  function show(id, on) {
+    var el = document.getElementById(id);
+    if (el) { el.classList.toggle('hidden', !on); }
+  }
 
   function cssColors() {
     var cs = getComputedStyle(document.documentElement);
@@ -41,6 +45,7 @@
                   return ctx.chart.getDataVisibility(i) ? sum + x.cents : sum;
                 }, 0);
                 var pct = (ctx.parsed / visible * 100).toFixed(1).replace('.', ',');
+                if (!(visible > 0)) { visible = 1; }
                 return slices[ctx.dataIndex].name + ': ' + formatEuro(ctx.parsed) + ' (' + pct + ' %)';
               }
             }
@@ -81,11 +86,6 @@
     });
   }
 
-  function show(id, on) {
-    var el = document.getElementById(id);
-    if (el) { el.classList.toggle('hidden', !on); }
-  }
-
   // Ohne Daten: Diagramm ausblenden, Hinweis zeigen.
   function pieOrNote(kind, slices, colors) {
     var empty = slices.length === 0;
@@ -97,34 +97,53 @@
   function init() {
     var box = document.getElementById('charts');
     if (!box) { return; }
+    if (!window.ReportsLib) {
+      console.error('reports-lib.js nicht geladen');
+      show('chart-error-draw', true);
+      return;
+    }
+    topSlices = window.ReportsLib.topSlices;
+    formatEuro = window.ReportsLib.formatEuro;
     var charts = [];
     var data = null;
 
+    function destroyAll(list) {
+      list.forEach(function (c) { try { c.destroy(); } catch (e) { console.error(e); } });
+    }
+
     function draw() {
-      charts.forEach(function (c) { c.destroy(); });
+      destroyAll(charts);
       charts = [];
+      show('chart-error-draw', false);
+      var made = [];
       try {
         var colors = cssColors();
-        charts = [
-          pieOrNote('expense', topSlices(data.by_category, 'expense_cents', MAX_SLICES), colors),
-          pieOrNote('income', topSlices(data.by_category, 'income_cents', MAX_SLICES), colors),
-          bars(document.getElementById('chart-months'), data.by_month, colors)
-        ].filter(Boolean);
+        var add = function (c) { if (c) { made.push(c); } };
+        add(pieOrNote('expense', topSlices(data.by_category, 'expense_cents', MAX_SLICES), colors));
+        add(pieOrNote('income', topSlices(data.by_category, 'income_cents', MAX_SLICES), colors));
+        add(bars(document.getElementById('chart-months'), data.by_month, colors));
       } catch (err) {
         console.error('Report: Diagramm konnte nicht gezeichnet werden:', err);
+        destroyAll(made);
         show('chart-error-draw', true);
+        return;
       }
+      charts = made;
     }
 
     fetch('/reports/data?year=' + encodeURIComponent(box.dataset.year), { credentials: 'same-origin' })
       .then(function (r) { if (!r.ok) { throw new Error('http ' + r.status); } return r.json(); })
       .then(function (d) {
         data = d;
-        draw();
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+        draw();
       }, function (err) {
         console.error('Report: Daten konnten nicht geladen werden:', err);
         show('chart-error-load', true);
+      })
+      .catch(function (err) {
+        console.error('Report: Fehler nach dem Laden:', err);
+        show('chart-error-draw', true);
       });
   }
 
