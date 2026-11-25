@@ -267,3 +267,41 @@ def test_dues_notice_counts_waiting_payments(client, db):
 def test_dues_without_waiting_payments_no_notice(client):
     t = _text(client.get("/dues").text)
     assert "warten auf Ihre Prüfung" not in t
+
+
+# --- Fix-Runde 1 (a): Seiten ---------------------------------------------------------
+
+def test_auto_page_paging(client, db, monkeypatch):
+    import kassivo.web.auto_routes as ar
+    monkeypatch.setattr(ar, "PAGE_SIZE", 2)
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    ids = [_tx(db, m, 1700, f"2026-{i:02d}-05") for i in range(1, 6)]
+    for t in ids:
+        propose_allocations(db, t)
+    p1 = client.get("/auto")
+    assert f'action="/auto/{ids[4]}/undo"' in p1.text and f'action="/auto/{ids[2]}/undo"' not in p1.text
+    assert "Seite 1 von 3" in p1.text and 'href="/auto?page=2"' in p1.text
+    p3 = client.get("/auto?page=3")
+    assert f'action="/auto/{ids[0]}/undo"' in p3.text and 'href="/auto?page=2"' in p3.text
+    assert "Weiter" not in _text(p3.text).split("Seite 3 von 3")[1]
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "abc", "1234567", "1.5"])
+def test_auto_page_invalid(client, bad):
+    assert client.get("/auto", params={"page": bad}).status_code == 422
+
+
+def test_import_result_explains_outside(client, db):
+    set_check_start(db, "2026-03")
+    _member(db, iban=OTHER_IBAN)
+    entries = [{"amount": 1700, "name": "Erika Muster", "cp_iban": OTHER_IBAN, "purpose": "A",
+                "ref": "R1", "booking_date": "2026-02-27"},
+               {"amount": 1700, "name": "Erika Muster", "cp_iban": OTHER_IBAN, "purpose": "B",
+                "ref": "R2"}]
+    data = make_zip({"a.xml": make_camt(IBAN, 10000, entries, "2026-03-01")})
+    r = client.post("/import", files={"file": ("x.zip", data, "application/octet-stream")})
+    t = _text(r.text)
+    assert "Automatisch zugeordnet: 2" in t
+    assert "automatisch verteilt: 1, zur Prüfung: 0" in t
+    assert "1 zugeordnete Zahlungen liegen vor dem Prüfungsstart" in t

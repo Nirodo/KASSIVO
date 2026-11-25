@@ -30,4 +30,9 @@
 {% else %}
 <p>Noch keine automatisch verteilten Zahlungen.</p>
 {% endif %}
+<nav class="pager" aria-label="Seiten">
+  {% if prev_url %}<a href="{{ prev_url }}">Zurück</a>{% endif %}
+  <span>Seite {{ page }} von {{ pages }}</span>
+  {% if next_url %}<a href="{{ next_url }}">Weiter</a>{% endif %}
+</nav>
 {% endblock %}
