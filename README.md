@@ -25,7 +25,7 @@ Kontoumsätze kommen per Datei-Import (CAMT V8, Sparkasse). Eine direkte Bankabf
 
 ## Voraussetzungen
 
-Python ab 3.10 (`requires-python = ">=3.10"`). Entwickelt und getestet wird nur mit Python 3.15 (siehe `.venv`); ältere Versionen sind erlaubt, aber nicht getestet. Abhängigkeiten (werden von `pip` installiert): FastAPI, Jinja2, python-multipart, Uvicorn. Ein aktueller Browser.
+Python ab 3.10 (`requires-python = ">=3.10"`). Entwickelt wird mit Python 3.15 (siehe `.venv`). Automatisch getestet wird mit Python 3.10, 3.12 und 3.13 unter Windows und Linux sowie mit der jeweils neuesten Python-Version unter Linux. Abhängigkeiten (werden von `pip` installiert): FastAPI, Jinja2, python-multipart, Uvicorn. Ein aktueller Browser.
 
 ## Installation
 
@@ -285,7 +285,7 @@ Der Entwurf des Programms steht in `docs/superpowers/specs/2026-11-24-kassivo-de
 - Kein Knopf zum Wiederherstellen einer Sicherung. Automatisch gesichert wird nur vor einer Änderung am Datenbankformat.
 - Die Diagramme im Report brauchen JavaScript im Browser. Die Tabellen gehen immer.
 - Adresse und Port sind fest (`127.0.0.1:8000`).
-- Python ab 3.10 erlaubt, getestet wird nur mit 3.15.
+- Python ab 3.10 erlaubt, entwickelt wird mit 3.15, automatisch getestet wird mit 3.10, 3.12 und 3.13 unter Windows und Linux.
 
 Die ausführliche Fassung steht im Wiki unter "Bekannte Einschränkungen" (`/wiki/grenzen`).
 
