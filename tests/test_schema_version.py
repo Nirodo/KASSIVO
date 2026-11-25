@@ -166,11 +166,29 @@ def _legacy_db(path, rows=True):
 
 
 def _v1_db(path):
+    """Datenbank mit Schema 1 (Release 1.1.1 nach dem ersten Start von 1.2): Altbestand,
+    gestempelt auf Version 1, noch ohne Migration 2."""
+    _legacy_db(path)
+    c = sqlite3.connect(path)
+    c.execute("pragma user_version = 1")
+    c.close()
+
+
+def _current_db(path):
+    """Datenbank im aktuellen Schema mit Beispieldaten."""
     connect(path).close()
     c = sqlite3.connect(path)
     _sample_rows(c)
     c.commit()
     c.close()
+
+
+def _as_v2(rows):
+    """Erwartete Zeilen nach Migration 2: allocation bekommt source (Vorschlag = auto)."""
+    out = dict(rows)
+    out["allocation"] = [tuple(r) + ("auto" if r[5] == "proposed" else "manual",)
+                         for r in rows["allocation"]]
+    return out
 
 
 # --- Registry, Konstanten, eingefrorenes Ausgangsschema ---
@@ -234,18 +252,22 @@ def test_fresh_db_runs_injected_migrations_without_backup(tmp_path):
 
 # --- Altbestand 1.0.0 bis 1.1.1 ---
 
-def test_legacy_db_stamped_without_changes(tmp_path):
+def test_legacy_db_stamped_then_migrated_with_backup(tmp_path):
     p = tmp_path / "k.db"
     _legacy_db(p)
     assert _raw_version(p) == 0
-    before = _dump(p)
+    before = _rows(p)
     connect(p).close()
-    assert _raw_version(p) == 1
-    assert _dump(p) == before
-    assert _backups(p) == []
+    assert _raw_version(p) == SCHEMA_VERSION == 2
+    assert _rows(p) == _as_v2(before)
+    names = _backups(p)
+    assert len(names) == 1
+    bk = p.parent / "backups" / names[0]
+    assert _raw_version(bk) == 1 and _rows(bk) == before
+    after = _dump(p)
     connect(p).close()
-    assert _dump(p) == before and _raw_version(p) == 1
-    assert _backups(p) == []
+    assert _dump(p) == after and _raw_version(p) == 2
+    assert len(_backups(p)) == 1
 
 
 def test_legacy_db_with_not_null_member_iban_relaxed(tmp_path):
@@ -266,8 +288,8 @@ def test_legacy_db_with_not_null_member_iban_relaxed(tmp_path):
     notnull = {r["name"]: r["notnull"] for r in c.execute("pragma table_info(member_iban)")}
     assert notnull["member_id"] == 0
     c.close()
-    assert _rows(p) == before
-    assert _raw_version(p) == 1
+    assert _rows(p) == _as_v2(before)
+    assert _raw_version(p) == SCHEMA_VERSION
 
 
 # --- Zu neue Datenbank ---
@@ -451,7 +473,7 @@ def test_app_opens_db_once_at_start(tmp_path):
     p = tmp_path / "k.db"
     _legacy_db(p)
     make_app(p)
-    assert _raw_version(p) == 1
+    assert _raw_version(p) == SCHEMA_VERSION
 
 
 def test_main_too_new_exits_1_without_traceback(tmp_path, monkeypatch, capsys):
@@ -570,7 +592,7 @@ def test_parallel_instance_legacy_stamp_once(tmp_path, monkeypatch):
     before = _rows(p)
     _race(monkeypatch, lambda: connect(p).close())
     connect(p).close()
-    assert _raw_version(p) == 1 and _rows(p) == before
+    assert _raw_version(p) == SCHEMA_VERSION and _rows(p) == _as_v2(before)
 
 
 def test_parallel_fresh_create_once(tmp_path, monkeypatch):
@@ -620,7 +642,7 @@ def test_locked_legacy_db_gives_busy_error(tmp_path):
 
 def test_current_db_opens_while_other_holds_write_lock(tmp_path):
     p = tmp_path / "k.db"
-    _v1_db(p)
+    _current_db(p)
     other = _hold_lock(p)
     try:
         connect(p, timeout=0.1).close()
@@ -674,3 +696,38 @@ def test_backup_page_program_version_from_registry(tmp_path, monkeypatch):
     monkeypatch.setattr(dbmod, "MIGRATIONS", {2: _add_note})
     r = make_client(p).get("/backup")
     assert "Datenbank-Schema: Version 2 (Programm: 2)" in r.text
+
+
+# --- Migration 2: allocation.source (#27) ---
+
+def test_migration_2_adds_source_with_data(tmp_path):
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    before = _dump(p)
+    rows_before = _rows(p)
+    c = connect(p)
+    assert schema_version(c) == 2
+    got = [tuple(r) for r in c.execute(
+        "select id, tx_id, member_id, month, cents, status, source from allocation order by id")]
+    assert got == [(1, 1, 1, "2026-03", 1700, "confirmed", "manual"),
+                   (2, 1, 1, "2026-04", 0, "proposed", "auto")]
+    for t in rows_before:
+        if t != "allocation":
+            assert c.execute(f'select count(*) from "{t}"').fetchone()[0] == len(rows_before[t])
+    # neue Zeile ohne source: manual; ungültiger Wert wird abgelehnt
+    c.execute("insert into allocation(tx_id, member_id, month, cents, status)"
+              " values(1, 1, '2026-05', 1, 'proposed')")
+    assert c.execute("select source from allocation where month='2026-05'").fetchone()[0] == "manual"
+    with pytest.raises(sqlite3.IntegrityError):
+        c.execute("insert into allocation(tx_id, member_id, month, cents, status, source)"
+                  " values(1, 1, '2026-06', 1, 'proposed', 'x')")
+    c.rollback()
+    c.close()
+    names = _backups(p)
+    assert len(names) == 1
+    bk = p.parent / "backups" / names[0]
+    assert _raw_version(bk) == 1 and _dump(bk) == before
+
+
+def test_migration_2_registered():
+    assert SCHEMA_VERSION == 2 and set(MIGRATIONS) == {2}
