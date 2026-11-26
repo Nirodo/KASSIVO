@@ -113,6 +113,17 @@ _NOTES = {
     "undone": "Automatische Verteilung rückgängig gemacht. Die Zahlung steht jetzt unter"
               " „Offene Vorschläge“ und kann auf der Seite „Verteilung“ geändert und"
               " bestätigt werden.",
+    "recomputed": "{n} Zahlungen neu verteilt.",
+    "recomputed_other": "{n} weitere Zahlungen neu verteilt.",
+    "learned_r": "Zugeordnet. {n} weitere Zahlungen mit derselben Absender-IBAN wurden"
+                 " automatisch zugeordnet. {m} weitere Zahlungen neu verteilt.",
+    "ambiguous_r": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
+                   " künftig nicht automatisch zugeordnet. {n} weitere Zahlungen neu verteilt.",
+    "undone_r": "Automatische Verteilung rückgängig gemacht. Die Zahlung steht jetzt unter"
+                " „Offene Vorschläge“ und kann auf der Seite „Verteilung“ geändert und"
+                " bestätigt werden. {m} weitere Zahlungen neu verteilt.",
+    "redistribute_failed": "Zahlungen konnten nicht neu verteilt werden: bitte Prüfungsstart"
+                           " erneut speichern.",
     "run": "{n} geprüft: {a} automatisch verteilt, {r} bleiben zur Prüfung.",
     "run_outside": "{n} geprüft: {a} automatisch verteilt, {r} bleiben zur Prüfung,"
                    " {o} liegen vor dem Prüfungsstart.",

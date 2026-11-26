@@ -9,7 +9,7 @@ from kassivo import categories, dues, matching
 from kassivo.camt import CamtError
 from kassivo.dues import check_start_is_set, distribution_counts, proposed_tx_count
 from kassivo.ingest import import_path
-from kassivo.web.common import get_conn, render
+from kassivo.web.common import _NOTES, get_conn, render
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
@@ -77,11 +77,17 @@ async def import_submit(
             return _form(request, conn, 422, f"{e}. Es wurde nichts importiert.")
         categorized = categories.apply_rules(conn, result.new_tx_ids)
         assigned = matching.auto_assign(conn, result.new_tx_ids)
+        redistribute_failed = False
         if not check_start_is_set(conn) and dues.get_check_start(conn) != derived_before:
-            # abgeleiteter Prüfungsstart ist früher geworden: Abgeleitetes folgt
-            dues.redistribute_all(conn)
+            # abgeleiteter Prüfungsstart ist früher geworden: Abgeleitetes folgt.
+            # Scheitert das, bleibt der Import gespeichert (eigener Commit davor).
+            try:
+                dues.redistribute_all(conn)
+            except Exception:
+                redistribute_failed = True
     auto_count, review_count, outside_count = distribution_counts(conn, result.new_tx_ids)
     return render(request, "import_result.html", result=result,
                   categorized=categorized, assigned=assigned,
                   auto_count=auto_count, review_count=review_count, outside_count=outside_count,
-                  proposals=proposed_tx_count(conn))
+                  proposals=proposed_tx_count(conn), redistribute_failed=redistribute_failed,
+                  redistribute_text=_NOTES["redistribute_failed"])

@@ -34,12 +34,17 @@ async def auto_undo(request: Request, tx_id: int, conn=Depends(get_conn)):
     check_id(tx_id)
     if conn.execute('select 1 from "transaction" where id=?', (tx_id,)).fetchone() is None:
         raise HTTPException(404)
+    member_id = conn.execute('select member_id from "transaction" where id=?',
+                             (tx_id,)).fetchone()[0]
+    before = dues.auto_snapshot(conn, member_id) if member_id else {}
     try:
         dues.undo_auto(conn, tx_id)
     except ValueError as e:  # feste Meldungen aus dues, keine Nutzereingaben
         return render(request, "error.html", 422, message=str(e), back="/auto",
                       back_label="Zu „Automatisch verteilt“")
-    return RedirectResponse(with_note("/auto", "undone", 1), status_code=303)
+    moved = dues.count_changed(before, dues.auto_snapshot(conn, member_id), exclude=tx_id)
+    url = with_note("/auto", "undone_r", 1, moved) if moved else with_note("/auto", "undone", 1)
+    return RedirectResponse(url, status_code=303)
 
 
 @router.post("/auto/run")

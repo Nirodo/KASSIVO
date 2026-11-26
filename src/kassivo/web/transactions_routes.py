@@ -196,23 +196,30 @@ async def set_member(request: Request, tx_id: int, member_id: str = Form(""),
         if member is None:
             return _error(request, "Unbekanntes Mitglied.", back=safe_next(next))
     learning = learn == "on"
+    before = dues.auto_snapshot(conn)
     try:
         matching.assign_member(conn, tx_id, member, learn=learning)
     except ValueError as e:
         return _error(request, str(e), back=safe_next(next))
+    moved = dues.count_changed(before, dues.auto_snapshot(conn), exclude=tx_id)
     if not (learning and member is not None):
-        return _see_other(safe_next(next))
+        target = safe_next(next)
+        return _see_other(with_note(target, "recomputed_other", moved) if moved else target)
     # Gelernte IBAN gleich auf die übrigen unklaren Zahlungen dieses Absenders
     # anwenden; ist sie mehrdeutig geworden, wird nichts weiter zugeordnet und
     # der Hinweis sagt das.
     iban = normalize_iban(_tx(conn, tx_id)["cp_iban"])
     if matching.iban_is_ambiguous(conn, iban):
-        return _see_other(with_note(safe_next(next), "ambiguous", 0))
+        return _see_other(with_note(safe_next(next), "ambiguous_r", moved) if moved
+                          else with_note(safe_next(next), "ambiguous", 0))
     others = [r["id"] for r in matching.unmatched(conn)
               if iban and normalize_iban(r["cp_iban"]) == iban]
     n = matching.auto_assign(conn, others)
     target = safe_next(next)
-    return _see_other(with_note(target, "learned", n) if n else target)
+    if n:
+        return _see_other(with_note(target, "learned_r", n, moved) if moved
+                          else with_note(target, "learned", n))
+    return _see_other(with_note(target, "recomputed_other", moved) if moved else target)
 
 
 # --- Verteilung ----------------------------------------------------------------
@@ -309,6 +316,7 @@ async def allocate_submit(request: Request, tx_id: int, conn=Depends(get_conn)):
             continue
         seen.add(month)
         pairs.append((month, cents))
+    before = dues.auto_snapshot(conn, tx["member_id"])
     if not errors:
         try:
             dues.confirm_allocations(conn, tx_id, pairs)
@@ -316,7 +324,9 @@ async def allocate_submit(request: Request, tx_id: int, conn=Depends(get_conn)):
             errors.append(str(e))
     if errors:
         return _alloc_page(request, conn, tx, member, 422, rows, errors, nxt)
-    return _see_other(safe_next(nxt))
+    moved = dues.count_changed(before, dues.auto_snapshot(conn, tx["member_id"]), exclude=tx_id)
+    target = safe_next(nxt)
+    return _see_other(with_note(target, "recomputed_other", moved) if moved else target)
 
 
 @router.post("/transactions/{tx_id:int}/allocate/propose")
@@ -341,8 +351,11 @@ async def allocate_clear(request: Request, tx_id: int, confirm: str = Form(""),
     if confirm != "yes":
         return _alloc_page(request, conn, tx, member, 422, nxt=next, errors=[
             "Bitte bestätigen Sie, dass die Verteilung aufgehoben wird."])
+    before = dues.auto_snapshot(conn, tx["member_id"])
     try:
         dues.clear_allocations(conn, tx_id)
     except ValueError as e:
         return _alloc_page(request, conn, tx, member, 422, errors=[str(e)], nxt=next)
-    return _see_other(_allocate_url(tx_id, next))
+    moved = dues.count_changed(before, dues.auto_snapshot(conn, tx["member_id"]), exclude=tx_id)
+    url = _allocate_url(tx_id, next)
+    return _see_other(with_note(url, "recomputed_other", moved) if moved else url)

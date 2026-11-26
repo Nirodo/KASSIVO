@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from kassivo import dues
 from kassivo.iban import normalize_iban
 from kassivo.ingest import mask_iban
 from kassivo.members import (
@@ -9,6 +10,7 @@ from kassivo.members import (
 )
 from kassivo.web.common import (
     E_DATE, E_MONTH, check_id, current_month, get_conn, parse_date, parse_month, render, type_names,
+    with_note,
 )
 
 router = APIRouter()
@@ -29,6 +31,13 @@ def _get(conn, member_id: int):
 
 def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
+
+
+def _ok_url(conn, member_id: int, before: dict) -> str:
+    """Erfolg; dazu ehrlich, wie viele Zahlungen die Änderung neu verteilt hat."""
+    n = dues.count_changed(before, dues.auto_snapshot(conn, member_id))
+    url = f"/members/{member_id}?ok=1"
+    return with_note(url, "recomputed", n) if n else url
 
 
 @router.get("/members")
@@ -131,8 +140,9 @@ async def change_type(
     if errors:
         return _edit_form(request, conn, member, 422, errors=errors, form="type",
                           type_values={"type_name": type_name, "valid_from": valid_from})
+    before = dues.auto_snapshot(conn, member_id)
     set_member_type(conn, member_id, type_name, month)
-    return _redirect(f"/members/{member_id}?ok=1")
+    return _redirect(_ok_url(conn, member_id, before))
 
 
 @router.post("/members/{member_id:int}/leave")
@@ -144,5 +154,6 @@ async def leave(
     if d is None:
         return _edit_form(request, conn, member, 422, errors={"austritt": E_DATE},
                           leave_value=austritt, form="leave")
+    before = dues.auto_snapshot(conn, member_id)
     leave_member(conn, member_id, d)
-    return _redirect(f"/members/{member_id}?ok=1")
+    return _redirect(_ok_url(conn, member_id, before))

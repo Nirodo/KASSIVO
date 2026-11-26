@@ -2,6 +2,7 @@
 {% block title %}Import abgeschlossen{% endblock %}
 {% block content %}
 <p class="notice" role="status"><strong>Import abgeschlossen.</strong></p>
+{% if redistribute_failed %}<p class="alert" role="alert"><strong>Hinweis:</strong> {{ redistribute_text }}</p>{% endif %}
 <ul>
   <li>Neu: {{ result.new }}</li>
   <li>Duplikate: {{ result.duplicates }}</li>

@@ -312,3 +312,112 @@ def test_allocate_page_says_repropose_only_proposes(client, db):
     t = _text(client.get(f"/transactions/{tx}/allocate").text)
     assert "Schlägt nur vor und bestätigt nie." in t
     assert "Danach steht die Zahlung als Vorschlag zur Prüfung bereit." in t
+
+
+# --- Fix-Runde 3: ehrliche Hinweise nach Neuverteilung -----------------------------------
+
+def _jan_feb_march(db):
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    for day in ("2026-01-05", "2026-02-05"):
+        propose_allocations(db, _tx(db, m, 1700, day))
+    t = _tx(db, m, 3400, "2026-03-03")
+    propose_allocations(db, t)
+    return m, t
+
+
+def test_leave_route_reports_recomputed(client, db):
+    m, t = _jan_feb_march(db)
+    r = client.post(f"/members/{m}/leave", data={"austritt": "2026-03-20"})
+    assert r.headers["location"] == f"/members/{m}?ok=1&note=recomputed&n=1"
+    assert "1 Zahlungen neu verteilt." in _text(client.get(r.headers["location"]).text)
+    assert _rows(db, t) == [("2026-03", 3400, "proposed", "auto")]
+
+
+def test_type_route_without_change_has_no_note(client, db):
+    m, t = _jan_feb_march(db)
+    r = client.post(f"/members/{m}/type", data={"type_name": "Aktiv", "valid_from": "2026-06"})
+    assert r.headers["location"] == f"/members/{m}?ok=1"
+
+
+def test_type_route_reports_recomputed(client, db):
+    m, t = _jan_feb_march(db)
+    r = client.post(f"/members/{m}/type", data={"type_name": "Passiv", "valid_from": "2026-02"})
+    assert r.headers["location"].startswith(f"/members/{m}?ok=1&note=recomputed&n=")
+
+
+def test_fee_route_reports_recomputed(client, db):
+    _jan_feb_march(db)
+    r = client.post("/settings/fees", data={"form": "fee", "type_name": "Aktiv",
+                                            "amount": "20,00", "valid_from": "2026-01"})
+    assert r.status_code == 303
+    # Januar und Februar bleiben (Teilzahlung), nur die März-Zahlung ändert sich
+    assert r.headers["location"] == "/settings/fees?ok=1&note=recomputed&n=1"
+    t = _text(client.get(r.headers["location"]).text)
+    assert "Gespeichert." in t and "1 Zahlungen neu verteilt." in t
+
+
+def test_confirm_route_reports_other_payments(client, db):
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    t1 = _tx(db, m, 3400, "2026-01-05")
+    t2 = _tx(db, m, 1700, "2026-02-03")
+    for t in (t1, t2):
+        propose_allocations(db, t)
+    r = client.post(f"/transactions/{t1}/allocate", data={
+        "month_0": "2026-01", "amount_0": "17,00", "month_1": "2026-03", "amount_1": "17,00"})
+    assert r.headers["location"] == "/transactions?note=recomputed_other&n=1"
+    assert _rows(db, t2) == [("2026-02", 1700, "confirmed", "auto")]
+
+
+def test_clear_and_undo_routes_report_other_payments(client, db):
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    t1 = _tx(db, m, 3400, "2026-01-05")
+    t2 = _tx(db, m, 1700, "2026-02-03")
+    for t in (t1, t2):
+        propose_allocations(db, t)
+    r = client.post(f"/auto/{t1}/undo")
+    assert r.headers["location"] == "/auto?note=undone_r&n=1&m=1"
+    assert "1 weitere Zahlungen neu verteilt." in _text(client.get(r.headers["location"]).text)
+    t3 = _tx(db, m, 1700, "2026-02-20")
+    propose_allocations(db, t3)  # Februar schon bezahlt: März
+    r = client.post(f"/transactions/{t2}/allocate/clear", data={"confirm": "yes"})
+    assert r.headers["location"] == f"/transactions/{t2}/allocate?note=recomputed_other&n=1"
+
+
+def test_assign_route_reports_other_payments(client, db):
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    t1 = _tx(db, m, 1700, "2026-01-05")
+    t2 = _tx(db, m, 1700, "2026-01-06")
+    for t in (t1, t2):
+        propose_allocations(db, t)
+    r = client.post(f"/transactions/{t1}/member", data={"member_id": "", "next": "/transactions"})
+    assert r.headers["location"] == "/transactions?note=recomputed_other&n=1"
+    assert _rows(db, t2) == [("2026-01", 1700, "confirmed", "auto")]
+
+
+def test_import_redistribute_error_shows_note(client, db, monkeypatch):
+    def boom(conn):
+        raise RuntimeError("Testfehler")
+
+    monkeypatch.setattr(dues, "redistribute_all", boom)
+    data = make_zip({"a.xml": make_camt(IBAN, 10000, [{"amount": 1700, "ref": "Z1"}],
+                                        "2026-03-02")})
+    r = client.post("/import", files={"file": ("x.zip", data, "application/octet-stream")})
+    assert r.status_code == 200
+    data = make_zip({"a.xml": make_camt(IBAN, 10000, [{"amount": 1700, "ref": "Z2"}],
+                                        "2026-01-02")})
+    r = client.post("/import", files={"file": ("x.zip", data, "application/octet-stream")})
+    assert r.status_code == 200
+    assert ("Zahlungen konnten nicht neu verteilt werden: bitte Prüfungsstart erneut speichern."
+            in _text(r.text))
+    assert db.execute('select count(*) from "transaction"').fetchone()[0] == 2
+
+
+@pytest.mark.parametrize("query", ["note=recomputed&n=%3Cb%3E", "note=undone_r&n=1&m=x",
+                                   "note=learned_r&n=1&m=-1"])
+def test_new_notes_whitelisted(client, query):
+    r = client.get(f"/transactions?{query}")
+    assert "neu verteilt" not in r.text
