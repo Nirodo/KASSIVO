@@ -493,19 +493,61 @@ def redistribute_all(conn) -> tuple[int, int]:
     Prüfungsstart) zurück: geändert zählt nur Buchungen, deren Zeilen sich
     wirklich geändert haben.
     """
-    ids = _chronological(conn, "1=1")
     try:
-        before = _snapshot(conn, ids)
-        _delete_rows(conn, ids)
-        _passes(conn, ids)
-        after = _snapshot(conn, ids)
+        result = _redistribute(conn)
     except Exception:
         conn.rollback()
         raise
     conn.commit()
+    return result
+
+
+def _redistribute(conn) -> tuple[int, int]:
+    """Wie redistribute_all, aber ohne commit (für Änderungen im selben Commit)."""
+    ids = _chronological(conn, "1=1")
+    before = _snapshot(conn, ids)
+    _delete_rows(conn, ids)
+    _passes(conn, ids)
+    after = _snapshot(conn, ids)
     changed = sum(1 for t in ids if after[t] and after[t] != before[t])
     outside = sum(1 for t in ids if before[t] and not after[t])
     return changed, outside
+
+
+def set_check_start_redistribute(conn, month: str) -> tuple[int, int]:
+    """Prüfungsstart speichern und alles Abgeleitete neu verteilen, in einem Commit."""
+    if not _valid_month(month):
+        raise ValueError("Prüfungsstart muss im Format JJJJ-MM sein")
+    try:
+        conn.execute("insert into settings(key, value) values(?,?)"
+                     " on conflict(key) do update set value=excluded.value",
+                     (CHECK_START_KEY, month))
+        result = _redistribute(conn)
+    except Exception:
+        conn.rollback()
+        raise
+    conn.commit()
+    return result
+
+
+def auto_snapshot(conn, member_id: int | None = None) -> dict[int, list[tuple]]:
+    """Zeilen je Zahlungseingang (eines Mitglieds oder aller). Nur lesend.
+
+    Mit count_changed zählen die Oberflächen ehrlich, wie viele Zahlungen eine
+    Aktion neu verteilt hat.
+    """
+    sql = 'select id from "transaction" where amount_cents > 0 and member_id is not null'
+    params: tuple = ()
+    if member_id is not None:
+        sql += " and member_id=?"
+        params = (member_id,)
+    return _snapshot(conn, [r[0] for r in conn.execute(sql, params)])
+
+
+def count_changed(before: dict, after: dict, exclude: int | None = None) -> int:
+    """Zahl der Buchungen, deren Zeilen sich geändert haben (ohne exclude)."""
+    return sum(1 for t in set(before) | set(after)
+               if t != exclude and before.get(t, []) != after.get(t, []))
 
 
 def repropose_pending(conn) -> int:

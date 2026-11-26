@@ -288,7 +288,8 @@ def test_i6_counts_only_changed(conn, anna):
         propose_allocations(conn, t)
     assert redistribute_all(conn) == (0, 0)  # nichts geändert
     leave_member(conn, anna, date(2026, 1, 20))  # Februar nicht mehr fällig
-    assert redistribute_all(conn) == (1, 0)
+    # Fix-Runde 3: der Austritt verteilt schon selbst neu, danach ist nichts mehr offen
+    assert redistribute_all(conn) == (0, 0)
     assert _rows(conn, t2) == [("2026-02", 1700, "proposed", "auto")]
 
 

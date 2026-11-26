@@ -48,40 +48,66 @@ def update_member(conn, member_id: int, **fields) -> None:
         if isinstance(fields.get(k), date):
             fields[k] = fields[k].isoformat()
     old_start = None
+    affects_dues = "fee_start" in fields or "austritt" in fields
     if "fee_start" in fields:
         row = conn.execute(
             "select fee_start from member where id=?", (member_id,)
         ).fetchone()
         old_start = row["fee_start"] if row else None
     sets = ", ".join(f"{k}=?" for k in fields)
-    conn.execute(
-        f"update member set {sets} where id=?", (*fields.values(), member_id)
-    )
-    if old_start and fields["fee_start"] != old_start:
-        # erste Historie-Zeile folgt fee_start, nur wenn sie noch dort liegt
+    try:
         conn.execute(
-            "update member_type_history set valid_from=? "
-            "where member_id=? and valid_from=?",
-            (fields["fee_start"], member_id, old_start),
+            f"update member set {sets} where id=?", (*fields.values(), member_id)
         )
+        if old_start and fields["fee_start"] != old_start:
+            # erste Historie-Zeile folgt fee_start, nur wenn sie noch dort liegt
+            conn.execute(
+                "update member_type_history set valid_from=? "
+                "where member_id=? and valid_from=?",
+                (fields["fee_start"], member_id, old_start),
+            )
+        if affects_dues:
+            _rebuild(conn, member_id)
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
 
 
+def _rebuild(conn, member_id: int) -> None:
+    """Automatische Verteilungen folgen geänderten Stammdaten (ohne commit)."""
+    from kassivo import dues  # spät: dues importiert members
+    dues.rebuild_member(conn, member_id)
+
+
 def leave_member(conn, member_id: int, austritt: date) -> None:
-    conn.execute(
-        "update member set austritt=? where id=?",
-        (austritt.isoformat(), member_id),
-    )
+    """Austritt speichern; automatische Verteilungen folgen (ein Commit)."""
+    try:
+        conn.execute(
+            "update member set austritt=? where id=?",
+            (austritt.isoformat(), member_id),
+        )
+        _rebuild(conn, member_id)
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
 
 
 def set_member_type(conn, member_id: int, type_name: str, valid_from: str) -> None:
-    conn.execute(
-        "insert into member_type_history(member_id, type_id, valid_from) "
-        "values(?,?,?) on conflict(member_id, valid_from) "
-        "do update set type_id=excluded.type_id",
-        (member_id, _type_id(conn, type_name), valid_from),
-    )
+    """Mitgliedsart ab einem Monat; automatische Verteilungen folgen (ein Commit)."""
+    type_id = _type_id(conn, type_name)
+    try:
+        conn.execute(
+            "insert into member_type_history(member_id, type_id, valid_from) "
+            "values(?,?,?) on conflict(member_id, valid_from) "
+            "do update set type_id=excluded.type_id",
+            (member_id, type_id, valid_from),
+        )
+        _rebuild(conn, member_id)
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
 
 
