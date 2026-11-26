@@ -196,3 +196,102 @@ def test_long_member_400_payments_is_fast(tmp_path):
     redistribute_all(conn)
     assert time.perf_counter() - t < 5  # Ziel unter 1 s je Lauf, großzügig für langsame CI
     conn.close()
+
+
+# --- Fix-Runde 3: Orakel auch für die Läufe selbst ------------------------------------------
+
+def _ref_ids(conn, extra=""):
+    return [r[0] for r in conn.execute(
+        'select t.id from "transaction" t where t.amount_cents > 0 and t.member_id is not null'
+        " and not exists(select 1 from allocation a where a.tx_id=t.id and a.source='manual')"
+        f"{extra} order by t.booking_date, t.id")]
+
+
+def _ref_snap(conn, ids):
+    return {t: [tuple(r) for r in conn.execute(
+        "select month, cents, status, source from allocation where tx_id=? order by month, id",
+        (t,))] for t in ids}
+
+
+def _ref_has_confirmed(conn, t):
+    return conn.execute("select 1 from allocation where tx_id=? and status='confirmed'",
+                        (t,)).fetchone() is not None
+
+
+def _ref_passes(conn, ids):
+    for _ in range(len(ids) + 1):
+        new = 0
+        for t in ids:
+            if _ref_has_confirmed(conn, t):
+                continue
+            dues.propose_allocations(conn, t, commit=False)  # ohne Zwischenspeicher
+            new += _ref_has_confirmed(conn, t)
+        if not new:
+            return
+
+
+def ref_redistribute_all(conn):
+    ids = _ref_ids(conn)
+    before = _ref_snap(conn, ids)
+    for t in ids:
+        conn.execute("delete from allocation where tx_id=?", (t,))
+    _ref_passes(conn, ids)
+    after = _ref_snap(conn, ids)
+    conn.commit()
+    return (sum(1 for t in ids if after[t] and after[t] != before[t]),
+            sum(1 for t in ids if before[t] and not after[t]))
+
+
+def ref_auto_distribute_pending(conn):
+    ids = _ref_ids(conn, " and not exists(select 1 from allocation a where a.tx_id=t.id"
+                         " and a.status='confirmed')")
+    before = _ref_snap(conn, ids)
+    _ref_passes(conn, ids)
+    after = _ref_snap(conn, ids)
+    conn.commit()
+    c = sum(1 for t in ids if after[t] and after[t][0][2] == "confirmed")
+    r = sum(1 for t in ids if after[t] and after[t][0][2] == "proposed")
+    o = sum(1 for t in ids if before[t] and not after[t])
+    return dues.AutoResult(c + r + o, c, r, o)
+
+
+def _messy_db(seed):
+    """Zufällige Daten mit veralteten automatischen Zeilen (wie Altbestand)."""
+    import sqlite3
+    rnd = random.Random(seed)
+    conn = connect(":memory:")
+    conn.execute("insert into account(id, iban) values(1, 'XX00FAKEKONTO')")
+    set_check_start(conn, "2026-01")
+    members = [create_member(conn, f"M{i}", "Aktiv", date(2025, 12, 5)) for i in range(2)]
+    for i in range(14):
+        cur = conn.execute(
+            'insert into "transaction"(account_id, booking_date, amount_cents, dedupe_key,'
+            " member_id) values(1,?,?,?,?)",
+            (f"2026-{rnd.randint(1, 12):02d}-{rnd.randint(1, 28):02d}",
+             rnd.choice([1700, 3400, 1000, 700, 2000, 2400]), f"m{seed}-{i}",
+             rnd.choice(members)))
+        conn.commit()
+        if rnd.random() < 0.7:
+            propose_allocations(conn, cur.lastrowid)
+    conn.execute("update allocation set status='proposed' where id % 3 = 0")  # veraltet
+    conn.commit()
+    set_check_start(conn, f"2026-{rnd.randint(1, 3):02d}")
+    copy = sqlite3.connect(":memory:")
+    conn.backup(copy)
+    copy.row_factory = sqlite3.Row
+    return conn, copy
+
+
+@pytest.mark.parametrize("seed", range(30))
+def test_runs_equal_reference_runs(seed, monkeypatch):
+    fast, slow = _messy_db(seed)
+    try:
+        res_fast = (auto_distribute_pending(fast), redistribute_all(fast))
+        state_fast = _state(fast)
+        monkeypatch.setattr(dues, "_compute", ref_compute)
+        res_slow = (ref_auto_distribute_pending(slow), ref_redistribute_all(slow))
+        assert res_fast == res_slow
+        assert state_fast == _state(slow)
+    finally:
+        fast.close()
+        slow.close()
