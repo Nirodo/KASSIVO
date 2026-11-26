@@ -90,8 +90,11 @@ def test_faq_has_at_least_ten_questions(pages):
                     "schlägt nur vor", "manuellen Vorschlag"]),
     ("begriffe", ["abgeleitet", "manuell"]),
     # Fix-Runde 2: Entscheidungen verschieben automatische Zahlungen, ehrliche Grenzen
-    ("verteilung", ["doppelt bezahlt", "Import ihn vorverlegt", "Grenze bei „— keins —“",
-                    "Prüfungsstart erneut"]),
+    ("verteilung", ["Import ihn vorverlegt", "Grenze bei „— keins —“",
+                    "Automatische Verteilungen bezahlen keinen Monat doppelt",
+                    "Änderungen an Beitrag, Mitgliedsart und Austritt verteilen die automatischen"
+                    " Zahlungen neu; manuelle Bestätigungen bleiben"]),
+    ("begriffe", ["Mitgliedsart oder Austritt ändern"]),
     ("beitraege", ["abgeleitet", "manuell"]),
     ("import", ["camt.052.001.08", "Duplikat", "Es wurde nichts importiert"]),
     ("zuordnung", ["mehrdeutig", "Absender merken", "ausgetreten", "Unklar"]),
@@ -668,13 +671,20 @@ def test_keins_limit_described_in_wiki_matches_code():
     assert _rows(conn, tx) == [("2026-01", 1700, "confirmed")]  # Schutz ist weg
 
 
-def test_resaving_check_start_recomputes_after_fee_change():
+def test_fee_change_recomputes_as_documented():
     from kassivo.fees import set_fee
     conn, mid = _setup()
-    tx = _pay(conn, mid, "2026-01-15", 1700)
+    tx = _pay(conn, mid, "2026-01-15", 3400)
     dues.propose_allocations(conn, tx)
-    set_fee(conn, "Aktiv", 2000, "2026-01")
-    assert _rows(conn, tx) == [("2026-01", 1700, "confirmed")]  # nicht von selbst
-    dues.redistribute_all(conn)  # wie erneutes Speichern des Prüfungsstarts
-    assert _rows(conn, tx) == [("2026-01", 1700, "confirmed")]  # Teilzahlung bleibt eindeutig
-    assert dues.month_status(conn, mid, "2026-01", date(2026, 1, 20)).status == "PARTIAL"
+    set_fee(conn, "Aktiv", 2000, "2026-01")  # verteilt neu: 20,00 + 14,00 passt nicht
+    assert {r[2] for r in _rows(conn, tx)} == {"proposed"}
+    manual = _pay(conn, mid, "2026-03-15", 2000)
+    dues.confirm_allocations(conn, manual, [("2026-03", 2000)])
+    set_fee(conn, "Aktiv", 1700, "2026-01")
+    assert _rows(conn, manual) == [("2026-03", 2000, "confirmed")]  # manuell bleibt
+
+
+def test_readme_names_recompute_triggers():
+    readme = (ROOT / "README.md").read_text("utf-8")
+    assert "Automatische Verteilungen bezahlen keinen Monat doppelt." in readme
+    assert "Beitrag, Mitgliedsart oder Austritt ändern" in readme

@@ -145,7 +145,7 @@ KASSIVO ordnet einen neuen Zahlungseingang automatisch zu, wenn die Absender-IBA
 
 **Verteilung**
 
-Nur bestätigte Verteilungen zählen als bezahlt. Grundsatz: Was KASSIVO selbst berechnet (automatisch verteilt oder vorgeschlagen), ist abgeleitet und wird neu berechnet, wenn sich Prüfungsstart oder Zuordnung ändern. Was Sie entschieden haben ("Verteilung bestätigen", "Rückgängig", "Verteilung aufheben", "Neu vorschlagen"), ist manuell und wird nie automatisch geändert. KASSIVO verteilt so:
+Nur bestätigte Verteilungen zählen als bezahlt. Grundsatz: Was KASSIVO selbst berechnet (automatisch verteilt oder vorgeschlagen), ist abgeleitet und wird neu berechnet, wenn sich Prüfungsstart, Zuordnung, Beitrag, Mitgliedsart oder Austritt ändern oder wenn Sie bei einer anderen Zahlung desselben Mitglieds entscheiden. Automatische Verteilungen bezahlen keinen Monat doppelt. Was Sie entschieden haben ("Verteilung bestätigen", "Rückgängig", "Verteilung aufheben", "Neu vorschlagen"), ist manuell und wird nie automatisch geändert. KASSIVO verteilt so:
 
 1. Zahlungen vor dem Prüfungsstart werden nicht verteilt (sie bleiben dem Mitglied zugeordnet).
 2. Ist ein früherer Monat angefangen (teilweise bezahlt) und übersteigt die Zahlung den Rest nicht, vervollständigt sie den ältesten solchen Monat.

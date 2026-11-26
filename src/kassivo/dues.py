@@ -11,9 +11,11 @@ Grundsatz: Zeilen mit source='auto' (Vorschlag und bestätigt) sind abgeleitet.
 Für ein Mitglied werden sie alle neu berechnet (rebuild_member, kanonisch wie
 redistribute_all), wenn sich seine Zuordnungen ändern oder der Nutzer bei einer
 seiner Zahlungen entscheidet (confirm_allocations, undo_auto,
-clear_allocations); für alle Mitglieder bei gespeichertem Prüfungsstart und
-wenn ein Import den abgeleiteten Prüfungsstart vorverlegt. Beitrags-, Art- und
-Austrittsänderungen lösen keine Neuberechnung aus. Zeilen mit source='manual'
+clear_allocations) oder seine Stammdaten ändern (set_member_type, leave_member,
+Beitragsbeginn in update_member); für alle Mitglieder bei gespeichertem
+Prüfungsstart, bei geändertem Beitrag (set_fee) und wenn ein Import den
+abgeleiteten Prüfungsstart vorverlegt. Automatische Verteilungen belegen so
+keinen Monat doppelt. Zeilen mit source='manual'
 sind Entscheidungen des Nutzers (Bestätigen, Rückgängig, Verteilung aufheben,
 Neu vorschlagen) und werden von keinem automatischen Weg angefasst.
 
