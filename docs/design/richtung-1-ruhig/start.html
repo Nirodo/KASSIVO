@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Übersicht – KASSIVO (Entwurf Ruhig)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<div class="proto">Entwurf Richtung 1 „Ruhig“ · alle Daten erfunden · <a href="../index.html">Zur Auswahl</a></div>
+<header class="topbar"><div class="topbar-in">
+<a class="brand" href="start.html">KASSIVO</a>
+<nav class="nav-desktop" aria-label="Hauptnavigation"><ul class="nav-list">
+<li><a href="start.html" aria-current="page">Übersicht</a></li>
+<li><a href="mitglieder.html">Mitglieder</a></li>
+<li><a href="zahlungen.html">Zahlungen</a></li>
+<li><a href="raster.html">Auswertung</a></li>
+<li><a href="einstellungen.html">Einstellungen</a></li>
+</ul></nav>
+<details class="nav-mobile"><summary>&#9776; Menü</summary><div class="panel"><nav aria-label="Hauptmenü"><ul>
+<li><a href="start.html" aria-current="page">Übersicht</a></li>
+<li><a href="mitglieder.html">Mitglieder</a></li>
+<li><a href="zahlungen.html">Zahlungen</a></li>
+<li><a href="raster.html">Auswertung</a></li>
+<li><a href="einstellungen.html">Einstellungen</a></li>
+</ul></nav></div></details>
+</div></header>
+<main id="main" class="page">
+<div class="page-head"><div><h1>Heute zu tun</h1><p>Dienstag, 25. November 2026</p></div></div>
+<div class="stack">
+<section class="card cta" aria-labelledby="cta"><div><h2 id="cta">Kontoauszug importieren</h2><p>Letzter Import: 24.11.2026, 47 Zahlungen · neue Zahlungen werden automatisch verteilt.</p></div>
+<a class="btn btn-big" href="import-ergebnis.html">Kontoauszug importieren</a></section>
+<div class="grid2">
+<section class="card" aria-labelledby="todo"><div class="card-head"><h2 id="todo">Das wartet auf dich</h2></div><ul class="todo"><li><a href="zahlungen.html"><span class="todo-n">3</span><span class="todo-text"><strong>3 Zahlungen sind unklar</strong><small>Kein Mitglied oder keine Kategorie erkannt</small></span><span class="todo-go">Zuordnen &rarr;</span></a></li><li><a href="zahlungen-pruefen.html"><span class="todo-n">3</span><span class="todo-text"><strong>3 Zahlungen zu prüfen</strong><small>Betrag passt nicht zu ganzen Monatsbeiträgen</small></span><span class="todo-go">Prüfen &rarr;</span></a></li><li><a href="mitglieder.html"><span class="todo-n is-err">3</span><span class="todo-text"><strong>3 Mitglieder überfällig</strong><small>Mara Beispiel, Jonas Probe, Svenja Test</small></span><span class="todo-go">Ansehen &rarr;</span></a></li></ul></section>
+<section class="card" aria-labelledby="mon"><div class="card-head"><h2 id="mon">November: 12 von 16 bezahlt</h2><a href="raster.html">Beitragsraster</a></div>
+<div class="progress" role="img" aria-label="12 von 16 Mitgliedern haben im November bezahlt"><span style="width:75%"></span></div>
+<ul class="missing">
+<li><a href="#">Mara Beispiel</a> <span class="chip chip-err">überfällig</span></li>
+<li><a href="#">Jonas Probe</a> <span class="chip chip-err">überfällig</span></li>
+<li><a href="#">Tim Demo</a> <span class="chip chip-info">offen</span></li>
+<li><span><a href="#">Piet Vorlage</a> <span class="muted small">5,00 von 10,00 €</span></span> <span class="chip chip-warn">teilweise</span></li>
+</ul></section>
+</div>
+<section aria-labelledby="zahlen"><h2 id="zahlen">Zahlen im Überblick</h2><div class="card"><dl class="stats">
+<div class="stat"><dt>Kassenstand</dt><dd>4.286,50 €<small>Stand 24.11.2026</small></dd></div>
+<div class="stat"><dt>Einnahmen 2026</dt><dd>5.940,00 €<small>bisher im Jahr</small></dd></div>
+<div class="stat"><dt>Ausgaben 2026</dt><dd>3.412,40 €<small>bisher im Jahr</small></dd></div>
+</dl></div></section>
+</div>
+</main>
+</body>
+</html>

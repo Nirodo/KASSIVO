@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mara Beispiel – KASSIVO (Entwurf Kompakt)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<div class="proto">Entwurf Richtung 2 „Kompakt“ · alle Daten erfunden · <a href="../index.html">Zur Auswahl</a></div>
+<header class="bar"><div class="bar-in">
+<a class="brand" href="start.html">KASSIVO</a>
+<nav class="nav-desktop" aria-label="Hauptnavigation"><ul><li><a class="nav" href="start.html">Übersicht</a></li><li><a class="nav" href="mitglieder.html" aria-current="page">Mitglieder</a></li><li><a class="nav" href="zahlungen.html">Zahlungen</a></li><li><a class="nav" href="raster.html">Auswertung</a></li><li><a class="nav" href="einstellungen.html">Einstellungen</a></li></ul></nav>
+<div class="right"><form role="search"><label class="sr-only" for="gs">Alles durchsuchen</label><input id="gs" type="search" placeholder="Suchen …"></form><a class="round" href="#" aria-label="Hilfe">?</a><a class="round" href="#" aria-label="Benutzer">N</a></div>
+<details class="mnav"><summary>Menü</summary><div class="panel"><nav aria-label="Hauptmenü"><ul style="display:block"><li><a class="nav" href="start.html">Übersicht</a></li><li><a class="nav" href="mitglieder.html" aria-current="page">Mitglieder</a></li><li><a class="nav" href="zahlungen.html">Zahlungen</a></li><li><a class="nav" href="raster.html">Auswertung</a></li><li><a class="nav" href="einstellungen.html">Einstellungen</a></li></ul></nav></div></details>
+</div></header>
+<div class="layout">
+<aside class="side" aria-label="Bereichsmenü Mitglieder"><div class="ctx"><b>Verein Beispielstadt</b><span>Beitragsjahr 2026</span></div><div class="sn"><h2>Suchen</h2><ul><li><a href="#">Suchen</a></li><li><a href="#">Gespeicherte Ansichten</a></li></ul><h2>Mitglieder</h2><ul><li><a href="mitglieder.html" aria-current="page">Alle <span class="badge">16</span></a></li><li><a href="mitglieder.html">Offene Beiträge <span class="badge">5</span></a></li><li><a href="mitglieder.html">Überfällig <span class="badge">3</span></a></li><li><a href="#">Gruppen</a></li></ul><h2>Organisieren</h2><ul><li><a href="#">Mitglieder importieren</a></li><li><a href="#">Gruppen bearbeiten</a></li><li><a href="#">Letzte Änderungen</a></li></ul></div></aside>
+<div class="content">
+<details class="subnav"><summary>Mitglieder: Bereichsmenü <span class="caret"></span></summary><div class="ctx"><b>Verein Beispielstadt</b><span>Beitragsjahr 2026</span></div><div class="sn"><h2>Suchen</h2><ul><li><a href="#">Suchen</a></li><li><a href="#">Gespeicherte Ansichten</a></li></ul><h2>Mitglieder</h2><ul><li><a href="mitglieder.html" aria-current="page">Alle <span class="badge">16</span></a></li><li><a href="mitglieder.html">Offene Beiträge <span class="badge">5</span></a></li><li><a href="mitglieder.html">Überfällig <span class="badge">3</span></a></li><li><a href="#">Gruppen</a></li></ul><h2>Organisieren</h2><ul><li><a href="#">Mitglieder importieren</a></li><li><a href="#">Gruppen bearbeiten</a></li><li><a href="#">Letzte Änderungen</a></li></ul></div></details>
+<main id="main" class="page">
+<p class="small"><a href="mitglieder.html">&larr; Mitglieder</a></p>
+<div class="page-head"><div class="profile"><div><h1>Mara Beispiel</h1><p>Aktive · Mitglied seit 01.03.2019 · Nr. 0001</p></div><span class="chip chip-err">überfällig</span></div><div class="btnrow" style="margin:0"><a class="btn btn-secondary" href="#">Bearbeiten</a><a class="btn" href="#">Erinnerung senden</a></div></div>
+<div class="tiles">
+<div class="tile"><span class="k">Beitrag</span><span class="v">10,00 €</span><span class="s">pro Monat</span></div>
+<div class="tile bad"><span class="k">Offen</span><span class="v">20,00 €</span><span class="s">Oktober überfällig, November offen</span></div>
+<div class="tile"><span class="k">Letzte Zahlung</span><span class="v">12.09.2026</span><span class="s">+10,00 €</span></div>
+<div class="tile"><span class="k">Bezahlt 2026</span><span class="v">90,00 €</span><span class="s">9 von 11 Monaten</span></div>
+</div>
+<div class="widgets">
+<section class="card"><h2>Stammdaten</h2><dl class="dl"><dt>E-Mail</dt><dd>mara@example.invalid</dd><dt>IBAN</dt><dd>XX00 FAKE 0000 0000 01</dd><dt>Gruppe</dt><dd>Aktive</dd><dt>Notiz</dt><dd>Zahlt gern quartalsweise</dd></dl></section>
+<section class="card"><h2>Änderungsprotokoll</h2><ul class="small" style="margin:0"><li>14.10.2026 · Beitrag auf 10,00 € geändert (Niklas)</li><li>02.03.2026 · E-Mail geändert</li><li>01.03.2019 · angelegt</li></ul></section>
+</div>
+<section class="card" style="margin-top:var(--s3)" aria-labelledby="mon"><h2 id="mon">Beiträge 2026</h2>
+<div class="table-wrap"><table class="matrix"><thead><tr><th>Monat</th><th>Jan</th><th>Feb</th><th>Mär</th><th>Apr</th><th>Mai</th><th>Jun</th><th>Jul</th><th>Aug</th><th>Sep</th><th>Okt</th><th>Nov</th><th>Dez</th></tr></thead><tbody><tr><td>Status</td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell ok" title="bezahlt">bez.<span class="sr-only"> (bezahlt)</span></span></td><td><span class="cell err" title="überfällig">über<span class="sr-only"> (überfällig)</span></span></td><td><span class="cell open" title="offen">offen<span class="sr-only"> (offen)</span></span></td><td><span class="cell none" title="noch nicht fällig">–<span class="sr-only"> (noch nicht fällig)</span></span></td></tr></tbody></table></div></section>
+<section class="card" style="margin-top:var(--s3)" aria-labelledby="hist"><h2 id="hist">Zahlungshistorie</h2>
+<div class="table-wrap"><table><thead><tr><th>Datum</th><th>Zuordnung</th><th class="num">Betrag</th></tr></thead><tbody>
+<tr><td>12.09.2026</td><td>Beitrag September</td><td class="num">10,00 €</td></tr><tr><td>11.08.2026</td><td>Beitrag August</td><td class="num">10,00 €</td></tr><tr><td>09.07.2026</td><td>Beitrag Juli</td><td class="num">10,00 €</td></tr></tbody></table></div></section>
+</main>
+</div>
+</div>
+</body>
+</html>

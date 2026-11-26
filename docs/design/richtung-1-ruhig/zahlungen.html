@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zahlungen – KASSIVO (Entwurf Ruhig)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<div class="proto">Entwurf Richtung 1 „Ruhig“ · alle Daten erfunden · <a href="../index.html">Zur Auswahl</a></div>
+<header class="topbar"><div class="topbar-in">
+<a class="brand" href="start.html">KASSIVO</a>
+<nav class="nav-desktop" aria-label="Hauptnavigation"><ul class="nav-list">
+<li><a href="start.html">Übersicht</a></li>
+<li><a href="mitglieder.html">Mitglieder</a></li>
+<li><a href="zahlungen.html" aria-current="page">Zahlungen</a></li>
+<li><a href="raster.html">Auswertung</a></li>
+<li><a href="einstellungen.html">Einstellungen</a></li>
+</ul></nav>
+<details class="nav-mobile"><summary>&#9776; Menü</summary><div class="panel"><nav aria-label="Hauptmenü"><ul>
+<li><a href="start.html">Übersicht</a></li>
+<li><a href="mitglieder.html">Mitglieder</a></li>
+<li><a href="zahlungen.html" aria-current="page">Zahlungen</a></li>
+<li><a href="raster.html">Auswertung</a></li>
+<li><a href="einstellungen.html">Einstellungen</a></li>
+</ul></nav></div></details>
+</div></header>
+<main id="main" class="page">
+<div class="page-head"><h1>Zahlungen</h1><a class="btn" href="import-ergebnis.html">Kontoauszug importieren</a></div>
+<nav class="tabs" aria-label="Unterbereiche"><a href="zahlungen.html" aria-current="page">Alle <span class="count">128</span></a>
+<a href="zahlungen.html">Eingänge <span class="count">96</span></a>
+<a href="zahlungen.html">Ausgänge <span class="count">32</span></a>
+<a href="zahlungen.html">Unklar <span class="count count-attn">3</span></a>
+<a href="zahlungen-pruefen.html">Prüfen <span class="count count-attn">3</span></a>
+<a href="zahlungen.html">Automatisch verteilt <span class="count">41</span></a></nav><form role="search" style="margin-bottom:var(--s4)"><label class="sr-only" for="q">Zahlungen durchsuchen</label><input id="q" class="search" type="search" placeholder="Name, Zweck oder Betrag suchen"></form><div role="group" aria-label="Zahlungsliste" style="border:1px solid var(--line-soft);border-radius:var(--radius);overflow:hidden">
+<div class="rowhead" aria-hidden="true"><span></span><span>Datum</span><span>Von / An</span><span>Betrag</span><span>Zuordnung</span></div>
+<ul class="rows" style="border:0;border-radius:0"><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Hannes Kasten auswählen"></span>
+<span class="date">24.11.</span><span class="who">Hannes Kasten<small>Beitrag November</small></span><span class="amt in">+10,00 €</span><span class="assign"><span class="chip chip-ok">automatisch</span> Beitrag Hannes Kasten · Nov</span></div></li><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Elke Vorbild auswählen"></span>
+<span class="date">24.11.</span><span class="who">Elke Vorbild<small>Beitrag Nov/Dez</small></span><span class="amt in">+20,00 €</span><span class="assign"><span class="chip chip-ok">automatisch</span> Beitrag Elke Vorbild · Nov–Dez</span></div></li><li class="selected"><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Unbekannt GmbH auswählen" checked></span>
+<span class="date">23.11.</span><span class="who">Unbekannt GmbH<small>XX00 FAKE 0001 0001 · „Spende Fest“</small></span><span class="amt in">+25,00 €</span><span class="assign"><select aria-label="Zuordnung für Zahlung 2"><option>Zuordnen …</option><option>Beitrag eines Mitglieds</option><option>Spende</option><option>Veranstaltung</option><option>Material</option><option>Miete</option><option>Nebenkosten</option><option>Sonstiges</option></select></span></div></li><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Stadtwerke Beispielstadt auswählen"></span>
+<span class="date">22.11.</span><span class="who">Stadtwerke Beispielstadt<small>Abschlag Strom</small></span><span class="amt ">−84,30 €</span><span class="assign"><span class="chip chip-ok">automatisch</span> Kategorie Nebenkosten</span></div></li><li class="attn"><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Lena Muster auswählen"></span>
+<span class="date">21.11.</span><span class="who">Lena Muster<small>Beitrag Lena</small></span><span class="amt in">+30,00 €</span><span class="assign"><a href="zahlungen-pruefen.html"><strong>Vorschlag prüfen</strong></a> <span class="chip chip-warn">prüfen</span></span></div></li><li class="selected"><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Druckerei Muster auswählen" checked></span>
+<span class="date">20.11.</span><span class="who">Druckerei Muster<small>Rechnung 2026-117</small></span><span class="amt ">−42,00 €</span><span class="assign"><select aria-label="Zuordnung für Zahlung 5"><option>Zuordnen …</option><option>Beitrag eines Mitglieds</option><option>Spende</option><option>Veranstaltung</option><option>Material</option><option>Miete</option><option>Nebenkosten</option><option>Sonstiges</option></select></span></div></li><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Piet Vorlage auswählen"></span>
+<span class="date">19.11.</span><span class="who">Piet Vorlage<small>Beitrag</small></span><span class="amt in">+5,00 €</span><span class="assign"><span class="chip chip-ok">automatisch</span> Beitrag Piet Vorlage · Nov (teilweise)</span></div></li><li><div class="prow"><span class="checkcell"><input type="checkbox" aria-label="Unbekannt auswählen"></span>
+<span class="date">18.11.</span><span class="who">Unbekannt<small>XX00 FAKE 0002 0002 · ohne Zweck</small></span><span class="amt in">+10,00 €</span><span class="assign"><select aria-label="Zuordnung für Zahlung 7"><option>Zuordnen …</option><option>Beitrag eines Mitglieds</option><option>Spende</option><option>Veranstaltung</option><option>Material</option><option>Miete</option><option>Nebenkosten</option><option>Sonstiges</option></select></span></div></li></ul></div><div class="bulk" role="region" aria-label="Aktionen für die Auswahl"><strong>2 ausgewählt</strong><button class="btn btn-secondary" type="button">Kategorie zuweisen</button><button class="btn btn-secondary" type="button">Als Beitrag verteilen</button><button class="btn btn-quiet" type="button">Auswahl aufheben</button></div>
+</main>
+</body>
+</html>
