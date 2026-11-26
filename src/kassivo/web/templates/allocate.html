@@ -19,7 +19,7 @@
   <table>
     <caption>Gespeicherte Verteilung</caption>
     <thead><tr><th>Monat</th><th class="num">Betrag</th><th>Status</th></tr></thead>
-    <tbody>{% for a in stored %}<tr><td>{{ a["month"] }}</td><td class="num">{{ a["cents"] | eur }}</td><td>{{ "bestätigt" if a["status"] == "confirmed" else "vorgeschlagen" }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for a in stored %}<tr><td>{{ a["month"] }}</td><td class="num">{{ a["cents"] | eur }}</td><td>{{ "bestätigt" if a["status"] == "confirmed" else "vorgeschlagen" }}{% if a["status"] == "confirmed" and a["source"] == "auto" %} (automatisch, <a href="/auto">Rückgängig</a> möglich){% endif %}</td></tr>{% endfor %}</tbody>
   </table>
   {% else %}<p>Noch keine Verteilung.</p>{% endif %}
 </section>
@@ -56,11 +56,12 @@
   <form method="post" action="/transactions/{{ tx['id'] }}/allocate/propose" class="inline">
     <input type="hidden" name="next" value="{{ next_value }}">
     <button type="submit">Neu vorschlagen</button>
-    <span class="hint">Bei bestätigter Verteilung ändert sich nichts.</span>
+    <span class="hint">Schlägt nur vor und bestätigt nie. Bei bestätigter Verteilung ändert sich nichts.</span>
   </form>
   <form method="post" action="/transactions/{{ tx['id'] }}/allocate/clear" class="inline">
     <input type="hidden" name="next" value="{{ next_value }}">
     <label class="check"><input type="checkbox" name="confirm" value="yes"> Ich bestätige, dass die Verteilung aufgehoben wird</label>
+    <span class="hint">Danach steht die Zahlung als Vorschlag zur Prüfung bereit.</span>
     <button type="submit">Verteilung aufheben</button>
   </form>
 </section>

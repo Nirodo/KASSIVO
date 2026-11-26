@@ -2,12 +2,15 @@
 {% block title %}Import abgeschlossen{% endblock %}
 {% block content %}
 <p class="notice" role="status"><strong>Import abgeschlossen.</strong></p>
+{% if redistribute_failed %}<p class="alert" role="alert"><strong>Hinweis:</strong> {{ redistribute_text }}</p>{% endif %}
 <ul>
   <li>Neu: {{ result.new }}</li>
   <li>Duplikate: {{ result.duplicates }}</li>
   <li>Automatisch kategorisiert: {{ categorized }}</li>
   <li>Automatisch zugeordnet: {{ assigned }}</li>
-  <li><a href="/transactions?year=all&amp;proposed=1">{{ proposals }} Vorschläge zur Bestätigung (offene Vorschläge insgesamt)</a></li>
+  <li>Verteilung der neuen Zahlungen: automatisch verteilt: {{ auto_count }}, zur Prüfung: {{ review_count }}
+    (<a href="/auto">Automatisch verteilt</a> · <a href="/transactions?year=all&amp;proposed=1">{{ proposals }} offene Vorschläge insgesamt</a>)
+    {%- if outside_count %}<br><span class="hint">{{ outside_count }} zugeordnete Zahlungen liegen vor dem Prüfungsstart und werden nicht auf Monate verteilt.</span>{% endif %}</li>
 </ul>
 {% if result.warnings %}
 <h2>Warnungen</h2>

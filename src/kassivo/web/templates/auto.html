@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Automatisch verteilt{% endblock %}
+{% block content %}
+{{ ui.help_link("verteilung") }}
+<p>KASSIVO verteilt eindeutige Zahlungen selbst auf die Beitragsmonate. Hier sehen Sie die neuesten automatischen Verteilungen.
+  „Rückgängig“ macht aus einer Verteilung einen Vorschlag, den Sie auf der Seite „Verteilung“ ändern und bestätigen.
+  Echte Ausnahmen stehen unter <a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>.</p>
+{% if rows %}
+<div class="table-wrap">
+<table>
+  <caption>Automatisch verteilte Zahlungen, neueste zuerst</caption>
+  <thead><tr><th>Datum</th><th>Mitglied</th><th class="num">Betrag</th><th>Monate</th><th>Art</th><th>Aktion</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.booking_date }}</td>
+    <td><a href="/members/{{ r.member_id }}/history">{{ r.member_name }}</a>{% if r.cp_name %}<br><span class="hint">{{ r.cp_name }}</span>{% endif %}</td>
+    <td class="num">{{ r.amount_cents | eur }}</td>
+    <td>{% for month, cents in r.allocations %}{{ month }}: {{ cents | eur }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+    <td>{{ r.kind }}</td>
+    <td><form method="post" action="/auto/{{ r.tx_id }}/undo" class="inline">
+      <button type="submit">Rückgängig<span class="visually-hidden"> für Buchung {{ r.tx_id }}</span></button>
+    </form></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>Noch keine automatisch verteilten Zahlungen.</p>
+{% endif %}
+<nav class="pager" aria-label="Seiten">
+  {% if prev_url %}<a href="{{ prev_url }}">Zurück</a>{% endif %}
+  <span>Seite {{ page }} von {{ pages }}</span>
+  {% if next_url %}<a href="{{ next_url }}">Weiter</a>{% endif %}
+</nav>
+{% endblock %}

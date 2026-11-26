@@ -13,13 +13,15 @@
 <h2>Fragen und Antworten</h2>
 
 <h3>1. Eine Zahlung wurde dem falschen Mitglied zugeordnet.</h3>
-<p><strong>Ursache:</strong> Meist hat KASSIVO eine gemerkte IBAN (oder die IBAN im Mitgliedsdatensatz) angewendet, etwa wenn ein Elternteil für ein anderes Kind zahlt. <strong>Lösung:</strong> Öffnen Sie <a href="/transactions">Buchungen</a>, wählen Sie in der Spalte „Mitglied“ das richtige Mitglied und dann „Zuordnen“. Meldet KASSIVO eine bestätigte Verteilung, heben Sie sie zuerst auf („Verteilung“, „Verteilung aufheben“). Haken Sie „Absender merken“ nur an, wenn die IBAN künftig zu diesem Mitglied gehören soll. Siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>.</p>
+<p><strong>Ursache:</strong> Meist hat KASSIVO eine gemerkte IBAN (oder die IBAN im Mitgliedsdatensatz) angewendet, etwa wenn ein Elternteil für ein anderes Kind zahlt. <strong>Lösung:</strong> Öffnen Sie <a href="/transactions">Buchungen</a>, wählen Sie in der Spalte „Mitglied“ das richtige Mitglied und dann „Zuordnen“. Eine automatisch verteilte Zahlung rechnet KASSIVO dabei für das neue Mitglied neu. Haben Sie die Verteilung selbst bestätigt, meldet KASSIVO das. Heben Sie sie dann zuerst auf („Verteilung“, „Verteilung aufheben“). Haken Sie „Absender merken“ nur an, wenn die IBAN künftig zu diesem Mitglied gehören soll. Siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>.</p>
 <p><strong>Zwei Fallen:</strong> „— keins —“ setzt die Zahlung nur auf „Unklar“. Wählen Sie danach „Unklare automatisch zuordnen“ oder benutzen Sie bei einer anderen Zahlung derselben IBAN „Absender merken“, ordnet KASSIVO sie über die gemerkte IBAN wieder demselben Mitglied zu. Und eine falsch gemerkte IBAN lernt KASSIVO nie für das richtige Mitglied neu: Ordnen Sie mit „Absender merken“ dem richtigen Mitglied zu, wird die IBAN mehrdeutig und danach nie mehr automatisch zugeordnet. Ordnen Sie dann alle Zahlungen dieser IBAN von Hand zu.</p>
 
 <h3>2. Ein Monat ist überfällig, obwohl das Mitglied bezahlt hat.</h3>
 <p><strong>Ursachen:</strong></p>
 <ul>
-  <li>Die Zahlung hat einen Vorschlag, der nicht bestätigt ist. Nur bestätigte Verteilungen zählen. <strong>Lösung:</strong> Öffnen Sie „Offene Vorschläge“ und bestätigen Sie die Verteilung.</li>
+  <li>Die Zahlung ist eine Ausnahme und hat nur einen Vorschlag, zum Beispiel weil der Betrag nicht zu ganzen Monatsbeiträgen passt. Nur bestätigte Verteilungen zählen. <strong>Lösung:</strong> Öffnen Sie „Offene Vorschläge“, lesen Sie den Grund und bestätigen Sie die Verteilung.</li>
+  <li>KASSIVO hat die Zahlung automatisch einem anderen Monat gegeben. Es nimmt zuerst einen angefangenen Monat, sonst den Buchungsmonat: Zahlt das Mitglied im März 17,00 € und fehlt der Februar ganz, geht die Zahlung auf den März, und der Februar bleibt überfällig. <strong>Lösung:</strong> Öffnen Sie <a href="/auto">Automatisch verteilt</a>, wählen Sie bei der Zahlung „Rückgängig“ und tragen Sie auf der Seite „Verteilung“ den richtigen Monat ein.</li>
+  <li>Die Zahlung ist vor dem Prüfungsstart gebucht. Solche Zahlungen verteilt KASSIVO nicht. <strong>Lösung:</strong> Tragen Sie den Monat auf der Seite „Verteilung“ selbst ein oder prüfen Sie den Prüfungsstart.</li>
   <li>Die Zahlung steht noch in „Unklar“. <strong>Lösung:</strong> Ordnen Sie sie dem Mitglied zu.</li>
   <li>Die Zahlung ist auf einen anderen Monat verteilt oder einem anderen Mitglied zugeordnet. <strong>Lösung:</strong> Öffnen Sie die Zahlungshistorie des Mitglieds (Namen in der Beitragsübersicht anklicken) und prüfen Sie die Monate je Zahlung. Korrigieren Sie über das Datum der Zahlung auf der Seite „Verteilung“.</li>
   <li>Der Betrag war niedriger als der Beitrag. Der Monat zeigt „Teilweise“ oder „Überfällig“ mit dem Teilbetrag.</li>
@@ -64,9 +66,15 @@
 <h3>15. Zinsen der Bank stehen in Unklar: muss ich ein Mitglied eintragen?</h3>
 <p><strong>Antwort:</strong> Nein. Zinsen, Spenden und ähnliche Posten gehören zu keinem Mitglied. <strong>Lösung:</strong> Wählen Sie in <a href="/unmatched">Unklar</a> in der Spalte „Kein Mitglied nötig“ die Kategorie (zum Beispiel „Zinsen“) und dann „Als erledigt kategorisieren“. Die Zahlung verschwindet aus der Liste. Damit künftige Zinsabrechnungen gar nicht erst dort landen, legen Sie eine Regel an: Zweck enthält „Zinsen für Guthaben“. Siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>.</p>
 
+<h3>16. KASSIVO hat eine Zahlung selbst verteilt. Wie mache ich das rückgängig?</h3>
+<p><strong>Antwort:</strong> Eindeutige Zahlungen verteilt KASSIVO selbst, zum Beispiel genau ein Monatsbeitrag, mehrere ganze Beiträge oder eine einzelne Teilzahlung. <strong>Lösung:</strong> Öffnen Sie <a href="/auto">Automatisch verteilt</a> und wählen Sie bei der Zahlung „Rückgängig“. Sie steht dann als Vorschlag in „Offene Vorschläge“. Ändern Sie die Monate auf der Seite „Verteilung“ und wählen Sie „Verteilung bestätigen“. Einen rückgängig gemachten Vorschlag bestätigt KASSIVO nicht wieder von selbst: Er ist manuell. Automatische Verteilungen sind dagegen abgeleitet und ändern sich, wenn Sie den Prüfungsstart oder die Zuordnung ändern. Siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>.</p>
+
+<h3>17. In „Offene Vorschläge“ stehen viele alte Zahlungen.</h3>
+<p><strong>Ursache:</strong> Die Vorschläge stammen aus einer älteren KASSIVO-Version, die fast jede Zahlung nur vorgeschlagen hat. <strong>Lösung:</strong> Wählen Sie dort „Offene Vorschläge jetzt automatisch verteilen“. KASSIVO verteilt eindeutige Zahlungen selbst und entfernt Vorschläge für Zahlungen vor dem Prüfungsstart. Übrig bleiben nur echte Ausnahmen.</p>
+
 <h2>Gut zu wissen</h2>
 <div class="callout callout-tip">
-  <p><strong>Tipp:</strong> Bei fast jedem Problem hilft derselbe Blick: Zahlungshistorie des Mitglieds öffnen, dann „Unklar“ und „Offene Vorschläge“ ansehen. So sehen Sie, wo eine Zahlung hängt.</p>
+  <p><strong>Tipp:</strong> Bei fast jedem Problem hilft derselbe Blick: Zahlungshistorie des Mitglieds öffnen, dann „Unklar“, „Offene Vorschläge“ und „Automatisch verteilt“ ansehen. So sehen Sie, wo eine Zahlung hängt.</p>
 </div>
 
 <h2>Siehe auch</h2>

@@ -15,7 +15,7 @@ Kontoumsätze kommen per Datei-Import (CAMT V8, Sparkasse). Eine direkte Bankabf
 - **Beiträge und Prüfungsstart** (Wiki: "Beiträge und Prüfungsstart"): Beitrag je Mitgliedsart mit Gültig-ab-Monat. Eine Änderung wirkt nur ab diesem Monat. Der Prüfungsstart legt fest, ab wann Beiträge geprüft werden.
 - **Import** (Wiki: "Kontoexport importieren"): ZIP mit Tagesdateien oder einzelne XML-Datei im Format `camt.052.001.08`. Bereits importierte Umsätze erkennt KASSIVO als Duplikate, ein mehrfacher Import ist sicher.
 - **Zuordnung** (Wiki: "Zahlungen zuordnen"): Zahlungseingänge ordnet KASSIVO über die Absender-IBAN automatisch Mitgliedern zu, lernt dabei aus Ihren Zuordnungen ("Absender merken") und sammelt alles Unklare in der Liste "Unklar". Zahlungen, die kein Mitglied brauchen (zum Beispiel Zinsen der Bank), verlassen "Unklar", sobald Sie ihnen eine Kategorie außer "Beiträge" geben ("Kein Mitglied nötig", "Als erledigt kategorisieren"), oder eine Regel kategorisiert sie schon beim Import.
-- **Verteilung** (Wiki: "Verteilung auf Beitragsmonate"): Jede Zahlung wird auf Beitragsmonate verteilt. Nur genau passende Zahlungen bestätigt KASSIVO selbst, alles andere ist ein Vorschlag, den Sie prüfen und bestätigen.
+- **Verteilung** (Wiki: "Verteilung auf Beitragsmonate"): Jede Zahlung wird auf Beitragsmonate verteilt. Eindeutige Zahlungen verteilt KASSIVO selbst (Seite "Automatisch verteilt", mit "Rückgängig"), nur echte Ausnahmen bleiben ein Vorschlag, den Sie prüfen und bestätigen.
 - **Kategorien und Regeln** (Wiki: "Kategorien und Regeln"): Regeln nach Zweck, Name oder IBAN der Gegenpartei mit Priorität und Betragsgrenzen ordnen Buchungen Kategorien zu.
 - **Beitragsübersicht** (Wiki: "Beitragsübersicht"): Raster Mitglieder mal Monate mit den Status Bezahlt, Teilweise, Offen, Überfällig, dazu die Zahlungshistorie je Mitglied.
 - **Prognose** (Wiki: "Prognose"): Offene Mitgliedsbeiträge bis zu einem Stichtag, getrennt in überfällig und noch fällig.
@@ -106,14 +106,14 @@ Der cmd-Befehl `set` setzt in PowerShell keine Umgebungsvariable. KASSIVO starte
 
 Ausführlicher im Wiki unter "Erste Schritte" (`/wiki/start`).
 
-1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Am besten den ersten vollen Monat wählen, den der Kontoexport abdeckt: Beginnt der Export mitten im Monat, fehlen frühere Zahlungen dieses Monats und er erschiene als überfällig. Zahlungen, die vor dem Prüfungsstart-Monat gebucht sind (zum Beispiel am 20.03. bei Prüfungsstart 2026-04), bekommen einen Vorschlag für den Prüfungsstart-Monat. Bestätigen Sie ihn nicht blind: Sonst gilt der April als bezahlt, und die echte Aprilzahlung wird für den Mai vorgeschlagen. Ändern Sie den Monat auf der Seite "Verteilung" oder heben Sie die Verteilung auf. Wird der Prüfungsstart später geändert, berechnet KASSIVO offene Vorschläge neu; bestätigte Verteilungen bleiben unverändert.
+1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Am besten den ersten vollen Monat wählen, den der Kontoexport abdeckt: Beginnt der Export mitten im Monat, fehlen frühere Zahlungen dieses Monats und er erschiene als überfällig. Zahlungen, die vor dem Prüfungsstart-Monat gebucht sind (zum Beispiel am 20.03. bei Prüfungsstart 2026-04), bleiben dem Mitglied zugeordnet, werden aber nicht auf Monate verteilt und erscheinen nicht als Vorschlag. Wird der Prüfungsstart später geändert, berechnet KASSIVO alle automatischen Verteilungen und Vorschläge neu; von Ihnen bestätigte Verteilungen bleiben unverändert.
 2. **Mitglieder und Beiträge anlegen** (Mitglieder, Einstellungen).
 3. **Kontoexport importieren** (Import).
 4. **"Unklar" zuordnen**: jede Zahlung einem Mitglied zuordnen, mit "Absender merken". Weitere unklare Zahlungen derselben IBAN werden dann gleich mit zugeordnet. Der Knopf "Unklare automatisch zuordnen" wendet Gelerntes erneut auf die ganze Liste an, auch auf Zahlungen, die Sie mit "— keins —" auf Unklar zurückgesetzt haben. Zahlt eine IBAN für mehrere Mitglieder (z. B. ein Elternteil für zwei Kinder), wird sie nicht automatisch zugeordnet.
-5. **"Offene Vorschläge" prüfen und bestätigen** (Link in Buchungen und Unklar): Verteilungen, die KASSIVO nur vorschlägt, zählen erst nach der Bestätigung als bezahlt.
+5. **Ausnahmen prüfen** ("Offene Vorschläge", Link in Buchungen, Unklar und Beitragsübersicht): Eindeutige Zahlungen verteilt KASSIVO selbst ("Automatisch verteilt"). Nur Ausnahmen, zum Beispiel 20,00 € bei 17,00 € Beitrag, warten mit einem Grund auf Ihre Bestätigung. Ein Knopf dort wendet die Regeln erneut auf alle offenen Vorschläge an (etwa aus einer älteren Version).
 6. **Beitragsübersicht, Prognose und Report ansehen.**
 
-Eine Zahlung bestätigt KASSIVO nur dann selbst, wenn sie genau den Beitrag des frühesten offenen Monats deckt und in diesem Monat gebucht ist. Zahlungen, die außerhalb des Fälligkeitsmonats gebucht sind (Rückstände, Vorauszahlungen, Zahlung schon im Vormonat), und Mehrmonatszahlungen brauchen immer eine Bestätigung von Hand.
+Jede automatische Verteilung steht auf der Seite "Automatisch verteilt" (`/auto`) und lässt sich dort mit "Rückgängig" in einen Vorschlag zurückverwandeln, den Sie auf der Seite "Verteilung" ändern und bestätigen.
 
 ## Import-Format und Ablauf
 
@@ -122,7 +122,7 @@ Unterstützt ist genau ein Format: `camt.052.001.08`, im Online-Banking "XML CAM
 1. Im Online-Banking den Export "XML CAMT V8, gebuchte Umsätze" erzeugen.
 2. In KASSIVO die Seite `/import` öffnen und die ZIP- oder XML-Datei hochladen. Die ZIP-Datei wird nicht entpackt, KASSIVO liest sie direkt.
 3. KASSIVO erkennt bereits importierte Umsätze als Duplikate (Bankreferenz, sonst ein Fingerabdruck aus Datum, Betrag, Gegenpartei-IBAN und Zweck) und legt sie nicht doppelt an. Hinweise und Warnungen zur Datei (zum Beispiel "Saldo stimmt nicht") erscheinen nach dem Import.
-4. Auf neue Buchungen wendet KASSIVO die Kategorien-Regeln und die automatische Zuordnung an. Die Ergebnisseite zählt Neu, Duplikate, kategorisiert, zugeordnet und die offenen Vorschläge.
+4. Auf neue Buchungen wendet KASSIVO die Kategorien-Regeln und die automatische Zuordnung an. Die Ergebnisseite zählt Neu, Duplikate, kategorisiert, zugeordnet und für die neuen Zahlungen "automatisch verteilt" und "zur Prüfung".
 5. Umsätze, die keinem Mitglied sicher zugeordnet werden können, erscheinen in der Liste "Unklar" und können dort von Hand zugeordnet werden.
 
 Grenzen: Eine Datei darf höchstens 100 MB groß sein. In einer ZIP-Datei liest KASSIVO höchstens 5000 XML-Dateien, jede höchstens 20 MB, zusammen höchstens 200 MB. Eine XML-Datei darf genau einen Bericht enthalten. Findet KASSIVO in irgendeiner Datei einen Fehler, bricht der ganze Import ab und legt nichts an (zum Beispiel bei falschem Format oder bei einem ungültigen Betrag). Einträge mit 0,00 € sind kein Fehler: KASSIVO überspringt sie, speichert sie nicht und meldet sie als Warnung auf der Ergebnisseite (eine Warnung je Datei, mit maskierter IBAN und Datum). Einträge ohne Status überspringt KASSIVO und meldet sie als Warnung; als Zeichenkodierung sind nur UTF-8, US-ASCII und ISO-8859-1 erlaubt (UTF-16 wird abgelehnt). Eine Buchung mit bereits bekannter Bankreferenz, aber anderem Betrag oder Datum wird nicht angelegt und als Warnung gemeldet. Die Duplikaterkennung hat bekannte Grenzen (siehe "Bekannte Einschränkungen"). Importiert werden nur Einträge mit dem Status "gebucht"; Sammelbuchungen kommen ohne Gegenpartei herein und werden nie automatisch zugeordnet.
@@ -135,25 +135,38 @@ Grenzen: Eine Datei darf höchstens 100 MB groß sein. In einer ZIP-Datei liest 
 - Ein neues Mitglied zahlt ab dem 1. des Monats nach dem Eintritt (Feld "Zahlt ab Monat", leer lassen für diese Regel).
 - Tritt ein Mitglied mitten im Monat aus, ist der Austrittsmonat noch voll zu zahlen.
 - Zu wenig gezahlt: Der Monat gilt als offen oder teilbezahlt.
-- Zu viel gezahlt: Der Mehrbetrag kann auf Folgemonate angerechnet werden oder versäumte Monate ausgleichen. Das Verteilen bestätigen Sie.
+- Zu viel gezahlt: Der Mehrbetrag gleicht versäumte Monate aus und wird dann auf Folgemonate angerechnet. Passt er zu ganzen Monatsbeiträgen, verteilt KASSIVO ihn selbst, sonst bestätigen Sie die Verteilung.
 - Jedes Mitglied zahlt für sich. Zahlt eine andere Person, ordnen Sie die Überweisung dem Mitglied von Hand zu.
 - Beträge ändern sich nur ab ihrem Gültigkeitsmonat. Frühere Monate bleiben, wie sie waren.
 
 **Zuordnung**
 
-KASSIVO ordnet einen neuen Zahlungseingang automatisch zu, wenn die Absender-IBAN genau einem Mitglied gehört, entweder gelernt ("Absender merken") oder im Mitgliedsdatensatz. Mehrdeutige IBANs (mehrere Mitglieder) und Zahlungen nach dem Austrittsdatum des Mitglieds bleiben in "Unklar". Eine gelernte IBAN lässt sich in dieser Version nicht vergessen. Beim Umhängen auf ein anderes Mitglied sperren bestätigte Verteilungen die Änderung, bis Sie die Verteilung aufheben.
+KASSIVO ordnet einen neuen Zahlungseingang automatisch zu, wenn die Absender-IBAN genau einem Mitglied gehört, entweder gelernt ("Absender merken") oder im Mitgliedsdatensatz. Mehrdeutige IBANs (mehrere Mitglieder) und Zahlungen nach dem Austrittsdatum des Mitglieds bleiben in "Unklar". Eine gelernte IBAN lässt sich in dieser Version nicht vergessen. Beim Umhängen auf ein anderes Mitglied sperren Verteilungen, die Sie selbst bestätigt haben, die Änderung, bis Sie die Verteilung aufheben. Automatische Verteilungen rechnet KASSIVO für das neue Mitglied neu.
 
 **Verteilung**
 
-KASSIVO füllt ab dem frühesten Monat mit Fehlbetrag die Monate der Reihe nach. Nur bestätigte Verteilungen zählen als bezahlt. Selbst bestätigt wird nur, wenn der Betrag genau den Fehlbetrag des frühesten offenen Monats deckt und der Buchungsmonat dieser Beitragsmonat ist. Beispiele bei 17,00 € Monatsbeitrag und Prüfungsstart 2026-01:
+Nur bestätigte Verteilungen zählen als bezahlt. Grundsatz: Was KASSIVO selbst berechnet (automatisch verteilt oder vorgeschlagen), ist abgeleitet und wird neu berechnet, wenn sich Prüfungsstart, Zuordnung, Beitrag, Mitgliedsart oder Austritt ändern oder wenn Sie bei einer anderen Zahlung desselben Mitglieds entscheiden. Automatische Verteilungen bezahlen keinen Monat doppelt. Was Sie entschieden haben ("Verteilung bestätigen", "Rückgängig", "Verteilung aufheben", "Neu vorschlagen"), ist manuell und wird nie automatisch geändert. KASSIVO verteilt so:
+
+1. Zahlungen vor dem Prüfungsstart werden nicht verteilt (sie bleiben dem Mitglied zugeordnet).
+2. Ist ein früherer Monat angefangen (teilweise bezahlt) und übersteigt die Zahlung den Rest nicht, vervollständigt sie den ältesten solchen Monat.
+3. Sonst zuerst der Buchungsmonat, falls dort etwas fehlt. Ein Rest geht an die ältesten offenen Monate (Rückstand), danach an folgende Monate (Vorauszahlung, höchstens 36 Monate voraus). Ist der Buchungsmonat schon bezahlt, beginnt KASSIVO beim ältesten offenen Monat.
+4. Ist alles verteilt, sind es höchstens 12 Monate und bekommt jeder Monat seinen vollen Fehlbetrag, oder ist es eine einzelne Teilzahlung, bestätigt KASSIVO selbst (automatisch verteilt). Sonst bleibt ein Vorschlag mit Grund zur Prüfung (zum Beispiel "Mehr als 12 Monate im Voraus").
+
+Beispiele bei 17,00 € Monatsbeitrag und Prüfungsstart 2026-01:
 
 | Zahlung | Ergebnis |
 |---|---|
-| 17,00 € am 15.01.2026 | Januar, bestätigt (automatisch) |
-| 34,00 € am 15.01.2026 | Januar und Februar je 17,00 €, Vorschlag |
-| 10,00 € am 15.01.2026 | Januar 10,00 €, Vorschlag; nach Bestätigung "Teilweise" |
-| 20,00 € am 15.01.2026 | Januar 17,00 € und Februar 3,00 €, Vorschlag |
-| 17,00 € am 30.12.2026, Dezember schon bezahlt | Januar 2027, Vorschlag (Buchungsmonat ist nicht der Beitragsmonat) |
+| 17,00 € am 15.01.2026 | Januar, automatisch verteilt |
+| 2 × 17,00 € im Januar 2026 | Januar und Februar (Vorauszahlung), automatisch verteilt |
+| 34,00 € am 15.01.2026 | Januar und Februar je 17,00 €, automatisch verteilt |
+| 204,00 € am 15.01.2026 | Januar bis Dezember je 17,00 €, automatisch verteilt |
+| 34,00 € am 03.03.2026, Januar bezahlt, Februar offen | März und Februar (Rückstand), automatisch verteilt |
+| 10,00 € am 15.01.2026 | Januar 10,00 €, automatisch verteilt; "Teilweise" |
+| danach 7,00 € am 03.02.2026 | Januar 7,00 € (vervollständigt den Januar), automatisch verteilt |
+| 221,00 € am 15.01.2026 (13 Monate) | Vorschlag zur Prüfung ("Mehr als 12 Monate im Voraus") |
+| 20,00 € am 15.01.2026 | Januar 17,00 € und Februar 3,00 €, Vorschlag zur Prüfung |
+| 17,00 € am 30.12.2025 | nicht verteilt (vor dem Prüfungsstart) |
+| 17,00 € am 30.12.2026, Dezember schon bezahlt | Januar 2027 (Vorauszahlung), automatisch verteilt |
 
 **Kategorien**
 
@@ -161,7 +174,7 @@ Eine Buchung hat höchstens eine Kategorie. Regeln prüfen, ob ein Feld (Verwend
 
 ## Berichte
 
-- **Beitragsübersicht** (`/dues`): Raster Mitglieder mal zwölf Monate mit Bezahlt, Teilweise, Offen, Überfällig und "—" (kein Beitrag fällig). Monate mit unbestätigtem Vorschlag tragen die Markierung "Vorschlag". Ein Klick auf den Namen öffnet die Zahlungshistorie.
+- **Beitragsübersicht** (`/dues`): Raster Mitglieder mal zwölf Monate mit Bezahlt, Teilweise, Offen, Überfällig und "—" (kein Beitrag fällig). Monate mit unbestätigtem Vorschlag tragen die Markierung "Vorschlag"; darüber steht, wie viele Zahlungen auf Ihre Prüfung warten. Ein Klick auf den Namen öffnet die Zahlungshistorie.
 - **Prognose** (`/forecast`): offene Beiträge vom Prüfungsstart bis zu einem gewählten Datum (es zählt der ganze Monat des Datums: mit 10.03. rechnet die Prognose den gesamten März mit), höchstens 50 Jahre in der Zukunft. Nur Mitgliedsbeiträge zählen, keine wiederkehrenden Ausgaben.
 - **Jahresreport** (`/reports`): Einnahmen, Ausgaben, Saldo, Diagramme (Chart.js) und Tabellen. Die Beiträge je Mitglied rechnet der Report nach Beitragsmonat, nicht nach Buchungsdatum.
 - Die Liste "Buchungen" zeigt 100 Buchungen je Seite und lässt sich nach Jahr, Kategorie, Art und Suchtext filtern.
@@ -218,7 +231,7 @@ src/kassivo/
   camt.py              Einlesen von CAMT-Dateien (camt.052.001.08)
   categories.py        Kategorien und Regeln
   db.py                Datenbankschema und Verbindung
-  dues.py              Beitragsprüfung, Verteilung und Vorschläge
+  dues.py              Beitragsprüfung, automatische Verteilung und Vorschläge
   fees.py              Beiträge mit Gültigkeitsmonat
   forecast.py          Prognose
   iban.py              IBAN-Normalisierung
@@ -232,6 +245,7 @@ src/kassivo/
   settings.py          Ort der Datenbank (Standardordner, KASSIVO_DB, Cloud-Warnung)
   web/                 Weboberfläche
     app.py             App-Fabrik, Host-, Origin- und Sec-Fetch-Site-Prüfung, Sicherheits-Header, Fehlerseiten
+    auto_routes.py     Automatisch verteilt, Rückgängig, offene Vorschläge neu verteilen
     common.py          Gemeinsame Helfer: Vorlagen, DB je Anfrage, Eingabeprüfung
     backup_routes.py   Backup-Seite
     categories_routes.py  Kategorien und Regeln
@@ -256,7 +270,7 @@ docs/                  Entwurf und Plan
 - **Datenbank:** SQLite in einer Datei. Jede Anfrage bekommt ihre eigene Verbindung, die am Ende geschlossen wird.
 - **Geld** sind ganze Cent (Integer), nie Fließkommazahlen. Beträge werden nur zur Anzeige als Euro formatiert.
 - **Buchungen** ändert KASSIVO nie. Es setzt nur Mitglied und Kategorie und legt Verteilungen an.
-- **Verteilungen und Vorschläge:** Eine Zahlung hat null oder mehr Verteilungszeilen (Monat und Betrag), jede im Zustand `proposed` oder `confirmed`. Bezahlt ist ein Monat nur durch bestätigte Zeilen.
+- **Verteilungen und Vorschläge:** Eine Zahlung hat null oder mehr Verteilungszeilen (Monat und Betrag), jede im Zustand `proposed` oder `confirmed` und mit der Herkunft `auto` (KASSIVO) oder `manual` (Ihre Entscheidung). Bezahlt ist ein Monat nur durch bestätigte Zeilen. Automatische Läufe fassen nur Zahlungen ohne Zeilen oder mit reinen `auto`-Vorschlägen an.
 - **Beiträge und Mitgliedsarten** haben einen Gültigkeitsmonat. Das Soll je Monat wird beim Anzeigen aus ihnen berechnet und nicht gespeichert, deshalb bleiben alte Monate stabil, solange der Gültigkeitsmonat einer Änderung in der Zukunft liegt.
 - **Wiki:** Eine feste Tabelle in `wiki_routes.py` ordnet jedem Thema eine Vorlage zu. Aus der Anfrage wird nie ein Dateipfad gebaut.
 
@@ -281,6 +295,7 @@ Der Entwurf des Programms steht in `docs/superpowers/specs/2026-11-24-kassivo-de
 - Eine gelernte IBAN lässt sich nicht vergessen. Eine einmal mehrdeutig gewordene IBAN bleibt es, und eine falsch gemerkte IBAN wird nie für das richtige Mitglied neu gelernt. "— keins —" setzt eine Zahlung nur vorübergehend auf Unklar: "Unklare automatisch zuordnen" ordnet sie über die gemerkte IBAN wieder zu.
 - Duplikaterkennung: Eine Buchung mit derselben Bankreferenz, aber anderem Betrag oder Datum, wird als Duplikat gezählt und mit einer Warnung gemeldet. Eine zweite gleiche Zahlung ohne Bankreferenz am selben Tag wird verworfen, wenn sie in einer späteren Datei kommt (die laufende Nummer beginnt je Datei neu, gewollt; betrifft nur Zwischenstände desselben Tages, Sparkasse-Tagesdateien tragen Bankreferenzen). Der Import speichert die Buchungen vor Regeln und automatischer Zuordnung: Scheitern diese, bleiben die Buchungen unkategorisiert und unzugeordnet, ein erneuter Import zählt sie als Duplikate. Abhilfe: "Regeln anwenden" und "Unklare automatisch zuordnen".
 - Barzahlungen und eigene Ausgaben lassen sich nicht von Hand buchen. Der Monat bleibt überfällig, es gibt in 1.0.0 keine Abhilfe.
+- Die automatische Verteilung kennt den gemeinten Monat nicht: Sie nimmt zuerst den Buchungsmonat. Eine Nachzahlung für einen versäumten Monat ohne Mehrbetrag zählt deshalb für den Buchungsmonat (korrigierbar mit "Rückgängig"). Verteilungen, die vor der Umstellung auf Datenbankschema 2 schon bestätigt waren, gelten als von Ihnen bestätigt.
 - Zwei offene Vorschläge desselben Mitglieds können denselben Monat treffen (nur der Hinweis "Monat bereits bezahlt"). Ein Austritt vor dem Eintritt wird akzeptiert. Die Textfelder der Mitglieder haben keine Längenbegrenzung.
 - Die Prognose betrachtet nur Mitgliedsbeiträge, keine wiederkehrenden Ausgaben.
 - Eine Datenbank ist eine Kasse (keine Mehrmandanten).

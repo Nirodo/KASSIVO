@@ -238,9 +238,23 @@ def test_unassign_with_confirmed_allocation_422(client, db):
     tx = _tx_id(db, "Beitrag")
     _assign(client, tx, m)
     assert _alloc(db, tx)[0]["status"] == "confirmed"
+    # #27: nur eine Bestätigung des Nutzers sperrt den Mitgliedswechsel
+    month = _alloc(db, tx)[0]["month"]
+    client.post(f"/transactions/{tx}/allocate", data={"month_0": month, "amount_0": "17,00"})
     r = client.post(f"/transactions/{tx}/member", data={"member_id": ""})
     assert r.status_code == 422 and "Fehler" in r.text
     assert _col(db, tx, "member_id") == m and len(_alloc(db, tx)) == 1
+
+
+def test_unassign_with_auto_allocation_allowed(client, db):
+    _upload(client, [E_ERIKA])
+    m = _member(db)
+    tx = _tx_id(db, "Beitrag")
+    _assign(client, tx, m)
+    assert _alloc(db, tx)[0]["status"] == "confirmed"
+    r = client.post(f"/transactions/{tx}/member", data={"member_id": ""})
+    assert r.status_code == 303
+    assert _col(db, tx, "member_id") is None and _alloc(db, tx) == []
 
 
 def test_member_select_marks_left_members(client, db):
@@ -342,16 +356,37 @@ def test_stale_proposal_warning_and_repropose(client, db):
     set_check_start(db, "2026-01")
     m = _member(db)
     b, a = _tx_id(db, "Spende Sommerfest"), _tx_id(db, "Beitrag")
-    _assign(client, b, m)            # Vorschlag 02 + 03
-    _assign(client, a, m)            # 17,00 im März für Februar: nur Vorschlag
-    assert _alloc(db, a)[0]["status"] == "proposed"
-    client.post(f"/transactions/{a}/allocate", data={"month_0": "2026-02", "amount_0": "17,00"})
-    assert _alloc(db, a)[0]["status"] == "confirmed"
+    _assign(client, b, m)            # 25,00: Vorschlag 03: 17,00 + 02: 8,00
+    assert [(x["month"], x["cents"], x["status"]) for x in _alloc(db, b)] == [
+        ("2026-02", 800, "proposed"), ("2026-03", 1700, "proposed")]
+    # "Neu vorschlagen" macht daraus einen Vorschlag des Nutzers (Fix-Runde 1, I3):
+    # automatische Neuberechnungen fassen ihn nicht mehr an
+    client.post(f"/transactions/{b}/allocate/propose")
+    assert {r[0] for r in db.execute("select source from allocation where tx_id=?", (b,))} == {
+        "manual"}
+    _assign(client, a, m)            # 17,00 im März: März automatisch (#27)
+    assert [(x["month"], x["status"]) for x in _alloc(db, a)] == [("2026-03", "confirmed")]
     assert "Monat bereits bezahlt" in client.get(f"/transactions/{b}/allocate").text
     assert "Monat bereits bezahlt" not in client.get(f"/transactions/{a}/allocate").text
     r = client.post(f"/transactions/{b}/allocate/propose")
     assert r.status_code == 303 and r.headers["location"] == f"/transactions/{b}/allocate"
-    assert [x["month"] for x in _alloc(db, b)] == ["2026-03", "2026-04"]
+    assert [(x["month"], x["cents"], x["status"]) for x in _alloc(db, b)] == [
+        ("2026-02", 1700, "proposed"), ("2026-04", 800, "proposed")]
+
+
+def test_repropose_never_confirms(client, db):
+    _upload(client, [E_ERIKA])
+    set_check_start(db, "2026-01")
+    m = _member(db)
+    tx = _tx_id(db, "Beitrag")
+    _assign(client, tx, m)
+    db.execute("delete from allocation where tx_id=?", (tx,))
+    db.commit()
+    r = client.post(f"/transactions/{tx}/allocate/propose")
+    assert r.status_code == 303
+    assert [tuple(r) for r in db.execute(
+        "select month, status, source from allocation where tx_id=?", (tx,))] == [
+        ("2026-03", "proposed", "manual")]
 
 
 def test_clear_requires_confirm(client, db):
@@ -363,7 +398,11 @@ def test_clear_requires_confirm(client, db):
     assert r.status_code == 422 and len(_alloc(db, tx)) == 1
     r = client.post(f"/transactions/{tx}/allocate/clear", data={"confirm": "yes"})
     assert r.status_code == 303 and r.headers["location"] == f"/transactions/{tx}/allocate"
-    assert _alloc(db, tx) == [] and _col(db, tx, "member_id") == m
+    # Fix-Runde 1 (I2): Aufheben hinterlässt einen Vorschlag des Nutzers
+    assert [(x["status"]) for x in _alloc(db, tx)] == ["proposed"]
+    assert [r[0] for r in db.execute("select source from allocation where tx_id=?", (tx,))] == [
+        "manual"]
+    assert _col(db, tx, "member_id") == m
 
 
 # --- Kategorien --------------------------------------------------------------
@@ -504,7 +543,8 @@ def test_import_result_shows_open_proposals(client, db):
     m = _member(db)
     _assign(client, _tx_id(db, "Spende Sommerfest"), m)  # 25,00 -> Vorschlag
     r = _upload(client, [E_KIOSK], day="2026-03-02")
-    assert "1 Vorschläge zur Bestätigung (offene Vorschläge insgesamt)" in r.text
+    assert "1 offene Vorschläge insgesamt" in r.text
+    assert "automatisch verteilt: 0, zur Prüfung: 0" in r.text  # Kiosk ist kein Eingang
     assert 'href="/transactions?year=all&amp;proposed=1"' in r.text
 
 

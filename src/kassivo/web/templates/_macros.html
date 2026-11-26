@@ -83,7 +83,7 @@
 {% macro legend(with_proposal=false) %}
 <p class="legend">Legende:
   {% for key in ["PAID", "PARTIAL", "OPEN", "OVERDUE", "NONE"] %}<span class="status status-{{ key | lower }}">{{ STATUS_WORDS[key] }}</span>{% if key == "NONE" %} = kein Beitrag fällig{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}
-  {%- if with_proposal %} · <span class="status status-proposal"><span class="status-note">Vorschlag</span></span> = Verteilung wartet auf Bestätigung (<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>){% endif %}
+  {%- if with_proposal %} · <span class="status status-proposal"><span class="status-note">Vorschlag</span></span> = Verteilung wartet auf Ihre Prüfung (<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>){% endif %}
 </p>
 {% endmacro %}
 

@@ -60,30 +60,27 @@ def test_exact_17_confirmed_and_paid(conn):
         "2026-01", 1700, 1700, "PAID")
 
 
-def test_34_two_proposed_not_paid_until_confirmed(conn):
+def test_proposal_not_paid_until_confirmed(conn):
     m = _anna(conn)
-    t = _tx(conn, 3400, member_id=m)
+    t = _tx(conn, 2000, member_id=m)  # 17,00 + 3,00: Vorschlag (#27)
     allocs = propose_allocations(conn, t)
-    assert allocs == [("2026-01", 1700), ("2026-02", 1700)]
+    assert allocs == [("2026-01", 1700), ("2026-02", 300)]
     assert _rows(conn, t) == [
-        ("2026-01", 1700, "proposed", m), ("2026-02", 1700, "proposed", m)]
+        ("2026-01", 1700, "proposed", m), ("2026-02", 300, "proposed", m)]
     assert month_status(conn, m, "2026-01", JAN) == MonthStatus(
         "2026-01", 1700, 0, "OPEN")
     assert month_status(conn, m, "2026-02", JAN).status == "OPEN"
     confirm_allocations(conn, t, allocs)
     assert month_status(conn, m, "2026-01", JAN).status == "PAID"
     assert month_status(conn, m, "2026-02", JAN) == MonthStatus(
-        "2026-02", 1700, 1700, "PAID")
+        "2026-02", 1700, 300, "PARTIAL")
 
 
-def test_10_on_17_proposed_then_partial_then_overdue(conn):
+def test_10_on_17_auto_partial_then_overdue(conn):
     m = _anna(conn)
     t = _tx(conn, 1000, member_id=m)
     assert propose_allocations(conn, t) == [("2026-01", 1000)]
-    assert _rows(conn, t) == [("2026-01", 1000, "proposed", m)]
-    assert month_status(conn, m, "2026-01", JAN) == MonthStatus(
-        "2026-01", 1700, 0, "OPEN")
-    confirm_allocations(conn, t, [("2026-01", 1000)])
+    assert _rows(conn, t) == [("2026-01", 1000, "confirmed", m)]  # einzelne Teilzahlung
     assert month_status(conn, m, "2026-01", JAN) == MonthStatus(
         "2026-01", 1700, 1000, "PARTIAL")
     assert month_status(conn, m, "2026-01", date(2026, 2, 1)) == MonthStatus(
@@ -136,12 +133,12 @@ def test_fee_raise_keeps_old_months(conn):
         "2027-01", 2000, 0, "OPEN")
     t2 = _tx(conn, 1700, day="2027-01-04", member_id=m)
     assert propose_allocations(conn, t2) == [("2027-01", 1700)]
-    assert _rows(conn, t2)[0][2] == "proposed"  # 1700 deckt 2000 nicht
-    confirm_allocations(conn, t2, [("2027-01", 1700)])
+    assert _rows(conn, t2)[0][2] == "confirmed"  # 1700 von 2000: einzelne Teilzahlung
     assert month_status(conn, m, "2027-01", today).status == "PARTIAL"
     t3 = _tx(conn, 2000, day="2027-02-02", member_id=m)
-    # Januar fehlt noch 300, also kein exakter Treffer
-    assert propose_allocations(conn, t3) == [("2027-01", 300), ("2027-02", 1700)]
+    # Buchungsmonat zuerst (#27); Januar bleibt mit 300 offen
+    assert propose_allocations(conn, t3) == [("2027-02", 2000)]
+    assert _rows(conn, t3)[0][2] == "confirmed"
 
 
 def test_fee_raise_exact_2000_confirmed(conn):
@@ -201,8 +198,8 @@ def test_catch_up_skips_paid_months(conn):
 
 def test_proposed_rows_of_other_tx_do_not_count(conn):
     m = _anna(conn)
-    t1 = _tx(conn, 3400, member_id=m)
-    propose_allocations(conn, t1)  # bleibt proposed
+    t1 = _tx(conn, 2000, member_id=m)
+    propose_allocations(conn, t1)  # bleibt proposed (17,00 + 3,00)
     t2 = _tx(conn, 1700, day="2026-01-06", member_id=m)
     assert propose_allocations(conn, t2) == [("2026-01", 1700)]
 
@@ -230,15 +227,15 @@ def test_leftover_added_to_last_allocated_month(conn):
     assert _rows(conn, t2) == [("2026-02", 1700, "proposed", m)]
 
 
-def test_large_overpayment_capped_at_24_months(conn):
+def test_large_overpayment_capped_at_36_months(conn):
     m = _anna(conn)
     t = _tx(conn, 100000, day="2026-01-05", member_id=m)
     allocs = propose_allocations(conn, t)
     months = [mo for mo, _ in allocs]
-    assert months[0] == "2026-01" and months[-1] == "2028-01"
-    assert len(months) == 25 == len(set(months))
+    assert months[0] == "2026-01" and months[-1] == "2029-01"
+    assert len(months) == 37 == len(set(months))
     assert sum(c for _, c in allocs) == 100000
-    assert allocs[-1] == ("2028-01", 100000 - 24 * 1700)
+    assert allocs[-1] == ("2029-01", 100000 - 36 * 1700)
     assert all(isinstance(c, int) for _, c in allocs)
     assert {r[2] for r in _rows(conn, t)} == {"proposed"}
 
@@ -247,7 +244,7 @@ def test_one_cent(conn):
     m = _anna(conn)
     t = _tx(conn, 1, member_id=m)
     assert propose_allocations(conn, t) == [("2026-01", 1)]
-    assert _rows(conn, t)[0][2] == "proposed"
+    assert _rows(conn, t)[0][2] == "confirmed"  # einzelne Teilzahlung (#27)
 
 
 def test_proposals_idempotent(conn):
@@ -364,7 +361,7 @@ def test_check_start_hides_earlier_months(conn):
         "2026-05", 0, 0, "NONE")
     assert month_status(conn, m, "2026-06", today).status == "OVERDUE"
     t = _tx(conn, 1700, day="2026-07-01", member_id=m)
-    assert propose_allocations(conn, t) == [("2026-06", 1700)]
+    assert propose_allocations(conn, t) == [("2026-07", 1700)]  # Buchungsmonat zuerst
 
 
 def test_check_start_before_fee_start_uses_fee_start(conn):
@@ -443,7 +440,7 @@ def test_payment_history_mother_pays_for_child(conn):
         "allocations": [("2026-01", 1700, "confirmed")],
     }
     assert hist[0]["allocations"] == [
-        ("2026-02", 1700, "proposed"), ("2026-03", 1700, "proposed")]
+        ("2026-02", 1700, "confirmed"), ("2026-03", 1700, "confirmed")]
     assert payment_history(conn, other)[0]["tx_id"] == t3
 
 
@@ -477,7 +474,10 @@ def test_clear_undoes_auto_confirm(conn):
     assert tuple(_tx_row(conn, t)) == before
     assert conn.execute(
         "select iban, member_id from member_iban").fetchall() == learned
-    assert _rows(conn, t) == []  # kein neuer Vorschlag
+    # Fix-Runde 1 (#27): Aufheben hinterlässt einen Vorschlag des Nutzers (manual)
+    assert _rows(conn, t) == [("2026-01", 1700, "proposed", m)]
+    assert conn.execute("select distinct source from allocation where tx_id=?",
+                        (t,)).fetchall()[0][0] == "manual"
     assert not conn.in_transaction
 
 
@@ -488,7 +488,9 @@ def test_clear_then_reassign_other_member(conn):
     clear_allocations(conn, t)
     assign_member(conn, t, b)
     assert _tx_row(conn, t)["member_id"] == b
-    assert month_status(conn, b, "2026-01", JAN).status == "PAID"
+    # Vorschlag des Nutzers zieht als Vorschlag mit um (Fix-Runde 1, I4)
+    assert _rows(conn, t) == [("2026-01", 1700, "proposed", b)]
+    assert month_status(conn, b, "2026-01", JAN).status == "OPEN"
     assert month_status(conn, a, "2026-01", JAN).status == "OPEN"
 
 
@@ -507,7 +509,7 @@ def test_clear_two_proposed_rows(conn):
     t = _tx(conn, 3400, member_id=m)
     propose_allocations(conn, t)
     assert clear_allocations(conn, t) == 2
-    assert _rows(conn, t) == []
+    assert _rows(conn, t) == [("2026-01", 1700, "proposed", m), ("2026-02", 1700, "proposed", m)]
 
 
 def test_clear_without_rows_returns_0(conn):
@@ -526,16 +528,18 @@ def test_clear_unknown_tx_raises(conn):
     assert not conn.in_transaction
 
 
-def test_clear_leaves_other_tx_untouched(conn):
+def test_clear_recomputes_later_auto_payment(conn):
     m = _anna(conn)
     ta = _tx(conn, 1700, member_id=m)
     tb = _tx(conn, 3400, day="2026-01-06", member_id=m)
     propose_allocations(conn, ta)
     propose_allocations(conn, tb)
-    before = _rows(conn, tb)
+    assert _rows(conn, tb) == [
+        ("2026-02", 1700, "confirmed", m), ("2026-03", 1700, "confirmed", m)]
     assert clear_allocations(conn, ta) == 1
-    assert _rows(conn, tb) == before == [
-        ("2026-02", 1700, "proposed", m), ("2026-03", 1700, "proposed", m)]
+    # Fix-Runde 2 (#27): spätere automatische Zahlungen folgen der Entscheidung
+    assert _rows(conn, tb) == [
+        ("2026-01", 1700, "confirmed", m), ("2026-02", 1700, "confirmed", m)]
 
 
 def test_clear_failure_keeps_rows_and_no_open_transaction(conn):
@@ -584,23 +588,29 @@ def test_long_member_payments_never_confirmed_into_other_months(conn):
     assert rep["by_member"] == [{"name": "Test Person", "paid_cents": 1700}]
 
 
-def test_arrears_with_explicit_old_check_start_stay_proposed(conn):
+def test_arrears_with_explicit_old_check_start_each_payment_own_month(conn):
     set_check_start(conn, "2024-01")
     m, ids = _long_member_13_payments(conn)
     auto_assign(conn, ids)
-    statuses = {r["status"] for r in conn.execute("select status from allocation")}
-    assert statuses == {"proposed"}  # Rückstände verteilt der Nutzer
+    rows = conn.execute(
+        'select t.booking_date, a.month, a.status from allocation a'
+        ' join "transaction" t on t.id=a.tx_id').fetchall()
+    # #27: Buchungsmonat zuerst, Rückstände Jan bis Nov 2024 bleiben offen
+    assert all(r["status"] == "confirmed" and r["month"] == r["booking_date"][:7]
+               for r in rows) and len(rows) == 13
     grid = dues_grid(conn, 2025, date(2026, 1, 10))[0]["months"]
-    assert all(s.paid == 0 for s in grid)
-    assert year_summary(conn, 2024)["by_member"] == []
+    assert {s.status for s in grid} == {"PAID"}
+    old = dues_grid(conn, 2024, date(2026, 1, 10))[0]["months"]
+    assert [s.status for s in old] == ["OVERDUE"] * 11 + ["PAID"]
+    assert year_summary(conn, 2024)["by_member"] == [{"name": "Test Person", "paid_cents": 1700}]
 
 
-def test_payment_in_month_before_due_month_stays_proposed(conn):
+def test_payment_before_check_start_is_outside(conn):
     set_check_start(conn, "2026-01")
     m = _anna(conn)
     t = _tx(conn, 1700, day="2025-12-28", member_id=m)
-    assert propose_allocations(conn, t) == [("2026-01", 1700)]
-    assert _rows(conn, t) == [("2026-01", 1700, "proposed", m)]
+    assert propose_allocations(conn, t) == []  # #27: vor dem Prüfungsstart
+    assert _rows(conn, t) == []
 
 
 def test_payment_in_own_month_auto_confirms(conn):
@@ -623,15 +633,15 @@ def test_check_start_is_set(conn):
 
 def test_proposed_months_and_count(conn):
     m = _anna(conn)
-    t = _tx(conn, 3400, member_id=m)
-    propose_allocations(conn, t)  # 01 + 02 proposed
+    t = _tx(conn, 2000, member_id=m)
+    propose_allocations(conn, t)  # 01 + 02 proposed (17,00 + 3,00)
     t2 = _tx(conn, 1700, day="2027-01-05", member_id=m)
     conn.execute("insert into allocation(tx_id, member_id, month, cents, status)"
                  " values(?,?,?,?, 'confirmed')", (t2, m, "2027-01", 1700))
     assert proposed_months(conn, 2026) == {(m, "2026-01"), (m, "2026-02")}
     assert proposed_months(conn, 2027) == set()
     assert proposed_tx_count(conn) == 1
-    confirm_allocations(conn, t, [("2026-01", 1700), ("2026-02", 1700)])
+    confirm_allocations(conn, t, [("2026-01", 1700), ("2026-02", 300)])
     assert proposed_months(conn, 2026) == set() and proposed_tx_count(conn) == 0
 
 
@@ -645,6 +655,9 @@ def _sim3a(conn):
            for i in range(8, 13)]
     assert get_check_start(conn) == "2025-07"
     assert auto_assign(conn, ids) == 5
+    # Altbestand vor #27: Vorschläge statt Bestätigung (wie nach Migration 2)
+    conn.execute("update allocation set status='proposed', source='auto'")
+    conn.commit()
     return m, ids
 
 
@@ -681,8 +694,10 @@ def test_repropose_pending_leaves_confirmed_untouched_and_counts(conn):
                  (confirm_rows[0][0],))
     conn.commit()
     keep = [r for r in _all_allocs(conn) if r[1] in (ids[0], ids[1])]
+    # Fix-Runde 2 (#27): die Bestätigung hat die übrigen drei schon neu verteilt
+    assert all(r[5] == "confirmed" for r in _all_allocs(conn) if r[1] in ids[2:])
     set_check_start(conn, "2025-08")
-    assert repropose_pending(conn) == 3
+    assert repropose_pending(conn) == 0
     assert [r for r in _all_allocs(conn) if r[1] in (ids[0], ids[1])] == keep
 
 
@@ -699,11 +714,11 @@ def test_repropose_pending_atomic_on_error(conn, monkeypatch):
     before = _all_allocs(conn)
     real, calls = dues.propose_allocations, []
 
-    def flaky(c, tx_id, *, commit=True):
+    def flaky(c, tx_id, **kw):
         calls.append(tx_id)
         if len(calls) == 3:
             raise RuntimeError("Testfehler")
-        return real(c, tx_id, commit=commit)
+        return real(c, tx_id, **kw)
 
     monkeypatch.setattr(dues, "propose_allocations", flaky)
     with pytest.raises(RuntimeError):

@@ -274,8 +274,8 @@ def test_dues_marks_proposed_cells(client, db):
     from kassivo.dues import propose_allocations
     m = _erika(db)
     set_check_start(db, "2026-01")
-    tx = _tx(db, m, 3400, day="2026-02-05")
-    propose_allocations(db, tx)  # 02 + 03 als Vorschlag
+    tx = _tx(db, m, 2000, day="2026-02-05")
+    propose_allocations(db, tx)  # 02: 17,00 + 03: 3,00 als Vorschlag (#27)
     html = client.get("/dues?year=2026").text
     row = html.split("Erika Muster</a></th>")[1].split("</tr>")[0]
     cells = re.findall(r"<td[^>]*>.*?</td>", row, re.S)

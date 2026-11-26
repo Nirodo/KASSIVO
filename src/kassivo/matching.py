@@ -4,8 +4,10 @@ Eine Buchung wird nie geändert, nur member_id und category_id. Alle Prüfungen
 laufen vor dem ersten Schreiben: bei ValueError bleibt die DB unverändert.
 IBANs erscheinen nie in Fehlermeldungen.
 
-Nach jeder neuen Zuordnung legt dues.propose_allocations die Verteilung an,
-im selben Commit wie die Zuordnung (alles oder nichts).
+Nach jeder neuen Zuordnung berechnet dues die abgeleiteten Verteilungen
+(source='auto') des betroffenen Mitglieds ab dieser Zahlung neu, im selben
+Commit wie die Zuordnung (alles oder nichts). Entscheidungen des Nutzers
+(source='manual') bleiben unangetastet.
 """
 from kassivo import dues
 from kassivo.iban import normalize_iban
@@ -24,7 +26,7 @@ def _set_fee_category_if_empty(conn, tx_id: int) -> None:
 
 def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -> None:
     tx = conn.execute(
-        'select amount_cents, cp_iban, member_id from "transaction" where id=?',
+        'select amount_cents, cp_iban, member_id, booking_date from "transaction" where id=?',
         (tx_id,),
     ).fetchone()
     if tx is None:
@@ -35,8 +37,12 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
         "select 1 from member where id=?", (member_id,)
     ).fetchone():
         raise ValueError(f"unbekanntes Mitglied {member_id}")
+    # Gesperrt ist nur, was der Nutzer bestätigt hat. Eine automatische Verteilung
+    # (source='auto') hängt am alten Mitglied und wird beim Wechsel neu berechnet
+    # (#27, sonst blockiert die Vorauszahlung des Geschwisterkinds die Korrektur).
     if member_id != tx["member_id"] and conn.execute(
-        "select 1 from allocation where tx_id=? and status='confirmed'", (tx_id,)
+        "select 1 from allocation where tx_id=? and status='confirmed'"
+        " and source='manual'", (tx_id,)
     ).fetchone():
         raise ValueError(
             f"Buchung {tx_id} hat bestätigte Verteilung: Verteilung zuerst aufheben"
@@ -47,12 +53,18 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
             'update "transaction" set member_id=? where id=?', (member_id, tx_id)
         )
         changed = member_id != tx["member_id"]
+        had_manual = False
         if changed:
-            # Vorschläge gehören zum alten Mitglied und wären jetzt falsch
-            conn.execute(
-                "delete from allocation where tx_id=? and status='proposed'",
-                (tx_id,),
-            )
+            # Vorschläge und automatische Verteilungen gehören zum alten Mitglied
+            # und wären jetzt falsch (Bestätigungen des Nutzers sperren oben).
+            # Ein Vorschlag des Nutzers (Rückgängig, aufgehoben) bleibt einer.
+            had_manual = conn.execute(
+                "select 1 from allocation where tx_id=? and source='manual'", (tx_id,)
+            ).fetchone() is not None
+            conn.execute("delete from allocation where tx_id=?", (tx_id,))
+            if tx["member_id"] is not None:
+                # die anderen Zahlungen des alten Mitglieds sahen diese Zahlung
+                dues.rebuild_member(conn, tx["member_id"])
         if member_id is not None:
             _set_fee_category_if_empty(conn, tx_id)
             iban = normalize_iban(tx["cp_iban"])
@@ -74,7 +86,12 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
                     (iban, learned),
                 )
             if changed:
-                dues.propose_allocations(conn, tx_id, commit=False)
+                if had_manual:
+                    dues.rebuild_member(conn, member_id, exclude=tx_id)
+                    dues.propose_allocations(conn, tx_id, commit=False, auto=False)
+                else:
+                    # diese und die anderen abgeleiteten Zahlungen des neuen Mitglieds
+                    dues.rebuild_member(conn, member_id)
     except Exception:
         conn.rollback()
         raise
@@ -128,7 +145,7 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
         for r in conn.execute("select id, austritt from member where austritt is not null")
     }
     assigned = 0
-    # älteste zuerst, damit frühere Zahlungen frühere Monate füllen
+    touched: set[int] = set()  # Mitglieder mit neuen Zahlungen
     rows = conn.execute(
         'select id, cp_iban, booking_date from "transaction"'
         " where amount_cents > 0 and member_id is null and cp_iban is not null"
@@ -151,8 +168,11 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
                 (member_id, tx["id"]),
             )
             _set_fee_category_if_empty(conn, tx["id"])
-            dues.propose_allocations(conn, tx["id"], commit=False)
+            touched.add(member_id)
             assigned += 1
+        # danach je Mitglied einmal chronologisch verteilen
+        for member_id in sorted(touched):
+            dues.rebuild_member(conn, member_id)
     except Exception:
         conn.rollback()
         raise

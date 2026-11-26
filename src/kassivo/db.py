@@ -108,9 +108,21 @@ def _relax_member_iban(conn: sqlite3.Connection) -> None:
 # Schritt, bleiben frühere Schritte erhalten, die Version zeigt den letzten
 # erfolgreichen Schritt.
 
+def _migrate_to_2(conn: sqlite3.Connection) -> None:
+    """Schema 2 (#27): allocation.source, wer eine Verteilung gemacht hat.
+
+    'auto' = KASSIVO (Vorschlag oder automatisch bestätigt), 'manual' = Nutzer.
+    Bestehende Vorschläge stammen vom System ('auto'). Bei bestätigten Zeilen ist nicht
+    bekannt, wer entschieden hat: sie bleiben 'manual' und gelten nicht als automatisch.
+    """
+    conn.execute("alter table allocation add column source text not null default 'manual'"
+                 " check (source in ('auto','manual'))")
+    conn.execute("update allocation set source='auto' where status='proposed'")
+
+
 BASELINE_VERSION = 1
-SCHEMA_VERSION = 1
-MIGRATIONS: dict = {}
+SCHEMA_VERSION = 2
+MIGRATIONS: dict = {2: _migrate_to_2}
 
 
 class DatabaseOpenError(RuntimeError):

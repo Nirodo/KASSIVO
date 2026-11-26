@@ -45,13 +45,13 @@
 <h2>Gut zu wissen</h2>
 <ul>
   <li><strong>Eintritt und „Zahlt ab Monat“</strong> lassen sich nach dem Anlegen in der Oberfläche nicht mehr ändern. Prüfen Sie die Werte beim Anlegen.</li>
-  <li><strong>Austritt:</strong> Der Austrittsmonat ist noch voll zu zahlen. Das Austrittsdatum können Sie später ändern, aber nicht leeren. Bereits importierte Zahlungen und Verteilungen bleiben erhalten.</li>
+  <li><strong>Austritt:</strong> Der Austrittsmonat ist noch voll zu zahlen. Das Austrittsdatum können Sie später ändern, aber nicht leeren. Bereits importierte Zahlungen bleiben erhalten. Automatische Verteilungen verteilt KASSIVO neu (eine Zahlung für einen Monat nach dem Austritt wird ein Vorschlag zur Prüfung), von Ihnen bestätigte Verteilungen bleiben.</li>
   <li><strong>IBAN-Feld:</strong> Das Feld nimmt die Bankverbindung, von der das Mitglied zahlt. KASSIVO entfernt Leerzeichen und macht Großbuchstaben daraus. Es prüft nicht, ob die IBAN gültig ist. Mit dieser IBAN ordnet KASSIVO Zahlungen beim Import automatisch zu (siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>). Tragen Sie dieselbe IBAN bei zwei Mitgliedern ein, gilt sie als mehrdeutig und wird nicht automatisch zugeordnet.</li>
   <li><strong>Maskierung:</strong> In Listen zeigt KASSIVO IBANs gekürzt, zum Beispiel <code>XX00…0001</code>. Im Formular „Bearbeiten“ steht die volle IBAN.</li>
   <li>Die Spalte „Art“ in der Liste zeigt die Art, die im laufenden Monat gilt. Ein Strich bedeutet, dass noch keine Art gilt, etwa weil das Mitglied erst später zahlt.</li>
 </ul>
 <div class="callout callout-warn">
-  <p><strong>Achtung:</strong> Eine Änderung der Art wirkt ab dem gewählten Monat. Wählen Sie einen Monat in der Vergangenheit, rechnet KASSIVO die <a href="/wiki/begriffe#soll">Soll</a>-Beträge dieser Monate neu. Bereits bestätigte Zahlungen bleiben bestehen, die Monate können dann „Teilweise“, „Offen“ oder „Überfällig“ zeigen.</p>
+  <p><strong>Achtung:</strong> Eine Änderung der Art wirkt ab dem gewählten Monat. Wählen Sie einen Monat in der Vergangenheit, rechnet KASSIVO die <a href="/wiki/begriffe#soll">Soll</a>-Beträge dieser Monate neu. Automatisch verteilte Zahlungen verteilt KASSIVO dabei neu. Von Ihnen bestätigte Zahlungen bleiben bestehen, die Monate können dann „Teilweise“, „Offen“ oder „Überfällig“ zeigen.</p>
 </div>
 
 <h2>Siehe auch</h2>
