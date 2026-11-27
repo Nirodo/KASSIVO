@@ -4,8 +4,8 @@
 <p>Diese Seite zeigt den Weg vom ersten Start bis zum fertigen Beitragsüberblick. Wer die Schritte in dieser Reihenfolge geht, vermeidet die häufigsten Fehler.</p>
 
 <h2>Der erste Start</h2>
-<p>Unter Windows starten Sie KASSIVO per Doppelklick auf <code>start.bat</code> im Projektordner: Die Datei startet den Server und öffnet den Browser. Von Hand geht es im Projektordner mit <code>python -m kassivo</code>. Die Konsole zeigt zwei Zeilen: <code>Datenbank: …</code> und <code>Sicherungen: …</code> mit den vollständigen Pfaden. Liegt die Datenbank in einem Cloud-Ordner (OneDrive, Dropbox, Google Drive, iCloud), steht dort zusätzlich eine Warnung. Danach öffnen Sie im Browser <code>http://127.0.0.1:8000</code>. Oben stehen die fünf Bereiche Übersicht, Mitglieder, Zahlungen, Auswertung und Einstellungen. Die Adresse ohne Pfad leitet vorerst auf das Beitragsraster (<a href="/dues">/dues</a>, Bereich „Auswertung“) weiter.</p>
-<p>Beim ersten Start ist KASSIVO leer. Die Beitragsübersicht meldet „Keine Mitglieder vorhanden.“ KASSIVO legt die Datenbank beim ersten Aufruf selbst an und bringt Folgendes mit:</p>
+<p>Unter Windows starten Sie KASSIVO per Doppelklick auf <code>start.bat</code> im Projektordner: Die Datei startet den Server und öffnet den Browser. Von Hand geht es im Projektordner mit <code>python -m kassivo</code>. Die Konsole zeigt zwei Zeilen: <code>Datenbank: …</code> und <code>Sicherungen: …</code> mit den vollständigen Pfaden. Liegt die Datenbank in einem Cloud-Ordner (OneDrive, Dropbox, Google Drive, iCloud), steht dort zusätzlich eine Warnung. Danach öffnen Sie im Browser <code>http://127.0.0.1:8000</code>. Oben stehen die fünf Bereiche Übersicht, Mitglieder, Zahlungen, Auswertung und Einstellungen. Die Adresse ohne Pfad zeigt die Startseite im Bereich <a href="/">Übersicht</a>.</p>
+<p>Beim ersten Start ist KASSIVO leer. Die Übersicht meldet „Noch keine Daten“ und nennt die ersten Schritte. KASSIVO legt die Datenbank beim ersten Aufruf selbst an und bringt Folgendes mit:</p>
 <ul>
   <li>zwei Mitgliedsarten: <strong>Aktiv</strong> mit 17,00 € und <strong>Passiv</strong> mit 10,00 € pro Monat,</li>
   <li>drei Kategorien: <strong>Beiträge</strong> (Einnahmen), <strong>Hauptverein</strong> (Ausgaben) und <strong>Sonstiges</strong> (beides).</li>
@@ -19,13 +19,23 @@
 
 <h2>So geht's</h2>
 <ol class="steps">
-  <li><strong>Prüfungsstart festlegen.</strong> Öffnen Sie <a href="/settings/fees">Einstellungen</a> (/settings/fees), tragen Sie unter „Prüfungsstart (Monat)“ den ersten Monat ein, der geprüft werden soll (Format JJJJ-MM), und wählen Sie „Prüfungsstart speichern“. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Wählen Sie den ersten vollen Monat, den Ihr Kontoexport abdeckt. Mehr dazu unter <a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>.</li>
+  <li><strong>Prüfungsstart festlegen.</strong> Öffnen Sie <a href="/settings/fees">Einstellungen</a> (/settings/fees), tragen Sie unter „Prüfungsstart (Monat)“ den ersten Monat ein, der geprüft werden soll (Format JJJJ-MM), und wählen Sie „Prüfungsstart speichern“. Solange er fehlt, zeigen Übersicht, Beitragsübersicht und Import einen Hinweis. Wählen Sie den ersten vollen Monat, den Ihr Kontoexport abdeckt. Mehr dazu unter <a href="/wiki/beitraege">Beiträge und Prüfungsstart</a>.</li>
   <li><strong>Mitglieder und Beiträge anlegen.</strong> Unter <a href="/members">Mitglieder</a> wählen Sie „Mitglied anlegen“. Prüfen Sie unter <a href="/settings/fees">Einstellungen</a>, ob die Beiträge stimmen, und ändern Sie sie bei Bedarf mit „Beitrag speichern“. Siehe <a href="/wiki/mitglieder">Mitglieder</a>.</li>
   <li><strong>Kontoexport importieren.</strong> Erzeugen Sie im Online-Banking den Export „XML CAMT V8, gebuchte Umsätze“ und laden Sie ihn unter <a href="/import">Import</a> mit „Importieren“ hoch. Siehe <a href="/wiki/import">Kontoexport importieren</a>.</li>
   <li><strong>„Unklar“ zuordnen.</strong> Zahlungen, die KASSIVO keinem Mitglied sicher zuordnen konnte, stehen unter <a href="/unmatched">Unklar</a>. Wählen Sie das Mitglied, lassen Sie „Absender merken“ angehakt und wählen Sie „Zuordnen“. Siehe <a href="/wiki/zuordnung">Zahlungen zuordnen</a>.</li>
   <li><strong>Ausnahmen prüfen.</strong> Eindeutige Zahlungen verteilt KASSIVO selbst auf die Beitragsmonate. Was es so verteilt hat, sehen Sie unter <a href="/auto">Automatisch verteilt</a>. Nur echte Ausnahmen (zum Beispiel 20,00 € bei 17,00 € Beitrag) stehen unter „<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>“, mit dem Grund. Öffnen Sie dort je Zahlung „Verteilung“, prüfen Sie die Monate und wählen Sie „Verteilung bestätigen“. Siehe <a href="/wiki/verteilung">Verteilung auf Beitragsmonate</a>.</li>
   <li><strong>Ergebnis ansehen.</strong> <a href="/dues">Beiträge</a> zeigt, wer bezahlt hat, <a href="/forecast">Prognose</a> was noch kommt, <a href="/reports">Reports</a> das Jahr in Zahlen und Diagrammen.</li>
 </ol>
+
+<h2>Die Startseite „Heute zu tun“</h2>
+<p>Die <a href="/">Übersicht</a> ist Ihr Ausgangspunkt. Sie ist nur zum Lesen: Das Öffnen ändert nichts. Oben steht der Knopf „Kontoauszug importieren“. Jede Zeile mit einer Zahl führt auf die Seite, auf der Sie diese Einträge sehen:</p>
+<ul>
+  <li><strong>Unklare Zahlungen:</strong> die Zahlungseingänge unter <a href="/unmatched">Unklar</a>, über alle Jahre.</li>
+  <li><strong>Offene Vorschläge:</strong> Zahlungen, die auf Ihre Prüfung warten (<a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>), über alle Jahre.</li>
+  <li><strong>Überfällige Monatsbeiträge:</strong> die Anzahl der Zellen „Überfällig“ im <a href="/dues">Beitragsraster</a> eines Jahres. Gezählt werden Monatsbeiträge, die Zahl der betroffenen Mitglieder steht darunter. Das laufende Jahr steht immer da. Frühere Jahre stehen nur da, wenn ein Prüfungsstart gespeichert ist und dort etwas überfällig ist.</li>
+  <li><strong>Automatisch verteilt</strong> (unter „Zur Kontrolle“): alle Zahlungen, die KASSIVO selbst verteilt hat (<a href="/auto">Automatisch verteilt</a>, bei vielen Zahlungen auf mehreren Seiten).</li>
+</ul>
+<p>Für den laufenden Monat sehen Sie, wie viele Mitglieder mit fälligem Beitrag bezahlt haben, wie viele offen sind und wie viele teilweise gezahlt haben. „Bezahlt … von … erwartet“ entspricht der Fußzeile des Beitragsrasters. „Einnahmen und Ausgaben“ zeigt dieselben Zahlen wie der <a href="/reports">Jahresreport</a>. Der Saldo ist Einnahmen minus Ausgaben der Buchungen des Jahres, nicht der Kontostand.</p>
 
 <h2>Beispiele</h2>
 <div class="callout callout-example">
