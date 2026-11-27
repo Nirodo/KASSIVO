@@ -398,22 +398,22 @@ def test_assign_route_reports_other_payments(client, db):
     assert _rows(db, t2) == [("2026-01", 1700, "confirmed", "auto")]
 
 
-def test_import_redistribute_error_shows_note(client, db, monkeypatch):
-    def boom(conn):
+def test_import_redistribute_error_imports_nothing(client, db, monkeypatch):
+    """#7: Die Neuverteilung gehört zum Import. Scheitert sie, bleibt nichts gespeichert."""
+    def boom(conn, **kw):
         raise RuntimeError("Testfehler")
 
-    monkeypatch.setattr(dues, "redistribute_all", boom)
     data = make_zip({"a.xml": make_camt(IBAN, 10000, [{"amount": 1700, "ref": "Z1"}],
                                         "2026-03-02")})
     r = client.post("/import", files={"file": ("x.zip", data, "application/octet-stream")})
     assert r.status_code == 200
+    monkeypatch.setattr(dues, "redistribute_all", boom)
     data = make_zip({"a.xml": make_camt(IBAN, 10000, [{"amount": 1700, "ref": "Z2"}],
                                         "2026-01-02")})
     r = client.post("/import", files={"file": ("x.zip", data, "application/octet-stream")})
-    assert r.status_code == 200
-    assert ("Zahlungen konnten nicht neu verteilt werden: bitte Prüfungsstart erneut speichern."
-            in _text(r.text))
-    assert db.execute('select count(*) from "transaction"').fetchone()[0] == 2
+    assert r.status_code == 500
+    assert "Es wurde nichts importiert" in _text(r.text)
+    assert db.execute('select count(*) from "transaction"').fetchone()[0] == 1
 
 
 @pytest.mark.parametrize("query", ["note=recomputed&n=%3Cb%3E", "note=undone_r&n=1&m=x",

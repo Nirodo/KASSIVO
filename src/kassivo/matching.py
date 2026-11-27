@@ -135,7 +135,24 @@ def iban_is_ambiguous(conn, iban: str | None) -> bool:
     return bool(iban) and iban in lookup and lookup[iban] is None
 
 
-def auto_assign(conn, tx_ids: list[int]) -> int:
+def auto_assign(conn, tx_ids: list[int], *, commit: bool = True) -> int:
+    """Ordnet Eingänge über gelernte und Stamm-IBANs zu.
+
+    commit=False: läuft in der Transaktion des Aufrufers (Import, #7), ohne
+    commit und ohne rollback; den Fehlerfall behandelt der Aufrufer.
+    """
+    if not commit:
+        return _auto_assign(conn, tx_ids)
+    try:
+        assigned = _auto_assign(conn, tx_ids)
+    except Exception:
+        conn.rollback()
+        raise
+    conn.commit()
+    return assigned
+
+
+def _auto_assign(conn, tx_ids: list[int]) -> int:
     wanted = set(tx_ids)
     if not wanted:
         return 0
@@ -152,31 +169,26 @@ def auto_assign(conn, tx_ids: list[int]) -> int:
         " and "+_NEEDS_MEMBER+
         " order by booking_date, id"
     ).fetchall()
-    try:
-        for tx in rows:
-            if tx["id"] not in wanted:
-                continue
-            member_id = lookup.get(normalize_iban(tx["cp_iban"]))
-            if member_id is None:  # unbekannt oder mehrdeutig
-                continue
-            left = austritt.get(member_id)
-            if left and tx["booking_date"] > left:
-                # ausgetreten: bleibt in "Unklar", kein Rückgriff auf member.iban
-                continue
-            conn.execute(
-                'update "transaction" set member_id=? where id=?',
-                (member_id, tx["id"]),
-            )
-            _set_fee_category_if_empty(conn, tx["id"])
-            touched.add(member_id)
-            assigned += 1
-        # danach je Mitglied einmal chronologisch verteilen
-        for member_id in sorted(touched):
-            dues.rebuild_member(conn, member_id)
-    except Exception:
-        conn.rollback()
-        raise
-    conn.commit()
+    for tx in rows:
+        if tx["id"] not in wanted:
+            continue
+        member_id = lookup.get(normalize_iban(tx["cp_iban"]))
+        if member_id is None:  # unbekannt oder mehrdeutig
+            continue
+        left = austritt.get(member_id)
+        if left and tx["booking_date"] > left:
+            # ausgetreten: bleibt in "Unklar", kein Rückgriff auf member.iban
+            continue
+        conn.execute(
+            'update "transaction" set member_id=? where id=?',
+            (member_id, tx["id"]),
+        )
+        _set_fee_category_if_empty(conn, tx["id"])
+        touched.add(member_id)
+        assigned += 1
+    # danach je Mitglied einmal chronologisch verteilen
+    for member_id in sorted(touched):
+        dues.rebuild_member(conn, member_id)
     return assigned
 
 
