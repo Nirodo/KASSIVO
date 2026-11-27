@@ -184,7 +184,10 @@ LABELS = {
                 "Keine Einnahmen in diesem Jahr.", "Keine Ausgaben in diesem Jahr.",
                 "Die Beiträge je Mitglied zählen nach Beitragsmonat, die Einnahmen oben nach "
                 "Buchungsdatum."],
-    "backup": ["Sicherung erstellen", "Sicherung erstellt:", "Vorhandene Sicherungen"],
+    "backup": ["Sicherung erstellen", "Sicherung erstellt:", "Vorhandene Sicherungen",
+               "Für anderen PC exportieren", "Sicherung einspielen", "Datei prüfen",
+               "Wiederherstellen", "Sicherung eingespielt",
+               "Ich bestätige, dass die aktuelle Datenbank ersetzt wird"],
     "start": ["Prüfungsstart speichern", "Mitglied anlegen", "Beitrag speichern", "Importieren",
               "Absender merken", "Zuordnen", "Offene Vorschläge", "Verteilung bestätigen",
               "Prüfungsstart (Monat)"],

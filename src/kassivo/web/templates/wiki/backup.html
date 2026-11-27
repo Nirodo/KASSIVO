@@ -1,7 +1,7 @@
 {% extends "wiki/_wiki_base.html" %}
 {% block body %}
 <h2>Wofür ist das?</h2>
-<p>Alle Daten von KASSIVO stehen in einer einzigen Datenbankdatei. Eine Sicherung ist eine vollständige Kopie davon. Sie brauchen sie, wenn eine Änderung schiefgeht, der Rechner ausfällt oder Sie umziehen.</p>
+<p>Alle Daten von KASSIVO stehen in einer einzigen Datenbankdatei. Eine Sicherung ist eine vollständige Kopie davon. Sie brauchen sie, wenn eine Änderung schiefgeht, der Rechner ausfällt, Sie umziehen oder abwechselnd an zwei PCs arbeiten (zum Beispiel Arbeits-PC und Heim-PC).</p>
 
 <h2>So geht's</h2>
 <h3>Sicherung erstellen</h3>
@@ -11,8 +11,22 @@
   <li>KASSIVO meldet „Sicherung erstellt:“ mit dem Dateinamen. Die Datei liegt im Ordner <code>backups</code> neben der Datenbank (<code>&lt;DB-Ordner&gt;/backups</code>). Den genauen Pfad zeigt KASSIVO beim Start in der Zeile „Sicherungen:“.</li>
   <li>Die Liste „Vorhandene Sicherungen“ zeigt Datei, Zeitpunkt und Größe.</li>
 </ol>
+<h3>Für anderen PC exportieren</h3>
+<ol class="steps">
+  <li>Wählen Sie auf <a href="/backup">Backup</a> „Für anderen PC exportieren“.</li>
+  <li>Der Browser lädt eine Datei <code>kassivo-backup-JJJJMMTT-HHMMSS.kassivo</code> herunter. Sie enthält die ganze Datenbank und eine Beschreibung (Programmversion, Schema-Version, Erstellzeit, Prüfsumme).</li>
+  <li>Bringen Sie die Datei auf den anderen PC, am besten per USB-Stick. Löschen Sie sie danach.</li>
+</ol>
+<h3>Sicherung einspielen</h3>
+<ol class="steps">
+  <li>Wählen Sie auf <a href="/backup">Backup</a> unter „Sicherung einspielen“ die <code>.kassivo</code>-Datei und dann „Datei prüfen“. Für eine Sicherung aus der Liste „Vorhandene Sicherungen“ wählen Sie stattdessen „Wiederherstellen“ in ihrer Zeile.</li>
+  <li>KASSIVO prüft die Datei: Archiv, Prüfsumme, Unversehrtheit der Datenbank und Schema-Version. Ist etwas nicht in Ordnung, meldet KASSIVO den Grund und spielt nichts ein.</li>
+  <li>Die Vorschau zeigt die Eckdaten der Sicherung (Erstellt, Programmversion, Schema, Mitglieder, Buchungen, letzte Buchung) neben denen der aktuellen Datenbank. Prüfen Sie, dass der eingespielte Stand der neuere ist.</li>
+  <li>Setzen Sie den Haken „Ich bestätige, dass die aktuelle Datenbank ersetzt wird“ und wählen Sie „Sicherung einspielen“.</li>
+  <li>KASSIVO legt zuerst eine Sicherheitskopie der aktuellen Datenbank im Ordner <code>backups</code> an, ersetzt dann die Datenbank in einem Schritt und meldet „Sicherung eingespielt“ mit dem Namen der Sicherheitskopie. Ein Neustart ist nicht nötig.</li>
+</ol>
 <h3>Wiederherstellung (von Hand)</h3>
-<p>In KASSIVO gibt es keinen Knopf zum Zurückspielen. Gehen Sie so vor:</p>
+<p>Nur nötig, wenn KASSIVO nicht mehr startet. Gehen Sie so vor:</p>
 <ol class="steps">
   <li>Beenden Sie KASSIVO.</li>
   <li>Kopieren oder benennen Sie die aktuelle <code>kassivo.db</code> im DB-Ordner um, damit sie nicht verloren geht.</li>
@@ -33,11 +47,14 @@
   <li><strong>Aufräumen:</strong> KASSIVO löscht nie von selbst. Auf der Seite Backup können Sie unter „Alte Sicherungen aufräumen“ die neuesten Sicherungen (1 bis 1000, voreingestellt 10) behalten und alle älteren löschen. Dafür setzen Sie den Haken „Ich bestätige, dass ältere Sicherungen gelöscht werden“. Die neueste Sicherung bleibt immer erhalten. Das Löschen ist nicht rückgängig zu machen. Es betrifft nur Dateien mit dem Namen einer Sicherung (<code>kassivo-…db</code>), andere Dateien im Ordner bleiben unberührt. Die Liste zeigt die 50 neuesten. Die Reihenfolge richtet sich nach dem Zeitstempel im Dateinamen (Ortszeit). Bei der Umstellung auf die Winterzeit kann ein älter wirkender Name der neuere sein. Behalten Sie dann einige Sicherungen mehr.</li>
   <li><strong>Dauerhaft gespeichert:</strong> KASSIVO schreibt die Sicherung erst vollständig auf den Datenträger und gibt sie dann unter ihrem Namen frei. Ein Stromausfall mitten im Sichern hinterlässt keine halbe Sicherung unter einem gültigen Namen. Es kann aber eine leere Datei mit gültigem Namen oder eine Datei <code>.kassivo-…tmp</code> übrig bleiben. Leere Dateien werden nie aufgelistet oder mitgezählt, die <code>.tmp</code>-Reste können Sie von Hand löschen. Nach dem Erstellen lädt die Seite neu, ein Neuladen im Browser legt keine zweite Sicherung an.</li>
   <li><strong>Stand der Daten:</strong> Eine wiederhergestellte Sicherung enthält nur, was bis zu ihrer Erstellung eingetragen war. Spätere Änderungen und Importe fehlen. Importieren Sie die Kontoexporte erneut. Bereits vorhandene Buchungen erkennt KASSIVO als Duplikate.</li>
-  <li><strong>Personenbezogene Daten:</strong> Eine Sicherung enthält Namen, Adressen und IBANs. Legen Sie sie nicht in einen Cloud-Ordner (OneDrive, Dropbox, Google Drive, iCloud) und geben Sie sie nicht weiter. Beim Start warnt KASSIVO, wenn die Datenbank (und damit der Sicherungsordner) in einem solchen Ordner liegt.</li>
+  <li><strong>Versionen:</strong> Eine Sicherung aus einer älteren KASSIVO-Version stellt KASSIVO beim Einspielen auf das aktuelle Datenbankformat um und sichert den eingespielten Stand vorher. Eine Sicherung aus einer neueren Version lehnt KASSIVO ab. Aktualisieren Sie dann zuerst KASSIVO auf diesem PC.</li>
+  <li><strong>Kein Zusammenführen:</strong> Haben Sie auf beiden PCs seit dem letzten Abgleich gearbeitet, ersetzt der eingespielte Stand den aktuellen vollständig. Die Änderungen des anderen Stands stecken dann nur noch in der Sicherheitskopie.</li>
+  <li><strong>Geöffnete Datenbank:</strong> Hat ein anderes Programm oder ein zweites KASSIVO-Fenster die Datenbank geöffnet, ersetzt KASSIVO nichts und meldet das. Die geprüfte Datei liegt bis zum Einspielen oder zur nächsten Prüfung im Ordner <code>restore</code> neben der Datenbank.</li>
+  <li><strong>Personenbezogene Daten:</strong> Eine Sicherung enthält Namen, Adressen und IBANs. Auch die <code>.kassivo</code>-Datei ist nicht verschlüsselt. Legen Sie sie nicht in einen Cloud-Ordner (OneDrive, Dropbox, Google Drive, iCloud) und geben Sie sie nicht weiter. Beim Start warnt KASSIVO, wenn die Datenbank (und damit der Sicherungsordner) in einem solchen Ordner liegt.</li>
   <li>Bewahren Sie wichtige Sicherungen zusätzlich auf einem anderen Datenträger auf, denn der Sicherungsordner liegt auf demselben Rechner wie die Datenbank.</li>
 </ul>
 <div class="callout callout-warn">
-  <p><strong>Achtung:</strong> Kopieren Sie niemals eine Sicherung über die Datenbank, solange KASSIVO läuft, und ersetzen Sie <code>kassivo.db</code> nur nach Schritt 2 (aktuelle Datei zuerst wegkopieren).</p>
+  <p><strong>Achtung:</strong> Spielen Sie Sicherungen über „Sicherung einspielen“ ein. Kopieren Sie niemals von Hand eine Sicherung über die Datenbank, solange KASSIVO läuft, und ersetzen Sie <code>kassivo.db</code> von Hand nur nach Schritt 2 (aktuelle Datei zuerst wegkopieren).</p>
 </div>
 
 <h2>Siehe auch</h2>
