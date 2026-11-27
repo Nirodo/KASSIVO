@@ -34,7 +34,7 @@ from urllib.parse import urlsplit
 
 # Alles, was apply_update braucht, wird hier oben importiert: Während des Austauschs liegt
 # der alte Programmordner schon woanders, späte Importe kämen aus dem neuen Stand.
-from kassivo import __version__, backup, settings
+from kassivo import __version__, backup, settings, update_recover
 
 REPO = "Nirodo/KASSIVO"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -353,14 +353,16 @@ def check_archive(fileobj, version: str) -> list[str]:
     return sorted(tops)
 
 
-def extract_archive(source, version: str, dest: Path) -> Path:
+def extract_archive(source, version: str, dest: Path, *, strip: bool = False) -> Path:
     """Entpackt in einen neuen, leeren Ordner. Zählt die echten Bytes mit.
 
     source: Pfad oder offene Datei. Mit offener Datei prüft und entpackt dieselbe Datei, die
-    vorher gehasht wurde (kein Austausch zwischen Prüfung und Entpacken)."""
+    vorher gehasht wurde (kein Austausch zwischen Prüfung und Entpacken).
+    strip: ohne den Versionsordner kassivo-X.Y.Z/ entpacken (kürzere Pfade, MAX_PATH)."""
     if isinstance(source, (str, os.PathLike)):
         with open(source, "rb") as f:
-            return extract_archive(f, version, dest)
+            return extract_archive(f, version, dest, strip=strip)
+    prefix = f"kassivo-{version}/"
     dest = Path(dest)
     source.seek(0)
     check_archive(source, version)
@@ -375,7 +377,12 @@ def extract_archive(source, version: str, dest: Path) -> Path:
     try:
         with zipfile.ZipFile(zip_path) as z:
             for info in z.infolist():
-                target = dest / info.filename
+                name = info.filename
+                if strip:
+                    name = name[len(prefix):] if name.startswith(prefix) else name
+                    if not name:
+                        continue
+                target = dest / name
                 resolved = target.resolve()
                 if resolved != root and root not in resolved.parents:
                     raise _bad("Pfad außerhalb des Zielordners")
@@ -399,10 +406,17 @@ def extract_archive(source, version: str, dest: Path) -> Path:
                 exc, UpdateError):
             raise _bad("Archiv beschädigt") from None
         raise
-    return dest / f"kassivo-{version}"
+    return dest if strip else dest / f"kassivo-{version}"
 
 
 # --- Installieren (aus update.bat, KASSIVO ist beendet) ------------------------------------
+#
+# Austausch Datei für Datei (nicht ordnerweise): Dateien, die nicht zum Paket gehören (eigene
+# Notizen, .claude/settings.local.json, docs/design/referenz), bleiben, wo sie sind. Entfernt
+# werden nur Dateien, die im vorigen Paket standen (.update/dateien.txt) und im neuen fehlen.
+# Vor dem ersten Verschieben steht der Plan im Journal (update_recover). Bricht der Lauf hart
+# ab, setzt update.bat beim nächsten Start mit .update/wiederherstellen.py zurück, auch wenn
+# src/kassivo dann nicht importierbar ist. Kurze Ordnernamen (a-, n-, f-) wegen MAX_PATH.
 
 E_RUNNING = ("KASSIVO läuft noch (Port 8000 ist belegt). Bitte KASSIVO beenden"
              " (Fenster schließen) und update.bat erneut starten.")
@@ -410,10 +424,18 @@ E_NOT_EDITABLE = ("KASSIVO ist nicht als editierbare Installation aus diesem Pro
                   " installiert. Das Update braucht die Installation mit"
                   " „pip install -e .“ (siehe README). Bitte von Hand aktualisieren.")
 E_SUM_FILE = "Die Prüfsumme des Update-Pakets fehlt oder stimmt nicht. Bitte erneut herunterladen."
-E_INSIDE = ("Datenbank, Sicherungen oder Update-Paket liegen in einem Programmordner, der"
-            " ausgetauscht würde. Update abgebrochen, es wurde nichts geändert.")
+E_INSIDE = ("Datenbank, Sicherungen oder Update-Paket liegen im Projektordner. Update"
+            " abgebrochen, es wurde nichts geändert.")
+E_PYPROJECT = "pyproject.toml ist nicht lesbar. Update abgebrochen, es wurde nichts geändert."
+E_UNFINISHED = ("Ein früheres Update war unvollständig. Der alte Stand wurde"
+                " zurückgesetzt. Bitte update.bat erneut starten.")
+E_CLOUD_HINT = ("Hinweis: Der Projektordner liegt in einem Cloud-Ordner. Bitte die"
+                " OneDrive-Synchronisation pausieren, bis das Update fertig ist; gesperrte"
+                " Dateien versucht das Update mehrmals.")
 SMOKE = "import kassivo, kassivo.web.app; print(kassivo.__version__)"
+MANIFEST = "dateien.txt"
 _DEPS_RE = re.compile(r"^dependencies\s*=\s*\[(.*?)\]", re.S | re.M)
+WORK = update_recover.WORK
 
 
 @dataclass(frozen=True)
@@ -434,13 +456,14 @@ def _sidecar(zip_path: Path) -> Path:
     return zip_path.with_name(zip_path.name + ".sha256")
 
 
-def _verify_sidecar(zip_path: Path) -> None:
+def _verify_handle(f, zip_path: Path) -> None:
+    """Prüfsumme der offenen Datei gegen die .sha256-Datei (dieselbe Datei wird entpackt)."""
     try:
         expected = _sidecar(zip_path).read_text("ascii").strip().lower()
+        f.seek(0)
         digest = hashlib.sha256()
-        with open(zip_path, "rb") as f:
-            while chunk := f.read(1024 * 1024):
-                digest.update(chunk)
+        while chunk := f.read(1024 * 1024):
+            digest.update(chunk)
     except (OSError, UnicodeDecodeError):
         raise UpdateError(E_SUM_FILE) from None
     if not re.fullmatch(r"[0-9a-f]{64}", expected) or not hmac.compare_digest(
@@ -462,7 +485,11 @@ def find_package(update_dir, current: str) -> Path | None:
 
 
 def _dependencies(pyproject: Path) -> list[str]:
-    m = _DEPS_RE.search(pyproject.read_text("utf-8"))
+    try:
+        text = pyproject.read_text("utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise UpdateError(E_PYPROJECT) from None
+    m = _DEPS_RE.search(text)
     return sorted(re.findall(r'"([^"]+)"', m[1])) if m else []
 
 
@@ -488,7 +515,7 @@ def _backup_database(db_path: Path) -> str | None:
 
 
 class _Log:
-    """Protokoll ohne personenbezogene Daten: nur Zeit, Versionen und Schritte."""
+    """Protokoll ohne personenbezogene Daten und ohne volle Pfade: Zeit, Versionen, Schritte."""
 
     def __init__(self, path: Path, out):
         self.path, self.out = path, out
@@ -502,26 +529,52 @@ class _Log:
             pass  # ein fehlendes Protokoll darf das Update nicht stoppen
 
 
-def _rollback(project: Path, old_dir: Path, failed_dir: Path, moved: list) -> None:
-    """moved: [name, alter Eintrag verschoben?, neuer Eintrag an seinem Platz?] in Reihenfolge."""
-    for name, had_old, new_in_place in reversed(moved):
-        if new_in_place:
-            failed_dir.mkdir(parents=True, exist_ok=True)
-            os.replace(project / name, failed_dir / name)
-        if had_old:
-            os.replace(old_dir / name, project / name)
-
-
-def _check_target(project: Path, package_dir: Path, db_path: Path, zip_path: Path,
-                  tops: list[str]) -> None:
+def preflight(project, zip_path, db_path, *, current: str = __version__,
+              port_in_use=port_in_use, package_dir=None) -> str:
+    """Alle Prüfungen ohne Änderung (vor der j/n-Frage). Gibt die Zielversion zurück."""
+    project, zip_path, db_path = Path(project), Path(zip_path), Path(db_path)
+    m = _ZIP_NAME_RE.fullmatch(zip_path.name)
+    if not m or not is_newer(m[1], current):
+        raise UpdateError(f"Das Paket ist nicht neuer als die installierte Version {current}.")
+    package_dir = Path(package_dir) if package_dir is not None else Path(__file__).parent
     if not (project / "pyproject.toml").is_file() or not _inside(
             package_dir, project / "src" / "kassivo") or not _inside(
             project / "src" / "kassivo", package_dir):
         raise UpdateError(E_NOT_EDITABLE)
-    for name in tops:
-        for local in (db_path, zip_path, settings.backup_dir(db_path)):
-            if _inside(local, project / name):
-                raise UpdateError(E_INSIDE)
+    if port_in_use():
+        raise UpdateError(E_RUNNING)
+    for local in (db_path, zip_path, settings.backup_dir(db_path)):
+        if _inside(local, project):
+            raise UpdateError(E_INSIDE)
+    with open(zip_path, "rb") as f:
+        _verify_handle(f, zip_path)
+        check_archive(f, m[1])
+    _dependencies(project / "pyproject.toml")
+    return m[1]
+
+
+def _package_files(root: Path) -> list[str]:
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+
+
+def _old_manifest(work: Path) -> set[str]:
+    try:
+        return {ln for ln in (work / MANIFEST).read_text("utf-8").splitlines() if ln}
+    except (OSError, UnicodeDecodeError):
+        return set()
+
+
+def _freeze(run, python, project, work: Path, tag: str) -> str:
+    """pip-Stand vor dem Update sichern (ohne kassivo selbst), für den Rückweg."""
+    r = run([python, "-m", "pip", "freeze"], cwd=project, capture_output=True, text=True,
+            timeout=120)
+    if r.returncode != 0:
+        raise UpdateError("pip freeze ist fehlgeschlagen. Update abgebrochen.")
+    keep = [ln for ln in r.stdout.splitlines()
+            if ln.strip() and not ln.startswith("-e") and not ln.lower().startswith("kassivo")]
+    name = f"pip-{tag}.txt"
+    (work / name).write_text("\n".join(keep) + "\n", "utf-8")
+    return name
 
 
 def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
@@ -529,44 +582,47 @@ def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
                  package_dir=None, now: datetime | None = None, out=lambda s: None) -> ApplyResult:
     """Installiert ein heruntergeladenes, geprüftes Paket. Ablauf siehe Design R4."""
     project, zip_path, db_path = Path(project_dir), Path(zip_path), Path(db_path)
-    m = _ZIP_NAME_RE.fullmatch(zip_path.name)
-    if not m or not is_newer(m[1], current):
-        raise UpdateError(f"Das Paket ist nicht neuer als die installierte Version {current}.")
-    version = m[1]
-    package_dir = Path(package_dir) if package_dir is not None else Path(__file__).parent
-    if port_in_use():
-        raise UpdateError(E_RUNNING)
-    _verify_sidecar(zip_path)
-    with open(zip_path, "rb") as f:
-        tops = check_archive(f, version)
-    _check_target(project, package_dir, db_path, zip_path, tops)
-
+    work = project / WORK
+    if update_recover.read_journal(project) is not None:
+        update_recover.recover(project, run=run, python=python)
+        raise UpdateError(E_UNFINISHED)
+    version = preflight(project, zip_path, db_path, current=current, port_in_use=port_in_use,
+                        package_dir=package_dir)
     log = _Log(zip_path.parent / "update.log", out)
     log(f"Update {current} -> {version} gestartet.")
     backup_name = _backup_database(db_path)
     log(f"Datenbank gesichert: {backup_name}." if backup_name else "Keine Datenbank vorhanden.")
 
-    tag = f"{(now or datetime.now()):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
-    work = project / ".update"
-    new_root = extract_archive(zip_path, version, work / f"neu-{version}-{tag}")
-    old_dir = work / f"alt-{current}-{tag}"
-    failed_dir = work / f"fehlgeschlagen-{version}-{tag}"
-    old_dir.mkdir(parents=True)
+    tag = f"{(now or datetime.now()):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}"
+    names = {"alt": f"a-{tag}", "neu": f"n-{tag}", "fehl": f"f-{tag}"}
+    work.mkdir(exist_ok=True)
+    with open(zip_path, "rb") as f:  # ein Handle: gehasht, geprüft und entpackt wird dasselbe
+        _verify_handle(f, zip_path)
+        neu = extract_archive(f, version, work / names["neu"], strip=True)
+    new_files = _package_files(neu)
+    stale = sorted(_old_manifest(work) - set(new_files))
+    plan = [[rel, (project / rel).is_file()] for rel in new_files]
+    plan += [[rel, True] for rel in stale if (project / rel).is_file()]
     deps_changed = _dependencies(project / "pyproject.toml") != _dependencies(
-        new_root / "pyproject.toml")
+        neu / "pyproject.toml")
+    shutil.copyfile(Path(update_recover.__file__), work / "wiederherstellen.py")
+    journal = {"current": current, "version": version, "files": plan, "pip_ran": False,
+               "freeze": None, **names}
+    if deps_changed:
+        journal["freeze"] = _freeze(run, python, project, work, tag)
+    update_recover.write_journal(work, journal)  # ab hier ist jeder Schritt zurücksetzbar
 
-    moved: list = []
+    alt, ok = work / names["alt"], False
     try:
-        for name in tops:
-            dst = project / name
-            had_old = dst.exists() or dst.is_symlink()
+        for rel, had_old in plan:
             if had_old:
-                os.replace(dst, old_dir / name)
-            moved.append([name, had_old, False])
-            os.replace(new_root / name, dst)
-            moved[-1][2] = True
+                update_recover.move(project / rel, alt / rel)
+            if (neu / rel).exists():
+                update_recover.move(neu / rel, project / rel)
         log("Programmdateien ausgetauscht.")
         if deps_changed:
+            journal["pip_ran"] = True
+            update_recover.write_journal(work, journal)
             log("Abhängigkeiten haben sich geändert: pip install -e . läuft.")
             r = run([python, "-m", "pip", "install", "-e", "."], cwd=project,
                     capture_output=True, text=True, timeout=600)
@@ -576,22 +632,34 @@ def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
                 timeout=120)
         if r.returncode != 0 or r.stdout.strip() != version:
             raise UpdateError("Die neue Version startet nicht.")
+        ok = True
     except (UpdateError, OSError, subprocess.SubprocessError) as exc:
         reason = str(exc) if isinstance(exc, UpdateError) else type(exc).__name__ + "."
-        try:
-            _rollback(project, old_dir, failed_dir, moved)
-        except OSError:
-            log("Zurücksetzen fehlgeschlagen.")
-            raise UpdateError(
-                f"Update fehlgeschlagen ({reason}) und das Zurücksetzen auch. Der alte Stand"
-                f" liegt in {old_dir}; bitte die Einträge von dort zurück in den Projektordner"
-                " verschieben.") from None
-        log(f"Update fehlgeschlagen, alter Stand zurückgesetzt: {reason}")
+        notes = _rollback(project, run, python, log, reason)
         raise UpdateError(f"Update fehlgeschlagen: {reason} Der alte Stand wurde"
-                          " zurückgesetzt.") from None
-    shutil.rmtree(new_root.parent, ignore_errors=True)  # nur der eigene, jetzt leere Entpackordner
-    log(f"Update auf {version} abgeschlossen. Alter Stand: {old_dir}")
-    return ApplyResult(version=version, backup_name=backup_name, rollback_dir=old_dir)
+                          f" zurückgesetzt. {' '.join(notes)}".strip()) from None
+    finally:
+        if not ok and update_recover.read_journal(project) is not None:
+            # BaseException (Strg+C, SystemExit): zurücksetzen und danach weiterwerfen
+            _rollback(project, run, python, log, "Abbruch")
+    (work / MANIFEST).write_text("\n".join(new_files) + "\n", "utf-8")
+    (work / update_recover.JOURNAL).unlink()
+    shutil.rmtree(neu, ignore_errors=True)  # nur der eigene, jetzt leere Entpackordner
+    log(f"Update auf {version} abgeschlossen. Alter Stand: {WORK}/{names['alt']}")
+    return ApplyResult(version=version, backup_name=backup_name, rollback_dir=alt)
+
+
+def _rollback(project: Path, run, python, log, reason: str) -> list[str]:
+    try:
+        notes = update_recover.recover(project, run=run, python=python)
+    except OSError:
+        log("Zurücksetzen fehlgeschlagen.")
+        raise UpdateError(
+            f"Update fehlgeschlagen ({reason}) und das Zurücksetzen auch. Bitte update.bat"
+            " erneut starten; es setzt laut .update/journal.json zurück. Hilft das nicht,"
+            " siehe Wiki „Update“, Wiederherstellung von Hand.") from None
+    log(f"Update fehlgeschlagen, alter Stand zurückgesetzt: {reason}")
+    return [n for n in notes if "Python-Pakete" in n]
 
 
 def main(argv=None, *, db_path=None, project_dir=None, package_dir=None,
@@ -603,14 +671,32 @@ def main(argv=None, *, db_path=None, project_dir=None, package_dir=None,
         return 2
     db_path = Path(db_path) if db_path is not None else settings.default_db_path()
     project = Path(project_dir) if project_dir is not None else Path(__file__).resolve().parents[2]
+    if update_recover.read_journal(project) is not None:
+        try:
+            update_recover.recover(project, run=apply_kw.get("run", subprocess.run),
+                                   python=apply_kw.get("python", sys.executable))
+        except OSError:
+            out("Fehler: Ein früheres Update ist unvollständig und ließ sich nicht"
+                " zurücksetzen. Siehe Wiki „Update“, Wiederherstellung von Hand.")
+            return 2
+        out(f"Fehler: {E_UNFINISHED}")
+        return 2
     package = find_package(settings.update_dir(db_path), current)
     if package is None:
         out("Kein heruntergeladenes Update gefunden. Bitte zuerst in KASSIVO unter"
             " Einstellungen, Update das Update herunterladen.")
         return 1
-    version = _ZIP_NAME_RE.fullmatch(package.name)[1]
+    try:
+        version = preflight(project, package, db_path, current=current,
+                            port_in_use=apply_kw.get("port_in_use", port_in_use),
+                            package_dir=package_dir)
+    except UpdateError as exc:
+        out(f"Fehler: {exc}")
+        return 2
     out(f"Installiert: {current}. Heruntergeladen und geprüft: {version}.")
     out("Vorher wird die Datenbank gesichert. Die Datenbank selbst wird nicht verändert.")
+    if settings.cloud_warning(project) is not None:
+        out(E_CLOUD_HINT)
     try:
         answer = ask(f"Update auf {version} jetzt installieren? (j/n) ")
     except (EOFError, KeyboardInterrupt):

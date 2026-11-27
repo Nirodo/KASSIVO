@@ -256,6 +256,7 @@ src/kassivo/
   reports.py           Jahresreport
   settings.py          Ort der Datenbank (Standardordner, KASSIVO_DB, Cloud-Warnung)
   update.py            Update: Release prüfen, Paket laden und prüfen, installieren (update.bat)
+  update_recover.py    Journal und Wiederherstellung eines abgebrochenen Updates (nur Standardbibliothek)
   web/                 Weboberfläche
     app.py             App-Fabrik, Host-, Origin- und Sec-Fetch-Site-Prüfung, Sicherheits-Header, Fehlerseiten
     auto_routes.py     Automatisch verteilt, Rückgängig, offene Vorschläge neu verteilen

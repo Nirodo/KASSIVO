@@ -3,12 +3,13 @@ import hashlib
 import os
 import sqlite3
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from kassivo import update
+from kassivo import update, update_recover
 from tests.update_helpers import make_archive, sha
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,10 +61,30 @@ class FakeRun:
 
     def __call__(self, args, **kw):
         self.calls.append((list(args), kw))
-        kind = "pip" if "pip" in args else "smoke"
+        if "freeze" in args:
+            kind = "freeze"
+        elif "-r" in args:
+            kind = "restore"
+        elif "pip" in args:
+            kind = "pip"
+        else:
+            kind = "smoke"
         if kind in self.fail:
             return subprocess.CompletedProcess(args, 1, "", "Fehler")
-        return subprocess.CompletedProcess(args, 0, self.version + "\n" if kind == "smoke" else "", "")
+        if kind == "interrupt":
+            raise KeyboardInterrupt
+        if kind + "-interrupt" in self.fail:
+            raise KeyboardInterrupt
+        out = {"smoke": self.version + "\n",
+               "freeze": "fastapi==0.110.0\n-e file:///projekt\nkassivo @ file:///x\nuvicorn==0.27.0\n"}
+        return subprocess.CompletedProcess(args, 0, out.get(kind, ""), "")
+
+    def kinds(self):
+        out = []
+        for args, _ in self.calls:
+            out.append("freeze" if "freeze" in args else "restore" if "-r" in args
+                       else "pip" if "pip" in args else "smoke")
+        return out
 
 
 def _apply(env, run=None, **kw):
@@ -85,14 +106,58 @@ def test_apply_swaps_program_files_and_keeps_local_data(env):
     assert result.version == "1.3.0"
     assert '__version__ = "1.3.0"' in (p / "src" / "kassivo" / "__init__.py").read_text()
     assert (p / "src" / "kassivo" / "neu_modul.py").is_file()
-    assert not (p / "src" / "kassivo" / "alt_modul.py").exists()
+    # ohne Liste der Paketdateien weiß KASSIVO nicht, ob alt_modul.py zum Programm gehört
+    assert (p / "src" / "kassivo" / "alt_modul.py").is_file()
     assert (p / ".venv" / "marker").read_text() == "venv"
     assert (p / ".git" / "HEAD").read_text().startswith("ref:")
     assert (p / "eigene-notiz.txt").read_text() == "bleibt"
     assert _db_hash(env["db"]) == before_db  # Datenbank nie geschrieben
     old = result.rollback_dir
-    assert (old / "src" / "kassivo" / "alt_modul.py").is_file()  # alter Stand aufbewahrt
+    assert '"1.2.0"' in (old / "src" / "kassivo" / "__init__.py").read_text()  # alter Stand
     assert old.parent == p / ".update"
+    assert not (p / ".update" / "journal.json").exists()
+    assert sorted(x.name for x in (p / ".update").iterdir()
+                  if x.is_dir()) == [old.name]  # Entpackordner aufgeräumt
+
+
+def test_user_files_in_program_folders_stay(env):
+    """Nicht versionierte eigene Dateien verschwinden nicht (dateiweiser Austausch)."""
+    p = env["project"]
+    own = {".claude/settings.local.json": "{}", "docs/design/referenz/bild.png": "png",
+           "docs/eigene.md": "notiz", "tests/test_eigen.py": "x = 1",
+           ".github/eigene.yml": "y", "src/kassivo/web/eigene.html": "z"}
+    for rel, text in own.items():
+        (p / rel).parent.mkdir(parents=True, exist_ok=True)
+        (p / rel).write_text(text)
+    archive = make_archive("1.3.0", {"kassivo-1.3.0/docs/plan.md": "neu",
+                                     "kassivo-1.3.0/tests/test_neu.py": "y = 2",
+                                     "kassivo-1.3.0/.claude/agents/a.md": "a",
+                                     "kassivo-1.3.0/.github/workflows/t.yml": "t",
+                                     "kassivo-1.3.0/src/kassivo/web/app.py": "neu"})
+    env["zip"].write_bytes(archive)
+    (env["updates"] / "kassivo-1.3.0.zip.sha256").write_text(sha(archive))
+    _apply(env)
+    for rel, text in own.items():
+        assert (p / rel).read_text() == text, rel
+    assert (p / "docs" / "plan.md").read_text() == "neu"
+
+
+def test_files_of_previous_package_are_removed_via_manifest(env):
+    p = env["project"]
+    _apply(env)
+    manifest = (p / ".update" / "dateien.txt").read_text("utf-8").splitlines()
+    assert "src/kassivo/neu_modul.py" in manifest and "README.md" in manifest
+    # nächste Version ohne neu_modul.py: es war Paketinhalt und wird weggeräumt
+    archive = make_archive("1.4.0")
+    z = env["updates"] / "kassivo-1.4.0.zip"
+    z.write_bytes(archive)
+    (env["updates"] / "kassivo-1.4.0.zip.sha256").write_text(sha(archive))
+    (p / "eigene-notiz.txt").write_text("bleibt")
+    update.apply_update(p, z, env["db"], current="1.3.0", run=FakeRun("1.4.0"), python="p",
+                        now=NOW, port_in_use=lambda: False, package_dir=p / "src" / "kassivo")
+    assert not (p / "src" / "kassivo" / "neu_modul.py").exists()
+    assert (p / "src" / "kassivo" / "alt_modul.py").is_file()  # nie Paketinhalt gewesen
+    assert (p / "eigene-notiz.txt").read_text() == "bleibt"
 
 
 def test_apply_backs_up_database_first(env):
@@ -125,20 +190,150 @@ def test_apply_runs_pip_when_dependencies_change(env):
         '[project]\nname = "kassivo"\nversion = "1.2.0"\ndependencies = ["fastapi>=0.100"]\n')
     run = FakeRun()
     _apply(env, run)
-    assert [c[0][:6] for c in run.calls][0] == ["python-test", "-m", "pip", "install", "-e", "."]
-    assert len(run.calls) == 2
+    assert run.kinds() == ["freeze", "pip", "smoke"]
+    assert run.calls[0][0] == ["python-test", "-m", "pip", "freeze"]
+    assert run.calls[1][0][:6] == ["python-test", "-m", "pip", "install", "-e", "."]
+
+
+def _change_deps(env):
+    (env["project"] / "pyproject.toml").write_text(
+        '[project]\nname = "kassivo"\nversion = "1.2.0"\ndependencies = []\n')
 
 
 @pytest.mark.parametrize("fail", ["smoke", "pip"])
 def test_failed_step_rolls_back(env, fail):
     if fail == "pip":
-        (env["project"] / "pyproject.toml").write_text(
-            '[project]\nname = "kassivo"\nversion = "1.2.0"\ndependencies = []\n')
+        _change_deps(env)
     before = _snapshot(env["project"])
     with pytest.raises(update.UpdateError) as info:
         _apply(env, FakeRun(fail={fail}))
     assert "zurückgesetzt" in str(info.value)
     assert _snapshot(env["project"]) == before
+    work = env["project"] / ".update"
+    assert not (work / "journal.json").exists()
+    leftovers = [x.name for x in work.iterdir() if x.is_dir()]
+    assert leftovers == [], leftovers  # neu-, fehl- und leerer alt-Ordner aufgeräumt
+
+
+def test_rollback_after_pip_restores_previous_packages(env):
+    _change_deps(env)
+    run = FakeRun(fail={"smoke"})
+    with pytest.raises(update.UpdateError) as info:
+        _apply(env, run)
+    assert run.kinds() == ["freeze", "pip", "smoke", "restore"]
+    freeze_arg = run.calls[3][0][-1]
+    assert run.calls[3][0][:5] == ["python-test", "-m", "pip", "install", "-r"]
+    assert "Python-Pakete auf den alten Stand" in str(info.value)
+    assert "kassivo" not in Path(freeze_arg).read_text() if Path(freeze_arg).exists() else True
+
+
+def test_failed_package_restore_gives_repair_command(env):
+    _change_deps(env)
+    with pytest.raises(update.UpdateError) as info:
+        _apply(env, FakeRun(fail={"smoke", "restore"}))
+    text = str(info.value)
+    assert "pip install -r" in text and "Reparatur" in text
+    assert (env["project"] / ".update").exists()
+
+
+def test_keyboard_interrupt_rolls_back_and_propagates(env):
+    """I1: auch Strg+C (BaseException) setzt zurück und wird danach weitergeworfen."""
+    before = _snapshot(env["project"])
+    with pytest.raises(KeyboardInterrupt):
+        _apply(env, FakeRun(fail={"smoke-interrupt"}))
+    assert _snapshot(env["project"]) == before
+    assert not (env["project"] / ".update" / "journal.json").exists()
+
+
+def test_transient_permission_error_is_retried(env, monkeypatch):
+    """I3: OneDrive sperrt kurz; der Austausch versucht es erneut."""
+    real = os.replace
+    hits = {"n": 0}
+
+    def locked_twice(a, b):
+        if str(a).endswith("README.md") and hits["n"] < 2:
+            hits["n"] += 1
+            raise PermissionError("gesperrt")
+        return real(a, b)
+    monkeypatch.setattr(os, "replace", locked_twice)
+    monkeypatch.setattr(update_recover.time, "sleep", lambda s: None)
+    _apply(env)
+    assert hits["n"] == 2
+    assert (env["project"] / "README.md").read_text() == "# KASSIVO\n"
+
+
+def test_permanent_permission_error_rolls_back(env, monkeypatch):
+    real = os.replace
+    before = _snapshot(env["project"])
+
+    def locked(a, b):
+        if str(a).endswith("start.bat") and "n-" in str(a):
+            raise PermissionError("gesperrt")
+        return real(a, b)
+    monkeypatch.setattr(os, "replace", locked)
+    monkeypatch.setattr(update_recover.time, "sleep", lambda s: None)
+    with pytest.raises(update.UpdateError):
+        _apply(env)
+    assert _snapshot(env["project"]) == before
+
+
+def _crash_midway(env, monkeypatch, after=5):
+    """Simuliert einen harten Abbruch (Strom weg): Austausch stoppt, kein Rückweg läuft."""
+    real = os.replace
+    count = {"n": 0}
+
+    class Killed(BaseException):
+        pass
+
+    def dying(a, b):
+        if "n-" in str(a):
+            count["n"] += 1
+            if count["n"] == after:
+                raise Killed()
+        return real(a, b)
+    with pytest.MonkeyPatch.context() as mp:  # eigener Patch: die Netzsperre bleibt aktiv
+        mp.setattr(os, "replace", dying)
+        mp.setattr(update_recover, "recover", lambda *a, **k: [])
+        with pytest.raises(Killed):
+            _apply(env)
+
+
+def test_journal_survives_crash_and_standalone_script_restores(env, monkeypatch):
+    """I2: wiederherstellen.py läuft ohne kassivo (src halb ausgetauscht) und setzt zurück."""
+    before = _snapshot(env["project"])
+    _crash_midway(env, monkeypatch)
+    p = env["project"]
+    assert (p / ".update" / "journal.json").is_file()
+    assert _snapshot(p) != before
+    script = p / ".update" / "wiederherstellen.py"
+    assert script.is_file()
+    r = subprocess.run([sys.executable, "-I", str(script), str(p)], cwd=p.parent,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "zurückgesetzt" in r.stdout
+    assert _snapshot(p) == before
+    assert not (p / ".update" / "journal.json").exists()
+
+
+def test_main_detects_unfinished_update_and_recovers_first(env, monkeypatch):
+    before = _snapshot(env["project"])
+    _crash_midway(env, monkeypatch, after=3)
+    asked = []
+    code, text = _main(env, "j", ask=lambda q: asked.append(q) or "j")
+    assert code == 2 and "unvollständig" in text
+    assert asked == []  # erst zurücksetzen, nicht gleich weiter installieren
+    assert _snapshot(env["project"]) == before
+
+
+def test_recovery_is_repeatable(env, monkeypatch):
+    before = _snapshot(env["project"])
+    _crash_midway(env, monkeypatch)
+    p = env["project"]
+    journal = (p / ".update" / "journal.json").read_text()
+    update_recover.recover(p)
+    (p / ".update" / "journal.json").write_text(journal)  # Abbruch während der Wiederherstellung
+    update_recover.recover(p)
+    assert _snapshot(p) == before
 
 
 def test_smoke_test_with_wrong_version_rolls_back(env):
@@ -155,8 +350,8 @@ def test_failure_during_swap_rolls_back(env, monkeypatch):
 
     def flaky(a, b):
         count["n"] += 1
-        if count["n"] == 4:  # mitten im Austausch
-            raise PermissionError("gesperrt")
+        if count["n"] == 4:  # mitten im Austausch, kein vorübergehender Fehler
+            raise OSError("Datenträger defekt")
         return real(a, b)
     monkeypatch.setattr(update.os, "replace", flaky)
     with pytest.raises(update.UpdateError) as info:
@@ -226,6 +421,26 @@ def test_apply_writes_log_without_personal_data(env):
     log = (env["updates"] / "update.log").read_text("utf-8")
     assert "1.2.0" in log and "1.3.0" in log
     assert "Max Mustermann" not in log
+    assert str(env["project"].parent) not in log  # keine vollen Pfade (Benutzername)
+
+
+def test_error_messages_contain_no_full_paths(env, monkeypatch):
+    real = os.replace
+
+    def broken(a, b):
+        if "a-" in str(b) or "a-" in str(a):
+            raise OSError("kaputt")
+        return real(a, b)
+    monkeypatch.setattr(os, "replace", broken)
+    with pytest.raises(update.UpdateError) as info:
+        _apply(env)
+    assert str(env["project"].parent) not in str(info.value)
+
+
+def test_unreadable_pyproject_is_update_error(env):
+    (env["project"] / "pyproject.toml").write_bytes(b"\xff\xfe kaputt")
+    with pytest.raises(update.UpdateError):
+        _apply(env)
 
 
 # --- Paket finden und Befehl --------------------------------------------------------------
@@ -278,6 +493,32 @@ def test_main_without_package(env):
     assert code == 1 and "Kein heruntergeladenes Update" in text
 
 
+@pytest.mark.parametrize("over", [
+    {"port_in_use": lambda: True},
+    {"package_dir": Path("/anderswo/kassivo")},
+])
+def test_main_checks_before_asking(env, over):
+    asked = []
+    code, text = _main(env, "j", ask=lambda q: asked.append(q) or "j", **over)
+    assert code == 2 and asked == []
+
+
+def test_main_checks_checksum_before_asking(env):
+    (env["updates"] / "kassivo-1.3.0.zip.sha256").write_text("0" * 64)
+    asked = []
+    code, _ = _main(env, "j", ask=lambda q: asked.append(q) or "j")
+    assert code == 2 and asked == []
+
+
+def test_main_warns_about_cloud_folder(env, tmp_path):
+    cloud = tmp_path / "OneDrive - Firma" / "projekt"
+    cloud.parent.mkdir()
+    env["project"].rename(cloud)
+    env["project"] = cloud
+    code, text = _main(env, "n")
+    assert "OneDrive-Synchronisation pausieren" in text
+
+
 def test_main_reports_errors_without_traceback(env):
     code, text = _main(env, "j", port_in_use=lambda: True)
     assert code == 2
@@ -313,3 +554,21 @@ def test_update_bat_runs_inside_one_block():
     assert "start.bat" not in body.split("exit /b")[-1]  # kein automatischer Neustart
     echoes = [ln for ln in lines[start + 1:] if ln.startswith("echo")]
     assert echoes and not any(")" in ln for ln in echoes)  # ")" beendet sonst den Block
+
+
+def test_update_bat_changes_dir_before_delayed_expansion():
+    """Mit EnableDelayedExpansion gingen "!" im Pfad verloren: cd vorher."""
+    text = BAT.read_bytes().decode("ascii")
+    assert text.index('cd /d "%~dp0"') < text.index("EnableDelayedExpansion")
+
+
+def test_update_bat_recovers_unfinished_update_without_kassivo():
+    text = BAT.read_bytes().decode("ascii")
+    assert r'if exist ".update\journal.json"' in text
+    assert r'-I ".update\wiederherstellen.py" .' in text
+    assert text.index("wiederherstellen.py") < text.index("-m kassivo.update apply")
+
+
+def test_recover_module_uses_only_stdlib():
+    src = (ROOT / "src" / "kassivo" / "update_recover.py").read_text("utf-8")
+    assert "import kassivo" not in src and "from kassivo" not in src
