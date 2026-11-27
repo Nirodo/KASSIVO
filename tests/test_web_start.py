@@ -144,11 +144,118 @@ def test_past_year_without_overdue_is_hidden_current_year_stays(client, db):
     assert "overdue-2025" not in start
 
 
-def test_overdue_without_check_start_uses_fee_start(client, db):
-    create_member(db, "Erika Muster", "Aktiv", date(2025, 10, 1))
+def _overdue_cells(client, year):
+    return len(re.findall(r'<td class="status status-overdue', _get(client, f"/dues?year={year}")))
+
+
+def _overdue_years(html):
+    return sorted(int(y) for y in re.findall(r'data-count="overdue-(\d+)"', html))
+
+
+def test_without_check_start_only_notice_and_current_year(client, db):
+    m = create_member(db, "Erika Muster", "Aktiv", date(2024, 10, 1))
+    _tx(db, m, 1700, "2025-03-03")  # abgeleiteter Prüfungsstart 2025-03
     start = _get(client, "/")
-    cells = len(re.findall(r'<td class="status status-overdue', _get(client, "/dues?year=2025")))
-    assert _count(start, "overdue-2025") == cells == 2
+    assert "Prüfungsstart ist noch nicht festgelegt" in start
+    assert _overdue_years(start) == [2026]
+    assert _count(start, "overdue-2026") == _overdue_cells(client, 2026) > 0
+
+
+@pytest.fixture
+def grid_years(monkeypatch):
+    years, real = [], dues.dues_grid
+
+    def spy(conn, year, today):
+        years.append(year)
+        return real(conn, year, today)
+
+    monkeypatch.setattr(dues, "dues_grid", spy)
+    return years
+
+
+def test_very_old_check_start_begins_at_earliest_fee_start(db, grid_years):
+    from kassivo.overview import overview
+    create_member(db, "Erika Muster", "Aktiv", date(2025, 10, 1))  # zahlt ab 2025-11
+    create_member(db, "Max Muster", "Aktiv", date(2026, 8, 1))
+    dues.set_check_start(db, "1900-01")
+    o = overview(db, TODAY)
+    assert grid_years == [2025, 2026]
+    assert [y["year"] for y in o["overdue"]] == [2025, 2026]
+
+
+def test_very_old_check_start_counts_still_match_dues(client, db):
+    create_member(db, "Erika Muster", "Aktiv", date(2025, 10, 1))
+    dues.set_check_start(db, "1900-01")
+    start = _get(client, "/")
+    assert _overdue_years(start) == [2025, 2026]
+    for year in (2025, 2026):
+        assert _count(start, f"overdue-{year}") == _overdue_cells(client, year) > 0
+    assert _overdue_cells(client, 2024) == 0
+
+
+def test_member_without_fee_start_keeps_check_start(db, grid_years):
+    from kassivo.overview import overview
+    create_member(db, "Erika Muster", "Aktiv", date(2025, 10, 1))
+    other = create_member(db, "Max Muster", "Aktiv", date(2026, 8, 1))
+    db.execute("update member set fee_start=null where id=?", (other,))
+    db.commit()
+    dues.set_check_start(db, "2023-01")
+    overview(db, TODAY)
+    assert grid_years == [2023, 2024, 2025, 2026]
+
+
+def test_new_year_shows_december_of_previous_year(app, client, db):
+    app.dependency_overrides[get_today] = lambda: date(2027, 1, 1)
+    m = create_member(db, "Erika Muster", "Aktiv", date(2026, 10, 1))  # zahlt ab 2026-11
+    dues.set_check_start(db, "2026-11")
+    _tx(db, m, 1700, "2026-11-03")
+    dues.redistribute_all(db)
+    start = _get(client, "/")
+    assert "Beiträge Januar 2027" in start and "Beitragsjahr 2027" in start
+    assert _overdue_years(start) == [2026, 2027]
+    assert _count(start, "overdue-2026") == _overdue_cells(client, 2026) == 1
+    assert _count(start, "overdue-2027") == _overdue_cells(client, 2027) == 0
+    assert _count(start, "month-open") == 1
+    assert 'href="/reports?year=2027"' in start
+
+
+def test_check_start_in_the_future(client, db):
+    create_member(db, "Erika Muster", "Aktiv", date(2025, 10, 1))
+    dues.set_check_start(db, "2027-03")
+    start = _get(client, "/")
+    assert _overdue_years(start) == [2026]
+    assert _count(start, "overdue-2026") == _overdue_cells(client, 2026) == 0
+    assert "Für diesen Monat ist kein Beitrag fällig." in start
+    assert "Zahlungen verteilt" not in start
+
+
+def test_member_who_left(client, db):
+    from kassivo.members import leave_member
+    m = create_member(db, "Erika Muster", "Aktiv", date(2026, 1, 15))  # zahlt ab 2026-02
+    dues.set_check_start(db, "2026-01")
+    leave_member(db, m, date(2026, 4, 30))
+    start = _get(client, "/")
+    assert _count(start, "overdue-2026") == _overdue_cells(client, 2026) == 3
+    assert "Für diesen Monat ist kein Beitrag fällig." in start
+    assert "Zahlungen verteilt" not in start
+
+
+def test_paid_without_expected_is_explained(client, db):
+    from kassivo.members import leave_member
+    m = create_member(db, "Erika Muster", "Aktiv", date(2026, 1, 15))
+    dues.set_check_start(db, "2026-01")
+    leave_member(db, m, date(2026, 4, 30))
+    tx = _tx(db, m, 1700, "2026-11-03")
+    dues.confirm_allocations(db, tx, [("2026-11", 1700)])
+    text = _text(_get(client, "/"))
+    assert "Bezahlt 17,00 € von 0,00 € erwartet" in text
+    assert ("Auf diesen Monat sind Zahlungen verteilt, obwohl kein Beitrag fällig ist"
+            " (zum Beispiel nach einem Austritt).") in text
+
+
+def test_unmatched_text(client, filled):
+    assert ("Zahlungseingänge ohne Mitglied (ohne Kategorie oder mit „Beiträge“), alle Jahre"
+            in _get(client, "/"))
 
 
 def test_month_status_matches_dues_grid(client, filled):

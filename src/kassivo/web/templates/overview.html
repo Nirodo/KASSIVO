@@ -33,7 +33,7 @@
   <h2 id="todo-h">Heute zu tun</h2>
   <ul class="todo">
     {{ task("unmatched", o.unmatched, "/unmatched", "Unklare Zahlungen",
-            "Zahlungseingänge ohne Mitglied oder Kategorie, alle Jahre", "Zuordnen") }}
+            "Zahlungseingänge ohne Mitglied (ohne Kategorie oder mit „Beiträge“), alle Jahre", "Zuordnen") }}
     {{ task("proposals", o.proposals, "/transactions?year=all&proposed=1", "Offene Vorschläge",
             "Zahlungen, deren Verteilung auf Ihre Prüfung wartet, alle Jahre", "Prüfen") }}
     {% for y in o.overdue | reverse %}
@@ -62,6 +62,9 @@
   <p>Für diesen Monat ist kein Beitrag fällig.</p>
   {% endif %}
   <p>Bezahlt {{ (m.totals.paid | eur)[:-2] }} € von {{ m.totals.expected | eur }} erwartet</p>
+  {% if m.totals.expected == 0 and m.totals.paid > 0 %}
+  <p class="hint">Auf diesen Monat sind Zahlungen verteilt, obwohl kein Beitrag fällig ist (zum Beispiel nach einem Austritt).</p>
+  {% endif %}
   <p><a href="/dues?year={{ year }}">Beitragsraster {{ year }} ansehen</a></p>
 </section>
 

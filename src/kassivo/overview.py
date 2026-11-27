@@ -22,10 +22,18 @@ def month_totals(grid: list[dict], index: int) -> dict:
 
 
 def _first_year(conn, members, today: date, min_year: int) -> int:
-    """Erstes Jahr mit möglichen Rückständen (Anfang wie in forecast)."""
-    starts = [m["fee_start"] for m in members if m["fee_start"]]
-    start = dues.get_check_start(conn) or (min(starts) if starts else None)
-    return min(max(int(start[:4]), min_year), today.year) if start else today.year
+    """Erstes Jahr der Rückstandszeilen.
+
+    Ohne gespeicherten Prüfungsstart nur das laufende Jahr (die Seite zeigt den
+    Hinweis). Haben alle Mitglieder ein fee_start, kann vor dem kleinsten nichts
+    fällig sein: ein sehr alter Prüfungsstart baut keine leeren Raster auf.
+    """
+    if not dues.check_start_is_set(conn):
+        return today.year
+    start = dues.get_check_start(conn)
+    if members and all(m["fee_start"] for m in members):
+        start = max(start, min(m["fee_start"] for m in members))
+    return min(max(int(start[:4]), min_year), today.year)
 
 
 def overview(conn, today: date, min_year: int = 1900) -> dict:
