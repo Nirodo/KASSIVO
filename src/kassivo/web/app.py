@@ -7,6 +7,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from kassivo import restore
 from kassivo.db import connect
 from kassivo.web import (
     auto_routes, backup_routes, categories_routes, dues_routes, import_routes, members_routes, reports_routes,
@@ -36,6 +37,8 @@ def create_app(db_path, extra_hosts=()) -> FastAPI:
     # Einmal beim Start öffnen: Migration oder Ablehnung (zu neue Datenbank) passiert hier,
     # nicht erst bei der ersten Anfrage.
     connect(db_path).close()
+    if str(db_path) != ":memory:":
+        restore.startup_cleanup(Path(db_path))  # Reste früherer Läufe, keine Anfrage läuft
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db_path = Path(db_path)
     allowed = ALLOWED_HOSTS | frozenset(extra_hosts)

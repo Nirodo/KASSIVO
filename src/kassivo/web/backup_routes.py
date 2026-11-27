@@ -6,8 +6,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
-from starlette.background import BackgroundTask
+from fastapi.responses import RedirectResponse, StreamingResponse
 
 from kassivo import __version__, restore
 from kassivo.backup import NAME_RE, backup_db, delete_old, list_backups
@@ -117,18 +116,34 @@ async def backup_export(request: Request, conn=Depends(get_conn)):
     path = _db_path(request)
     if path is None:
         return _page(request, conn, 422, error=E_MEMORY)
-    # Zwischendatei im Datenordner, nicht im System-Temp: personenbezogene Daten bleiben dort,
-    # wo auch die Datenbank liegt, falls das Aufräumen ausfällt.
+    # Zwischenordner im Datenordner, damit die Kopie neben der Datenbank liegt, die ohnehin
+    # dieselben Daten enthält. Reste (Absturz, abgebrochener Download) räumen der Start und
+    # cleanup_leftovers auf. Hinweis: hochgeladene Dateien legt Starlette unabhängig davon
+    # zunächst im System-Temp ab.
+    restore.cleanup_leftovers(path.parent)
     tmp = Path(tempfile.mkdtemp(prefix=".export-", dir=path.parent))
     name = restore.export_name()
     try:
         restore.export_backup(conn, tmp / name)
+        size = (tmp / name).stat().st_size
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
-    return FileResponse(tmp / name, media_type="application/octet-stream", filename=name,
-                        headers={"Cache-Control": "no-store"},
-                        background=BackgroundTask(shutil.rmtree, tmp, True))
+    return StreamingResponse(
+        _stream(tmp, tmp / name), media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{name}"',
+                 "Content-Length": str(size), "Cache-Control": "no-store"})
+
+
+def _stream(tmp: Path, file: Path):
+    """Liefert die Datei und löscht den Zwischenordner immer, auch bei Abbruch des Downloads
+    (der Generator wird dann geschlossen, finally läuft)."""
+    try:
+        with open(file, "rb") as f:
+            while chunk := f.read(import_routes.CHUNK):
+                yield chunk
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # --- Sicherung einspielen ---
@@ -152,6 +167,7 @@ async def backup_upload(request: Request, file: UploadFile | None = File(None),
         return _page(request, conn, 422, error=E_MEMORY)
     if file is None:
         return _page(request, conn, 422, error=E_NO_FILE)
+    restore.cleanup_leftovers(_db_path(request).parent)
     with tempfile.TemporaryDirectory(prefix=".upload-", dir=_db_path(request).parent) as tmp:
         raw = Path(tmp) / "upload.bin"
         total, head = 0, b""
@@ -184,6 +200,15 @@ async def backup_local(request: Request, name: str = Form(""), conn=Depends(get_
     except (RestoreError, db.DatabaseOpenError) as exc:
         return _stage_error(request, conn, exc)
     return _preview(request, conn, staged)
+
+
+@router.post("/backup/cancel")
+async def backup_cancel(request: Request):
+    """Vorschau abbrechen: bereitgestellte Kopie sofort löschen."""
+    staging = _staging(request)
+    if staging is not None:
+        restore.clear_staging(staging)
+    return RedirectResponse("/backup", status_code=303)
 
 
 @router.post("/backup/restore")
