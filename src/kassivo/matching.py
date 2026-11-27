@@ -25,7 +25,11 @@ def _set_fee_category_if_empty(conn, tx_id: int) -> None:
     )
 
 
-def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -> None:
+def assign_member(conn, tx_id: int, member_id: int | None,
+                  learn: bool = True) -> str | None:
+    """Ordnet zu. Rückgabe: Ergebnis des Merkens ("new", "same", "changed",
+    "multiple") oder None, wenn nichts gelernt wurde (siehe _learn)."""
+    result = None
     tx = conn.execute(
         'select amount_cents, cp_iban, member_id, booking_date from "transaction" where id=?',
         (tx_id,),
@@ -73,22 +77,7 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
             _set_fee_category_if_empty(conn, tx_id)
             iban = normalize_iban(tx["cp_iban"])
             if learn and iban:
-                # Maßgeblich ist, was auto_assign heute für die IBAN nähme
-                # (gelernt, mehrdeutig oder member.iban): gehört sie schon
-                # einem anderen Mitglied oder ist mehrdeutig, wird sie
-                # mehrdeutig (NULL), auto_assign überspringt sie.
-                # Verworfen: "letzte Zuordnung gewinnt" (Geschwister-Fall
-                # ordnete still alle Zahlungen dem zuletzt gewählten Kind zu)
-                # und nur gelernte Einträge vergleichen (übersah Geschwister
-                # mit derselben Eltern-IBAN in member.iban).
-                lookup = _iban_lookup(conn)
-                learned = (member_id if iban not in lookup
-                           or lookup[iban] == member_id else None)
-                conn.execute(
-                    "insert into member_iban(iban, member_id) values(?,?)"
-                    " on conflict(iban) do update set member_id=excluded.member_id",
-                    (iban, learned),
-                )
+                result = _learn(conn, iban, member_id)
             if changed:
                 if had_manual:
                     dues.rebuild_member(conn, member_id, exclude=tx_id)
@@ -99,6 +88,76 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
     except Exception:
         conn.rollback()
         raise
+    conn.commit()
+    return result
+
+
+def _learn(conn, iban: str, member_id: int) -> str:
+    """Merkt die Entscheidung des Nutzers für die IBAN (#55).
+
+    Die letzte Entscheidung gilt. Ausnahmen: "zahlt für mehrere" (NULL) ist
+    eine bewusste Auswahl und bleibt; tragen ohne Eintrag zwei Mitglieder die
+    IBAN in den Stammdaten, wird nichts gespeichert. Die Rückgabe sagt der
+    Oberfläche, ob weitere Zahlungen derselben IBAN zugeordnet werden dürfen:
+    nach "changed" nicht (Eltern-IBAN für zwei Kinder: sonst würden Zahlungen
+    still auf das zuletzt gewählte Kind umgebucht).
+    Verworfen: Wechsel macht die IBAN mehrdeutig (alte Regel bis 1.2.0); eine
+    Fehlkorrektur ließ sich dann nie mehr beheben.
+    """
+    entry = conn.execute(
+        "select member_id from member_iban where iban=?", (iban,)
+    ).fetchone()
+    if entry is not None and entry["member_id"] is None:
+        return "multiple"
+    before = _iban_lookup(conn)
+    if entry is None and iban in before and before[iban] is None:
+        return "multiple"  # Stammdaten mehrdeutig
+    conn.execute(
+        "insert into member_iban(iban, member_id) values(?,?)"
+        " on conflict(iban) do update set member_id=excluded.member_id",
+        (iban, member_id),
+    )
+    prev = before.get(iban)
+    if prev is None:
+        return "new"
+    return "same" if prev == member_id else "changed"
+
+
+def remembered(conn) -> list:
+    """Gemerkte Zuordnungen; member_id NULL heißt "zahlt für mehrere"."""
+    return conn.execute(
+        "select mi.rowid as id, mi.iban, mi.member_id, m.name as member_name"
+        " from member_iban mi left join member m on m.id = mi.member_id"
+        " order by mi.member_id is not null, m.name, mi.iban"
+    ).fetchall()
+
+
+def _require_entry(conn, entry_id: int) -> None:
+    if not conn.execute(
+        "select 1 from member_iban where rowid=?", (entry_id,)
+    ).fetchone():
+        raise ValueError(f"unbekannte gemerkte Zuordnung {entry_id}")
+
+
+def set_remembered(conn, entry_id: int, member_id: int | None) -> None:
+    """Ändert eine gemerkte Zuordnung; None = zahlt für mehrere.
+
+    Ordnet keine Zahlungen um, auch keine schon zugeordneten.
+    """
+    _require_entry(conn, entry_id)
+    if member_id is not None and not conn.execute(
+        "select 1 from member where id=?", (member_id,)
+    ).fetchone():
+        raise ValueError(f"unbekanntes Mitglied {member_id}")
+    conn.execute("update member_iban set member_id=? where rowid=?",
+                 (member_id, entry_id))
+    conn.commit()
+
+
+def forget(conn, entry_id: int) -> None:
+    """Löscht eine gemerkte Zuordnung; danach gelten wieder die Stammdaten."""
+    _require_entry(conn, entry_id)
+    conn.execute("delete from member_iban where rowid=?", (entry_id,))
     conn.commit()
 
 

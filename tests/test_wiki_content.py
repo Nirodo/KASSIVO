@@ -500,9 +500,10 @@ def test_sibling_reassignment_flow():
     conn.execute('update "transaction" set cp_iban=? where id=?', ("XX00FAKE0000000002", tx))
     matching.assign_member(conn, tx, erika)
     assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]  # automatisch verteilt
-    matching.assign_member(conn, tx, hans)  # automatisch Verteiltes sperrt nicht
+    # automatisch Verteiltes sperrt nicht; die letzte Entscheidung gilt (#55)
+    assert matching.assign_member(conn, tx, hans) == "changed"
     assert _rows(conn, tx) == [("2026-02", 1700, "confirmed")]  # Buchungsmonat für Hans
-    assert matching.iban_is_ambiguous(conn, "XX00FAKE0000000002")
+    assert not matching.iban_is_ambiguous(conn, "XX00FAKE0000000002")
     dues.confirm_allocations(conn, tx, [("2026-02", 1700)])  # Ihre Bestätigung sperrt
     with pytest.raises(ValueError, match="hat bestätigte Verteilung: Verteilung zuerst aufheben"):
         matching.assign_member(conn, tx, erika)
@@ -511,7 +512,7 @@ def test_sibling_reassignment_flow():
     assert _rows(conn, tx) == [("2026-02", 1700, "proposed")]  # bleibt manueller Vorschlag
 
 
-def test_keins_holds_against_auto_assign_and_ambiguity_is_permanent():
+def test_keins_holds_against_auto_assign_and_correction_is_remembered():
     from kassivo import matching
     conn, mid = _setup()
     other = create_member(conn, "Erika Musterfrau", "Aktiv", date(2025, 12, 10))
@@ -524,12 +525,14 @@ def test_keins_holds_against_auto_assign_and_ambiguity_is_permanent():
     assert matching.auto_assign(conn, [tx]) == 0  # "— keins —" hält (#6)
     dues.clear_allocations(conn, tx)
     matching.assign_member(conn, tx, None)
-    matching.assign_member(conn, tx, other)  # mit "Absender merken": jetzt mehrdeutig
-    assert matching.iban_is_ambiguous(conn, iban)
-    dues.clear_allocations(conn, tx)
-    matching.assign_member(conn, tx, None)
-    matching.assign_member(conn, tx, other)  # nie für das richtige Mitglied neu gelernt
-    assert matching.iban_is_ambiguous(conn, iban)
+    # mit "Absender merken": die Korrektur wird gemerkt (#55)
+    assert matching.assign_member(conn, tx, other) == "changed"
+    assert not matching.iban_is_ambiguous(conn, iban)
+    later = _pay(conn, None, "2026-02-05", 1700)
+    conn.execute('update "transaction" set cp_iban=? where id=?', (iban, later))
+    assert matching.auto_assign(conn, [later]) == 1
+    assert conn.execute('select member_id from "transaction" where id=?',
+                        (later,)).fetchone()[0] == other
 
 
 def test_dedupe_limits_described_in_wiki(tmp_path):

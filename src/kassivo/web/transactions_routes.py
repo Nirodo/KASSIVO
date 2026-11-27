@@ -198,20 +198,25 @@ async def set_member(request: Request, tx_id: int, member_id: str = Form(""),
     learning = learn == "on"
     before = dues.auto_snapshot(conn)
     try:
-        matching.assign_member(conn, tx_id, member, learn=learning)
+        learned = matching.assign_member(conn, tx_id, member, learn=learning)
     except ValueError as e:
         return _error(request, str(e), back=safe_next(next))
     moved = dues.count_changed(before, dues.auto_snapshot(conn), exclude=tx_id)
-    if not (learning and member is not None):
+    if learned is None:
         target = safe_next(next)
         return _see_other(with_note(target, "recomputed_other", moved) if moved else target)
-    # Gelernte IBAN gleich auf die übrigen unklaren Zahlungen dieses Absenders
-    # anwenden; ist sie mehrdeutig geworden, wird nichts weiter zugeordnet und
-    # der Hinweis sagt das.
-    iban = normalize_iban(_tx(conn, tx_id)["cp_iban"])
-    if matching.iban_is_ambiguous(conn, iban):
+    if learned == "multiple":
         return _see_other(with_note(safe_next(next), "ambiguous_r", moved) if moved
                           else with_note(safe_next(next), "ambiguous", 0))
+    if learned == "changed":
+        # Gemerkt, aber keine weiteren Zahlungen zuordnen (#55): zahlt die
+        # Eltern-IBAN für zwei Kinder, würde sonst still alles auf das zuletzt
+        # gewählte Kind gebucht. "Unklare automatisch zuordnen" holt es nach.
+        return _see_other(with_note(safe_next(next), "changed_r", moved) if moved
+                          else with_note(safe_next(next), "changed", 0))
+    # Neu oder unverändert gemerkte IBAN gleich auf die übrigen unklaren
+    # Zahlungen dieses Absenders anwenden.
+    iban = normalize_iban(_tx(conn, tx_id)["cp_iban"])
     others = [r["id"] for r in matching.unmatched(conn)
               if iban and normalize_iban(r["cp_iban"]) == iban]
     n = matching.auto_assign(conn, others)

@@ -107,6 +107,14 @@ _NOTES = {
                " automatisch zugeordnet.",
     "ambiguous": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
                  " künftig nicht automatisch zugeordnet.",
+    "changed": "Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu"
+               " einem anderen). Zahlt er für mehrere Mitglieder, legen Sie das unter"
+               " „Gemerkte Zuordnungen“ fest. Weitere offene Zahlungen ordnet „Unklare"
+               " automatisch zuordnen“ zu.",
+    "changed_r": "Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu"
+                 " einem anderen). Zahlt er für mehrere Mitglieder, legen Sie das unter"
+                 " „Gemerkte Zuordnungen“ fest. Weitere offene Zahlungen ordnet „Unklare"
+                 " automatisch zuordnen“ zu. {n} weitere Zahlungen neu verteilt.",
     "cleaned": "Gelöschte Sicherungen: {n}.",
     "restored": "Sicherung eingespielt: {n} Mitglieder, {m} Buchungen.",
     "cleaned_partial": "Gelöschte Sicherungen: {n}. {m} konnten nicht gelöscht werden.",
