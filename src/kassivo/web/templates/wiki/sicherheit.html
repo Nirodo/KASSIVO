@@ -10,7 +10,7 @@
   <li><strong>Prüfung des Hosts.</strong> KASSIVO beantwortet nur Anfragen, die an <code>127.0.0.1</code> oder <code>localhost</code> gerichtet sind. Alles andere lehnt es mit „Ungültiger Host.“ ab. Das verhindert, dass eine fremde Webseite Ihren Browser dazu bringt, KASSIVO unter anderem Namen anzusprechen.</li>
   <li><strong>Prüfung der Herkunft.</strong> Aktionen, die etwas ändern (Speichern, Importieren, Zuordnen), lehnt KASSIVO ab, wenn sie von einer anderen Webseite kommen. Sie sehen dann „Anfrage von fremder Herkunft abgelehnt.“ So kann keine andere offene Webseite heimlich Daten in KASSIVO ändern.</li>
   <li><strong>Strenge Seitenregeln.</strong> Die Seiten laden nur Dateien von KASSIVO selbst und lassen sich nicht in fremde Seiten einbetten.</li>
-  <li><strong>Begrenzte Uploads.</strong> Hochgeladene Dateien haben Größengrenzen, werden nur gelesen, nie ausgeführt, und eine ZIP-Datei wird nicht entpackt. XML-Dateien mit DOCTYPE oder ENTITY lehnt KASSIVO ab.</li>
+  <li><strong>Begrenzte Uploads.</strong> Hochgeladene Dateien haben Größengrenzen, werden nur gelesen, nie ausgeführt, und eine ZIP-Datei wird nicht entpackt. Aus einer Sicherung liest KASSIVO nur die zwei festen Einträge. XML-Dateien mit DOCTYPE oder ENTITY lehnt KASSIVO ab.</li>
   <li><strong>Gekürzte IBANs.</strong> In Listen und Meldungen zeigt KASSIVO IBANs gekürzt (<code>XX00…0001</code>).</li>
 </ul>
 
