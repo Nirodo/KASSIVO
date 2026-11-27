@@ -706,3 +706,13 @@ def test_update_page_numbers_match_code(pages):
     assert f"höchstens {_mb(update.MAX_ZIP_BYTES)} groß" in t
     assert "api.github.com" in t and update.API_URL.startswith("https://api.github.com/")
     assert "Update-Prüfung" in _text(pages["sicherheit"])
+
+
+def test_update_recovery_facts_match_code(pages):
+    from kassivo import update, update_recover
+    t = _text(pages["update"])
+    assert f".update/{update_recover.JOURNAL}" in t
+    assert f".update/{update.MANIFEST}" in t
+    assert r"-I .update\wiederherstellen.py ." in t
+    assert "OneDrive-Synchronisation pausieren" in update.E_CLOUD_HINT
+    assert "OneDrive-Synchronisation" in t

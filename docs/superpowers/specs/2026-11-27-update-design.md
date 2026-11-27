@@ -77,29 +77,43 @@ und startet `update.bat` im Projektordner. Begründung:
   Heruntergeladener Code läuft erst, wenn der Nutzer `update.bat` startet und mit `j` bestätigt.
 - Kein automatischer Neustart: das Skript endet mit dem Hinweis, `start.bat` neu zu starten.
 
-Ablauf von `python -I -m kassivo.update apply` (aus `update.bat`):
+Ablauf von `python -I -m kassivo.update apply` (aus `update.bat`), Stand nach Review-Runde 1:
 
-1. Neuestes geprüftes Paket in `<DB-Ordner>/updates` suchen, das neuer ist als die laufende
-   Version. Prüfsumme erneut berechnen und mit der `.sha256`-Datei vergleichen, Archiv erneut
-   prüfen (R5).
-2. Abbrechen, wenn Port 8000 belegt ist (KASSIVO läuft noch), wenn KASSIVO nicht als
-   editierbare Installation aus `<Projekt>/src` läuft, oder wenn die Datenbank innerhalb eines
-   auszutauschenden Ordners liegt.
-3. Bestätigung `j` abfragen.
-4. Datenbank sichern (SQLite-Backup-API, Datei nur lesend geöffnet) nach `<DB-Ordner>/backups`.
-   Scheitert das, bricht das Update ab. Die Datenbank selbst wird nie geschrieben.
-5. Archiv nach `<Projekt>/.update/neu-X.Y.Z-<Zeit>` entpacken (gleiches Laufwerk, damit das
-   Verschieben atomar ist).
-6. Für jeden Eintrag der obersten Ebene des Archivs: alten Eintrag nach
-   `<Projekt>/.update/alt-<alte Version>-<Zeit>` verschieben, neuen an seine Stelle. Einträge,
-   die nicht im Archiv sind (`.venv`, `.git`, eigene Dateien), bleiben unberührt.
-7. Haben sich die Abhängigkeiten in `pyproject.toml` geändert, `pip install -e .` ausführen
-   (braucht Zugang zu PyPI). Sonst nicht.
-8. Rauchtest: neuer Python-Prozess importiert `kassivo.web.app` und meldet die neue Version.
-9. Scheitert 6, 7 oder 8: alles zurück aus `alt-...`, Meldung mit Grund. Der alte Stand bleibt
-   nach Erfolg in `.update/alt-...` liegen und kann von Hand gelöscht werden.
-10. Protokoll in `<DB-Ordner>/updates/update.log` (Zeit, Versionen, Schritte, keine
-    personenbezogenen Daten).
+0. Liegt `.update/journal.json` vor, hat `update.bat` vorher schon `.update/wiederherstellen.py`
+   laufen lassen; `apply` selbst setzt in dem Fall ebenfalls zuerst zurück und bricht ab.
+1. Alle Prüfungen vor der Frage `j/n` (`preflight`): Paket neuer, editierbare Installation aus
+   `<Projekt>/src`, Port 8000 frei, Datenbank/Sicherungen/Paket nicht im Projektordner,
+   Prüfsumme gegen `.sha256`, Archiv-Prüfung (R5), `pyproject.toml` lesbar. Liegt das Projekt
+   in einem Cloud-Ordner: Hinweis "OneDrive-Synchronisation pausieren".
+2. Bestätigung `j`, dann Datenbank sichern (SQLite-Backup-API, nur lesend). Scheitert das,
+   bricht das Update ab.
+3. Ein Datei-Handle für Prüfsumme, Prüfung und Entpacken. Entpackt wird ohne Versionsordner
+   nach `.update/n-<Zeit>` (kurze Namen `a-`, `n-`, `f-` wegen MAX_PATH; bei sehr tiefen
+   Projektpfaden bleibt das Risiko, dann bricht das Update vor dem Austausch ab).
+4. Plan: jede Paketdatei, dazu Dateien des vorigen Pakets (`.update/dateien.txt`), die im neuen
+   fehlen. Haben sich Abhängigkeiten geändert, wird vorher `pip freeze` (ohne kassivo) nach
+   `.update/pip-<Zeit>.txt` gesichert. `update_recover.py` wird als
+   `.update/wiederherstellen.py` kopiert, der Plan mit fsync nach `.update/journal.json`.
+5. Austausch Datei für Datei: alte Datei nach `.update/a-<Zeit>`, neue an ihren Platz.
+   Eigene Dateien, die nicht im Paket stehen, bleiben (I4). Bei `PermissionError` (OneDrive,
+   Virenscanner) bis zu 6 Versuche mit Wartezeit ab 0,5 s, verdoppelt (I3).
+6. `pip install -e .` nur bei geänderten Abhängigkeiten (Journal vermerkt das), dann Rauchtest.
+7. Fehler (auch Strg+C und jede andere BaseException über `finally`, I1): Rückweg laut Journal,
+   dann `pip install -r .update/pip-....txt`, falls pip lief; klappt das nicht, nennt die
+   Meldung den Reparaturbefehl. Danach `n-`, `f-` und der leere `a-`-Ordner weg.
+8. Erfolg: `dateien.txt` schreiben, Journal löschen, `a-<Zeit>` bleibt als alter Stand.
+9. Protokoll in `<DB-Ordner>/updates/update.log` ohne personenbezogene Daten und ohne volle
+   Pfade (nur `.update/a-...`).
+
+Warum ein eigenständiges Wiederherstellungsskript (I2): Bricht der Prozess mitten im Austausch
+hart ab, kann `src/kassivo` halb alt, halb neu sein; `python -m kassivo.update` wäre dann
+womöglich nicht importierbar. `update_recover.py` nutzt nur die Standardbibliothek und liegt
+als Kopie außerhalb von `src`. Ob ein Schritt gelaufen ist, liest es aus dem Dateisystem (alte
+Datei im `a-`-Ordner, neue noch im `n-`-Ordner), deshalb genügt ein einmal geschriebenes
+Journal und die Wiederherstellung ist wiederholbar. `update.bat` ruft es vor allem anderen auf,
+wenn das Journal existiert. Fehlt auch das, beschreibt das Wiki die Schritte von Hand.
+Verworfen: Journal je Schritt (viele fsyncs, kein Mehrwert gegenüber dem Dateisystem-Zustand);
+Ordnerweiser Austausch (verschob eigene, nicht versionierte Dateien in den alt-Ordner).
 
 Die Datenbank-Migration passiert beim nächsten Start wie bisher (mit eigener Sicherung, #30).
 
