@@ -150,3 +150,10 @@ def test_web_keins_survives_unklar_auto_and_learning(web):
                     data={"member_id": str(m), "learn": "on", "next": "/unmatched"})
     assert r.status_code == 303
     assert _member_of(c, spende) is None and _flag(c, spende) == 1
+
+
+def test_start_page_unklar_count_matches_unmatched_list(conn, anna, spende):
+    from kassivo.overview import overview
+    _tx(conn, 1700, cp_iban=None, day="2026-02-03")  # ohne IBAN, bleibt unklar
+    data = overview(conn, date(2026, 3, 1))
+    assert data["unmatched"] == len(unmatched(conn)) == 2  # inkl. "— keins —"
