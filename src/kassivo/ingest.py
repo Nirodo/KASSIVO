@@ -1,7 +1,9 @@
 """Import von CAMT-052-Dateien (ZIP, einzelne XML oder Ordner) mit Duplikaterkennung.
 
 Nur lesend gegenüber der Bank. Alles in einer DB-Transaktion: erst alle Dateien
-parsen, dann schreiben. Meldungen enthalten nie volle IBAN, Namen oder Zweck.
+parsen, dann schreiben; import_and_assign nimmt Regeln, Zuordnung und
+Verteilung in dieselbe Transaktion (#7). Meldungen enthalten nie volle IBAN,
+Namen oder Zweck.
 """
 import hashlib
 import zipfile
@@ -10,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from kassivo import categories, dues, matching
 from kassivo.camt import CamtError, ParsedStatement, parse_camt052
 
 MAX_XML_BYTES = 20 * 1024 * 1024
@@ -192,42 +195,84 @@ def _ref_conflict(conn, acc: int, key: str, tx) -> bool:
     return row is not None and (row[0], row[1]) != (tx.amount_cents, tx.booking_date.isoformat())
 
 
-def import_path(conn, path: Path, bank_label: str = "Sparkasse") -> ImportResult:
+def _prepare(conn, path: Path, caller: str) -> list[ParsedStatement]:
     if conn.in_transaction:  # `with conn` würde fremde offene Änderungen mit-committen
-        raise RuntimeError("import_path darf nicht innerhalb einer offenen Transaktion laufen")
-    path = Path(path)
-    statements = _parse_all(_collect(path))  # wirft, bevor geschrieben wird
+        raise RuntimeError(f"{caller} darf nicht innerhalb einer offenen Transaktion laufen")
+    return _parse_all(_collect(path))  # wirft, bevor geschrieben wird
+
+
+def _write(conn, path: Path, statements, bank_label: str) -> ImportResult:
+    """Schreibt Stapel und Buchungen. Ohne commit (Transaktion des Aufrufers)."""
     warnings = [w for st in statements for w in (_balance_warning(st), _zero_warning(st), _nostatus_warning(st)) if w]
     new_ids: list[int] = []
     dups = 0
-    with conn:  # eine Transaktion: commit bei Erfolg, rollback bei jedem Fehler
-        batch_id = conn.execute(
-            "insert into import_batch(filename, imported_at) values(?,?)",
-            (path.name, datetime.now().isoformat(timespec="seconds")),
-        ).lastrowid
-        for st in statements:
-            conflicts: list[str] = []  # Buchungstage der Bankreferenz-Konflikte
-            acc = _account_id(conn, st.account_iban, bank_label)
-            for tx, key in zip(st.entries, _dedupe_keys(st)):
-                cur = conn.execute(
-                    'insert into "transaction"(account_id, booking_date, value_date, amount_cents,'
-                    " bank_ref, cp_name, cp_iban, purpose, dedupe_key, batch_id)"
-                    " values(?,?,?,?,?,?,?,?,?,?) on conflict(account_id, dedupe_key) do nothing",
-                    (acc, tx.booking_date.isoformat(),
-                     tx.value_date.isoformat() if tx.value_date else None,
-                     tx.amount_cents, tx.bank_ref, tx.cp_name, tx.cp_iban, tx.purpose,
-                     key, batch_id),
-                )
-                if cur.rowcount == 1:
-                    new_ids.append(cur.lastrowid)
-                else:
-                    dups += 1
-                    if tx.bank_ref and _ref_conflict(conn, acc, key, tx):
-                        conflicts.append(tx.booking_date.isoformat())
-            if conflicts:
-                warnings.append(_refconflict_warning(st, len(conflicts), max(conflicts)))
-        conn.execute(
-            "update import_batch set new_count=?, dup_count=? where id=?",
-            (len(new_ids), dups, batch_id),
-        )
+    batch_id = conn.execute(
+        "insert into import_batch(filename, imported_at) values(?,?)",
+        (path.name, datetime.now().isoformat(timespec="seconds")),
+    ).lastrowid
+    for st in statements:
+        conflicts: list[str] = []  # Buchungstage der Bankreferenz-Konflikte
+        acc = _account_id(conn, st.account_iban, bank_label)
+        for tx, key in zip(st.entries, _dedupe_keys(st)):
+            cur = conn.execute(
+                'insert into "transaction"(account_id, booking_date, value_date, amount_cents,'
+                " bank_ref, cp_name, cp_iban, purpose, dedupe_key, batch_id)"
+                " values(?,?,?,?,?,?,?,?,?,?) on conflict(account_id, dedupe_key) do nothing",
+                (acc, tx.booking_date.isoformat(),
+                 tx.value_date.isoformat() if tx.value_date else None,
+                 tx.amount_cents, tx.bank_ref, tx.cp_name, tx.cp_iban, tx.purpose,
+                 key, batch_id),
+            )
+            if cur.rowcount == 1:
+                new_ids.append(cur.lastrowid)
+            else:
+                dups += 1
+                if tx.bank_ref and _ref_conflict(conn, acc, key, tx):
+                    conflicts.append(tx.booking_date.isoformat())
+        if conflicts:
+            warnings.append(_refconflict_warning(st, len(conflicts), max(conflicts)))
+    conn.execute(
+        "update import_batch set new_count=?, dup_count=? where id=?",
+        (len(new_ids), dups, batch_id),
+    )
     return ImportResult(batch_id, len(new_ids), dups, warnings, new_ids)
+
+
+def import_path(conn, path: Path, bank_label: str = "Sparkasse") -> ImportResult:
+    """Nur Buchungen schreiben, ohne Regeln und Zuordnung (eine Transaktion)."""
+    path = Path(path)
+    statements = _prepare(conn, path, "import_path")
+    with conn:  # eine Transaktion: commit bei Erfolg, rollback bei jedem Fehler
+        return _write(conn, path, statements, bank_label)
+
+
+@dataclass
+class ImportOutcome:
+    result: ImportResult
+    categorized: int
+    assigned: int
+    redistributed: bool  # abgeleiteter Prüfungsstart vorverlegt, alles neu verteilt
+
+
+def import_and_assign(conn, path: Path, bank_label: str = "Sparkasse") -> ImportOutcome:
+    """Import mit Regeln, Zuordnung und Verteilung in einem Commit (#7).
+
+    Alles oder nichts: scheitert ein Schritt, bleibt die Datenbank wie vorher,
+    und ein erneuter Import legt die Buchungen vollständig neu an. Ein
+    wiederholter Import derselben Datei ändert nur den Stapel (0 neu).
+    Verworfen: Einzel-Commits mit Hinweis und Knopf "Regeln erneut anwenden"
+    (Teilzustand sichtbar, Duplikaterkennung blockiert den erneuten Import).
+    """
+    path = Path(path)
+    statements = _prepare(conn, path, "import_and_assign")
+    derived_before = None if dues.check_start_is_set(conn) else dues.get_check_start(conn)
+    with conn:  # commit bei Erfolg, rollback bei jedem Fehler
+        result = _write(conn, path, statements, bank_label)
+        categorized = categories.apply_rules(conn, result.new_tx_ids)
+        assigned = matching.auto_assign(conn, result.new_tx_ids, commit=False)
+        redistributed = (not dues.check_start_is_set(conn)
+                         and dues.get_check_start(conn) != derived_before)
+        if redistributed:
+            # abgeleiteter Prüfungsstart ist früher geworden: Abgeleitetes folgt
+            dues.redistribute_all(conn, commit=False)
+    return ImportOutcome(result, categorized, assigned, redistributed)

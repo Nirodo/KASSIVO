@@ -485,7 +485,7 @@ def auto_distribute_pending(conn) -> AutoResult:
     return AutoResult(confirmed + review + outside, confirmed, review, outside)
 
 
-def redistribute_all(conn) -> tuple[int, int]:
+def redistribute_all(conn, *, commit: bool = True) -> tuple[int, int]:
     """Alle abgeleiteten Verteilungen neu berechnen (z. B. nach neuem Prüfungsstart).
 
     Löscht alle Zeilen der Buchungen ohne Nutzerentscheidung (nur source='auto')
@@ -493,8 +493,11 @@ def redistribute_all(conn) -> tuple[int, int]:
     einem Commit; die Schreibsperre bleibt bis dahin gehalten (Zwischen-Commits
     würden das Alles-oder-nichts aufheben). Gibt (geändert, jetzt vor dem
     Prüfungsstart) zurück: geändert zählt nur Buchungen, deren Zeilen sich
-    wirklich geändert haben.
+    wirklich geändert haben. commit=False: in der Transaktion des Aufrufers
+    (Import, #7), ohne commit und ohne rollback.
     """
+    if not commit:
+        return _redistribute(conn)
     try:
         result = _redistribute(conn)
     except Exception:

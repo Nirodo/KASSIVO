@@ -191,6 +191,18 @@ def _as_v2(rows):
     return out
 
 
+def _as_v3(rows):
+    """Erwartete Zeilen nach Migration 3: transaction bekommt no_member = 0."""
+    out = dict(rows)
+    out["transaction"] = [tuple(r) + (0,) for r in rows["transaction"]]
+    return out
+
+
+def _as_current(rows):
+    """Zeilen aus Schema 1 nach allen Migrationen."""
+    return _as_v3(_as_v2(rows))
+
+
 # --- Registry, Konstanten, eingefrorenes Ausgangsschema ---
 
 def test_registry_matches_constant():
@@ -258,15 +270,15 @@ def test_legacy_db_stamped_then_migrated_with_backup(tmp_path):
     assert _raw_version(p) == 0
     before = _rows(p)
     connect(p).close()
-    assert _raw_version(p) == SCHEMA_VERSION == 2
-    assert _rows(p) == _as_v2(before)
+    assert _raw_version(p) == SCHEMA_VERSION == 3
+    assert _rows(p) == _as_current(before)
     names = _backups(p)
     assert len(names) == 1
     bk = p.parent / "backups" / names[0]
     assert _raw_version(bk) == 1 and _rows(bk) == before
     after = _dump(p)
     connect(p).close()
-    assert _dump(p) == after and _raw_version(p) == 2
+    assert _dump(p) == after and _raw_version(p) == 3
     assert len(_backups(p)) == 1
 
 
@@ -288,7 +300,7 @@ def test_legacy_db_with_not_null_member_iban_relaxed(tmp_path):
     notnull = {r["name"]: r["notnull"] for r in c.execute("pragma table_info(member_iban)")}
     assert notnull["member_id"] == 0
     c.close()
-    assert _rows(p) == _as_v2(before)
+    assert _rows(p) == _as_current(before)
     assert _raw_version(p) == SCHEMA_VERSION
 
 
@@ -592,7 +604,7 @@ def test_parallel_instance_legacy_stamp_once(tmp_path, monkeypatch):
     before = _rows(p)
     _race(monkeypatch, lambda: connect(p).close())
     connect(p).close()
-    assert _raw_version(p) == SCHEMA_VERSION and _rows(p) == _as_v2(before)
+    assert _raw_version(p) == SCHEMA_VERSION and _rows(p) == _as_current(before)
 
 
 def test_parallel_fresh_create_once(tmp_path, monkeypatch):
@@ -705,7 +717,7 @@ def test_migration_2_adds_source_with_data(tmp_path):
     _v1_db(p)
     before = _dump(p)
     rows_before = _rows(p)
-    c = connect(p)
+    c = connect(p, migrations={2: MIGRATIONS[2]})  # nur Migration 2
     assert schema_version(c) == 2
     got = [tuple(r) for r in c.execute(
         "select id, tx_id, member_id, month, cents, status, source from allocation order by id")]
@@ -729,5 +741,50 @@ def test_migration_2_adds_source_with_data(tmp_path):
     assert _raw_version(bk) == 1 and _dump(bk) == before
 
 
-def test_migration_2_registered():
-    assert SCHEMA_VERSION == 2 and set(MIGRATIONS) == {2}
+def test_migrations_registered():
+    assert SCHEMA_VERSION == 3 and set(MIGRATIONS) == {2, 3}
+
+
+# --- Migration 3: transaction.no_member (#6) ---
+
+def _v2_db(path):
+    """Datenbank mit Schema 2 (Release 1.2.0) und Beispieldaten."""
+    _v1_db(path)
+    connect(path, migrations={2: MIGRATIONS[2]}, backup_dir=path.parent / "alt").close()
+
+
+def test_migration_3_adds_no_member_with_data(tmp_path):
+    p = tmp_path / "k.db"
+    _v2_db(p)
+    assert _raw_version(p) == 2
+    before = _dump(p)
+    rows_before = _rows(p)
+    c = connect(p)
+    assert schema_version(c) == 3
+    assert [tuple(r) for r in c.execute(
+        'select id, member_id, no_member from "transaction" order by id')] == [
+        (1, 1, 0), (2, None, 0)]
+    assert _rows(p) == _as_v3(rows_before)
+    # neue Zeile ohne Angabe: 0; nur 0 und 1 erlaubt
+    c.execute('insert into "transaction"(account_id, booking_date, amount_cents, dedupe_key)'
+              " values(1, '2026-04-01', 100, 'k3')")
+    assert c.execute('select no_member from "transaction" where dedupe_key=?',
+                     ("k3",)).fetchone()[0] == 0
+    with pytest.raises(sqlite3.IntegrityError):
+        c.execute('insert into "transaction"(account_id, booking_date, amount_cents,'
+                  " dedupe_key, no_member) values(1, '2026-04-01', 100, 'k4', 2)")
+    c.rollback()
+    c.close()
+    names = _backups(p)
+    assert len(names) == 1
+    bk = p.parent / "backups" / names[0]
+    assert _raw_version(bk) == 2 and _dump(bk) == before
+
+
+def test_migration_3_idempotent_on_second_start(tmp_path):
+    p = tmp_path / "k.db"
+    _v2_db(p)
+    connect(p).close()
+    after = _dump(p)
+    connect(p).close()
+    assert _dump(p) == after and len(_backups(p)) == 1

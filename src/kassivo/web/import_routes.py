@@ -1,17 +1,20 @@
 """CAMT-Import per Upload. Der Dateiname des Clients wird nie verwendet."""
+import logging
 import re
 import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 
-from kassivo import categories, dues, matching
 from kassivo.camt import CamtError
 from kassivo.dues import check_start_is_set, distribution_counts, proposed_tx_count
-from kassivo.ingest import import_path
-from kassivo.web.common import _NOTES, get_conn, render
+from kassivo.ingest import import_and_assign
+from kassivo.web.common import get_conn, render
 
+log = logging.getLogger("kassivo.import")
 router = APIRouter()
+FAILED = ("Beim Import ist ein Fehler aufgetreten. Es wurde nichts importiert. "
+          "Bitte die Datei erneut importieren.")
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 UPLOAD_OVERHEAD_BYTES = 1024 * 1024  # Multipart-Rahmen kommt zur Dateigröße hinzu
 CHUNK = 1024 * 1024
@@ -72,24 +75,18 @@ async def import_submit(
         if kind is None:
             return _form(request, conn, 422, "Dateityp nicht erkannt. Erwartet wird eine ZIP- oder XML-Datei.")
         path = raw.rename(raw.with_name(f"upload.{kind}"))
-        derived_before = None if check_start_is_set(conn) else dues.get_check_start(conn)
         try:
-            result = import_path(conn, path)
+            # Buchungen, Regeln, Zuordnung und Verteilung in einem Commit (#7)
+            out = import_and_assign(conn, path)
         except CamtError as e:
             return _form(request, conn, 422, f"{e}. Es wurde nichts importiert.")
-        categorized = categories.apply_rules(conn, result.new_tx_ids)
-        assigned = matching.auto_assign(conn, result.new_tx_ids)
-        redistribute_failed = False
-        if not check_start_is_set(conn) and dues.get_check_start(conn) != derived_before:
-            # abgeleiteter Prüfungsstart ist früher geworden: Abgeleitetes folgt.
-            # Scheitert das, bleibt der Import gespeichert (eigener Commit davor).
-            try:
-                dues.redistribute_all(conn)
-            except Exception:
-                redistribute_failed = True
+        except Exception as e:
+            # nur der Typ: Meldungen von Fehlern können Daten aus der Datei enthalten
+            log.error("Import fehlgeschlagen: %s", type(e).__name__)
+            return _form(request, conn, 500, FAILED)
+    result = out.result
     auto_count, review_count, outside_count = distribution_counts(conn, result.new_tx_ids)
     return render(request, "import_result.html", result=result,
-                  categorized=categorized, assigned=assigned,
+                  categorized=out.categorized, assigned=out.assigned,
                   auto_count=auto_count, review_count=review_count, outside_count=outside_count,
-                  proposals=proposed_tx_count(conn), redistribute_failed=redistribute_failed,
-                  redistribute_text=_NOTES["redistribute_failed"])
+                  proposals=proposed_tx_count(conn))

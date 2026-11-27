@@ -511,7 +511,7 @@ def test_sibling_reassignment_flow():
     assert _rows(conn, tx) == [("2026-02", 1700, "proposed")]  # bleibt manueller Vorschlag
 
 
-def test_keins_is_reassigned_by_auto_assign_and_ambiguity_is_permanent():
+def test_keins_holds_against_auto_assign_and_ambiguity_is_permanent():
     from kassivo import matching
     conn, mid = _setup()
     other = create_member(conn, "Erika Musterfrau", "Aktiv", date(2025, 12, 10))
@@ -521,7 +521,7 @@ def test_keins_is_reassigned_by_auto_assign_and_ambiguity_is_permanent():
     matching.assign_member(conn, tx, mid)
     dues.clear_allocations(conn, tx)
     matching.assign_member(conn, tx, None)
-    assert matching.auto_assign(conn, [tx]) == 1  # "— keins —" hält nicht
+    assert matching.auto_assign(conn, [tx]) == 0  # "— keins —" hält (#6)
     dues.clear_allocations(conn, tx)
     matching.assign_member(conn, tx, None)
     matching.assign_member(conn, tx, other)  # mit "Absender merken": jetzt mehrdeutig
