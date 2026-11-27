@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ wiki_title | default("Wiki") }}{% endblock %}
 {% block content %}
-<a class="skip-link" href="#wiki-inhalt">Zum Inhalt springen</a>
+<a class="skip" href="#wiki-inhalt">Zum Inhalt springen</a>
 <div class="wiki">
   <nav class="wiki-toc" aria-label="Themen des Wikis">
     <p><a href="/wiki"{% if not slug %} aria-current="page"{% endif %}>Übersicht</a></p>

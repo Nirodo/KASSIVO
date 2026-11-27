@@ -7,7 +7,7 @@ KASSIVO 1.2.0 ist ein lokales Kassenprogramm für eine Person an einem Rechner. 
 
 Eine ausführliche Anleitung steckt im Programm: das Fragezeichen oben rechts oder der Bereich "Einstellungen", Punkt "Wiki" (`/wiki`), erklärt jede Funktion mit Schritten und Beispielen. Das Wiki ist nur zum Lesen und braucht kein Internet.
 
-Die Oberfläche hat fünf Bereiche (Übersicht, Mitglieder, Zahlungen, Auswertung, Einstellungen) in der blauen Leiste oben; links steht die Seitenleiste des gewählten Bereichs. Auf dem Handy öffnet der Knopf "Menü" die Bereiche. Die Seiten nutzen die volle Fensterbreite.
+Die Oberfläche hat fünf Bereiche (Übersicht, Mitglieder, Zahlungen, Auswertung, Einstellungen) in der blauen Leiste oben; links steht die Seitenleiste des gewählten Bereichs. Auf dem Handy öffnet der Knopf "Menü" die Bereiche und den Hilfe-Link. Die Seiten nutzen die volle Fensterbreite.
 
 Kontoumsätze kommen per Datei-Import (CAMT V8, Sparkasse). Eine direkte Bankabfrage (FinTS, finAPI) und ein C24-Adapter sind nicht gebaut.
 
@@ -61,7 +61,7 @@ Von Hand starten Sie so:
 python -m kassivo
 ```
 
-Danach ist KASSIVO unter http://127.0.0.1:8000 im Browser erreichbar. Die Startseite zeigt die Beitragsübersicht. Beim Start schreibt KASSIVO in die Konsole:
+Danach ist KASSIVO unter http://127.0.0.1:8000 im Browser erreichbar. Die Adresse ohne Pfad leitet auf das Beitragsraster (Bereich "Auswertung") weiter. Beim Start schreibt KASSIVO in die Konsole:
 
 ```
 Datenbank: <vollständiger Pfad zur kassivo.db>

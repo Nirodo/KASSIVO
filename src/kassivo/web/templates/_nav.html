@@ -1,7 +1,7 @@
 {# Bereiche und Seitenleisten. Jeder Eintrag: (Ziel, Beschriftung, passende Pfadanfänge; leer = nie aktiv). #}
 {% set AREAS = [
   ("Übersicht", "/", ["="], [
-    ("Heute", [("/", "Übersicht", ["="]), ("/import", "Kontoauszug importieren", [])])]),
+    ("Heute", [("/", "Übersicht", ["="]), ("/dues", "Beitragsraster (Auswertung)", [])])]),
   ("Mitglieder", "/members", ["/members"], [
     ("Mitglieder", [("/members", "Alle Mitglieder", ["/members"]), ("/members/new", "Mitglied anlegen", [])])]),
   ("Zahlungen", "/transactions", ["/transactions", "/unmatched", "/auto", "/import"], [

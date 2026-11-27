@@ -65,7 +65,7 @@ def test_main_nav_has_five_areas_and_one_current(client, path):
 def test_sidebar_marks_current_subpage(client, path):
     _, sub = PAGES[path]
     html = client.get(path).text
-    side = re.search(r'<aside[^>]*class="side"[^>]*>.*?</aside>', html, re.S)[0]
+    side = _nav(html, "Bereichsmenü [^\"]+[^ \"]")
     assert f'href="{sub}" aria-current="page"' in side
     assert side.count('aria-current="page"') == 1
 
@@ -101,3 +101,47 @@ def test_css_full_width_and_dark_mode():
     assert "prefers-color-scheme: dark" in css
     assert "overflow-x: auto" in css
     assert "@import" not in css and "url(http" not in css
+
+
+def test_sidebar_is_named_nav_without_trailing_space(client):
+    t = client.get("/dues").text
+    assert '<nav class="side" aria-label="Bereichsmenü Auswertung">' in t
+    assert "<aside" not in t
+
+
+def test_mobile_menu_has_help_link(client):
+    panel = re.search(r'<div class="panel">.*?</div>', client.get("/members").text, re.S)[0]
+    assert 'href="/wiki"' in panel
+
+
+def test_unknown_page_renders_without_area(client):
+    r = client.get("/gibt-es-nicht")
+    assert r.status_code == 404
+    assert 'class="side"' not in r.text and "layout-solo" in r.text
+    nav = _nav(r.text, "Hauptnavigation")
+    assert "aria-current" not in nav and nav.count("<a ") == 5
+
+
+def test_uebersicht_sidebar_has_no_import_link(client):
+    # /import gehört nur zu "Zahlungen"; die Übersicht verweist aufs Beitragsraster.
+    nav_src = (Path(__file__).resolve().parents[1] / "src/kassivo/web/templates/_nav.html").read_text("utf-8")
+    start = nav_src.index('("Übersicht"')
+    assert '"/import"' not in nav_src[start:nav_src.index('("Mitglieder"')]
+
+
+def test_every_get_route_belongs_to_an_area(client):
+    """Jede HTML-Seite hat einen Bereich, ausser der Weiterleitung "/" und Nicht-HTML."""
+    # app.routes enthält neuere FastAPI-Router nur verschachtelt; das Schema listet alle Pfade flach.
+    schema = client.app.openapi()["paths"]
+    paths = sorted(p for p, ops in schema.items() if "get" in ops)
+    assert "/dues" in paths
+    seen = 0
+    for p in paths:
+        url = re.sub(r"\{[^}]+\}", "1", p)
+        r = client.get(url)
+        if r.status_code in (301, 302, 303, 307, 308) or "text/html" not in r.headers.get("content-type", ""):
+            continue
+        nav = _nav(r.text, "Hauptnavigation")
+        assert nav.count('aria-current="page"') == 1, p
+        seen += 1
+    assert seen >= 15

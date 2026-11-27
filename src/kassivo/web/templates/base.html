@@ -15,11 +15,11 @@
   <div class="right"><a class="round" href="/wiki" aria-label="Hilfe (Wiki)">?</a></div>
   <details class="mnav">
     <summary>Menü</summary>
-    <div class="panel">{{ nav.areas("Hauptmenü") }}</div>
+    <div class="panel">{{ nav.areas("Hauptmenü") }}<p class="help"><a href="/wiki">Hilfe (Wiki)</a></p></div>
   </details>
 </div></header>
-<div class="layout">
-  <aside class="side" aria-label="Bereichsmenü {{ nav.ns.area[0] if nav.ns.area else '' }}">{{ nav.groups() }}</aside>
+<div class="layout{% if not nav.ns.area %} layout-solo{% endif %}">
+  {% if nav.ns.area %}<nav class="side" aria-label="Bereichsmenü {{ nav.ns.area[0] }}">{{ nav.groups() }}</nav>{% endif %}
   <div class="content">
     {% if nav.ns.area %}<details class="subnav"><summary>{{ nav.ns.area[0] }}: Bereichsmenü</summary>{{ nav.groups() }}</details>{% endif %}
     <main id="main" class="page">
