@@ -370,7 +370,11 @@ def restore(db_path: Path, token: str, staging: Path, backup_dir: Path,
         raise RestoreError(E_EXPIRED) from exc
     check_db(staged)  # erneut: die Datei lag zwischen Vorschau und Bestätigung auf der Platte
     # Ältere Schema-Version: bestehende Migration auf der Kopie, mit Sicherung vorher.
-    db.connect(staged, backup_dir=backup_dir).close()
+    try:
+        db.connect(staged, backup_dir=backup_dir).close()
+    except sqlite3.Error as exc:
+        # z. B. Schema 0 mit passenden Tabellennamen, aber fremden Spalten
+        raise RestoreError(E_SCHEMA) from exc
     info = check_db(staged)
     backup._fsync_file(staged)
     safety = _safety_copy(db_path, backup_dir, timeout)

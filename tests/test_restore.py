@@ -805,3 +805,31 @@ def test_docs_describe_restore():
     assert "keinen Knopf" not in w
     g = (ROOT / "src/kassivo/web/templates/wiki/grenzen.html").read_text(encoding="utf-8")
     assert "Kein Wiederherstellen-Knopf" not in g
+
+
+def test_restore_v0_with_foreign_columns_is_clean_error(tmp_path, target):
+    """Schema 0 mit passenden Tabellennamen, aber fremden Spalten: verständlicher Fehler."""
+    def setup(c):
+        c.executescript(dbmod.SCHEMA.replace(
+            "create table if not exists membership_type(\n  id integer primary key, name text not null unique);",
+            "create table membership_type(x);"))
+    p = tmp_path / "backups" / "kassivo-20250101-000000.db"
+    p.parent.mkdir()
+    p.write_bytes(_db_bytes(tmp_path, setup))
+    st = restore.stage_local(p, _staging(tmp_path))
+    before = target.read_bytes()
+    with pytest.raises(RestoreError) as e:
+        restore.restore(target, st.token, _staging(tmp_path), target.parent / "backups")
+    assert str(e.value) == restore.E_SCHEMA
+    assert target.read_bytes() == before
+
+
+def test_export_route_leaves_no_temp_files(client, db_path):
+    assert client.post("/backup/export").status_code == 200
+    assert [p.name for p in db_path.parent.iterdir() if p.name.startswith(".")] == []
+
+
+def test_upload_leaves_no_temp_files(client, db_path, tmp_path):
+    _upload(client, _export(tmp_path).read_bytes())
+    _upload(client, b"PK\x03\x04kaputt")
+    assert [p.name for p in db_path.parent.iterdir() if p.name.startswith(".")] == []
