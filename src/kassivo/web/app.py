@@ -3,14 +3,14 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from kassivo.db import connect
 from kassivo.web import (
     auto_routes, backup_routes, categories_routes, dues_routes, import_routes, members_routes, reports_routes,
-    settings_routes, transactions_routes, wiki_routes,
+    overview_routes, settings_routes, transactions_routes, wiki_routes,
 )
 from kassivo.web.common import HERE, render
 
@@ -74,11 +74,8 @@ def create_app(db_path, extra_hosts=()) -> FastAPI:
         return render(request, "error.html", exc.status_code,
                       message=texts.get(exc.status_code, "Fehler bei der Anfrage."))
 
-    @app.get("/")
-    async def root():
-        return RedirectResponse("/dues")
-
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+    app.include_router(overview_routes.router)
     app.include_router(members_routes.router)
     app.include_router(settings_routes.router)
     app.include_router(import_routes.router)
