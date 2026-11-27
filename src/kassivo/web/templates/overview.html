@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_macros.html" import check_start_notice, help_link %}
+{% block title %}Übersicht{% endblock %}
+
+{# Eine Aufgabe: Zahl, Text, Link. Die ganze Zeile ist der Link. #}
+{% macro task(key, count, url, title, text, go, urgent=false) %}
+<li><a href="{{ url }}">
+  <span class="todo-n{% if urgent and count %} is-err{% endif %}{% if not count %} is-zero{% endif %}" data-count="{{ key }}">{{ count }}</span>
+  <span class="todo-text"><strong>{{ title }}</strong><small>{{ text }}</small></span>
+  <span class="todo-go">{{ go }} <span aria-hidden="true">&rarr;</span></span>
+</a></li>
+{% endmacro %}
+
+{% block content %}
+<p class="hint page-sub">Beitragsjahr {{ year }} · Stand {{ today_text }}</p>
+{{ help_link("start") }}
+{{ check_start_notice(check_start_set) }}
+<p class="actions"><a class="button" href="/import">Kontoauszug importieren</a></p>
+{% if o.empty %}
+<section class="card" aria-labelledby="empty-h">
+  <h2 id="empty-h">Noch keine Daten</h2>
+  <p>In dieser Kasse gibt es noch keine Mitglieder und keine Buchungen. So fangen Sie an:</p>
+  <ol class="steps">
+    <li><a href="/settings/fees">Prüfungsstart festlegen</a> und die Beiträge prüfen.</li>
+    <li><a href="/members/new">Mitglieder anlegen</a>.</li>
+    <li><a href="/import">Kontoauszug importieren</a>.</li>
+  </ol>
+  <p><a href="/wiki/start">Ausführliche Anleitung: Erste Schritte</a></p>
+</section>
+{% else %}
+<div class="dash">
+<section class="card" aria-labelledby="todo-h">
+  <h2 id="todo-h">Heute zu tun</h2>
+  <ul class="todo">
+    {{ task("unmatched", o.unmatched, "/unmatched", "Unklare Zahlungen",
+            "Zahlungseingänge ohne Mitglied oder Kategorie, alle Jahre", "Zuordnen") }}
+    {{ task("proposals", o.proposals, "/transactions?year=all&proposed=1", "Offene Vorschläge",
+            "Zahlungen, deren Verteilung auf Ihre Prüfung wartet, alle Jahre", "Prüfen") }}
+    {% for y in o.overdue | reverse %}
+    {{ task("overdue-%d" % y.year, y.count, "/dues?year=%d" % y.year,
+            "Überfällige Monatsbeiträge %d" % y.year,
+            "Betroffene Mitglieder: %d" % y.members, "Ansehen", urgent=true) }}
+    {% endfor %}
+  </ul>
+  <h3>Zur Kontrolle</h3>
+  <ul class="todo">
+    {{ task("auto", o.auto, "/auto", "Automatisch verteilt",
+            "Von KASSIVO selbst auf Monate verteilt, insgesamt", "Ansehen") }}
+  </ul>
+</section>
+
+{% set m = o.month %}
+<section class="card" aria-labelledby="month-h">
+  <h2 id="month-h">Beiträge {{ month_name }} {{ year }}</h2>
+  {% if m.due %}
+  <p class="kpi"><span data-count="month-paid">{{ m.paid }}</span> von <span data-count="month-due">{{ m.due }}</span> bezahlt</p>
+  <ul class="pills">
+    <li class="status-open">Offen: <span data-count="month-open">{{ m.open }}</span></li>
+    <li class="status-partial">Teilweise: <span data-count="month-partial">{{ m.partial }}</span></li>
+  </ul>
+  {% else %}
+  <p>Für diesen Monat ist kein Beitrag fällig.</p>
+  {% endif %}
+  <p>Bezahlt {{ (m.totals.paid | eur)[:-2] }} € von {{ m.totals.expected | eur }} erwartet</p>
+  <p><a href="/dues?year={{ year }}">Beitragsraster {{ year }} ansehen</a></p>
+</section>
+
+<section class="card" aria-labelledby="year-h">
+  <h2 id="year-h">Einnahmen und Ausgaben {{ year }}</h2>
+  <dl class="sums">
+    <div><dt>Einnahmen</dt><dd>{{ o.year.income_cents | eur }}</dd></div>
+    <div><dt>Ausgaben</dt><dd>{{ o.year.expense_cents | eur }}</dd></div>
+    <div><dt>Saldo</dt><dd>{{ o.year.balance_cents | eur }}</dd></div>
+  </dl>
+  <p class="hint">Saldo: Einnahmen minus Ausgaben der Buchungen dieses Jahres. Das ist nicht der Kontostand.</p>
+  <p><a href="/reports?year={{ year }}">Jahresreport {{ year }} ansehen</a></p>
+</section>
+</div>
+{% endif %}
+{% endblock %}

@@ -12,6 +12,7 @@ CSS = Path(__file__).resolve().parents[1] / "src/kassivo/web/static/style.css"
 
 # Seite -> (aktiver Bereich, Unterseite in der Seitenleiste)
 PAGES = {
+    "/": ("Übersicht", "/"),
     "/dues": ("Auswertung", "/dues"),
     "/forecast": ("Auswertung", "/forecast"),
     "/reports": ("Auswertung", "/reports"),
@@ -123,18 +124,19 @@ def test_unknown_page_renders_without_area(client):
 
 
 def test_uebersicht_sidebar_has_no_import_link(client):
-    # /import gehört nur zu "Zahlungen"; die Übersicht verweist aufs Beitragsraster.
+    # /import gehört nur zu "Zahlungen"; die Seitenleiste der Übersicht hat keinen Behelfslink.
     nav_src = (Path(__file__).resolve().parents[1] / "src/kassivo/web/templates/_nav.html").read_text("utf-8")
     start = nav_src.index('("Übersicht"')
-    assert '"/import"' not in nav_src[start:nav_src.index('("Mitglieder"')]
+    block = nav_src[start:nav_src.index('("Mitglieder"')]
+    assert '"/import"' not in block and '"/dues"' not in block
 
 
 def test_every_get_route_belongs_to_an_area(client):
-    """Jede HTML-Seite hat einen Bereich, ausser der Weiterleitung "/" und Nicht-HTML."""
+    """Jede HTML-Seite hat einen Bereich, ausser Weiterleitungen und Nicht-HTML."""
     # app.routes enthält neuere FastAPI-Router nur verschachtelt; das Schema listet alle Pfade flach.
     schema = client.app.openapi()["paths"]
     paths = sorted(p for p, ops in schema.items() if "get" in ops)
-    assert "/dues" in paths
+    assert "/dues" in paths and "/" in paths
     seen = 0
     for p in paths:
         url = re.sub(r"\{[^}]+\}", "1", p)

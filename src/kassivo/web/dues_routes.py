@@ -10,6 +10,7 @@ from kassivo.dues import (
 from kassivo.forecast import forecast
 from kassivo.members import type_at
 from kassivo.months import add_months, month_end, month_of
+from kassivo.overview import month_totals
 from kassivo.web.common import (
     E_DATE, check_id, get_conn, get_today, parse_date, parse_year, render, year_error, year_nav,
 )
@@ -24,11 +25,7 @@ async def dues_view(request: Request, year: str | None = None,
     if y is None:
         return year_error(request, "/dues")
     grid = dues_grid(conn, y, today)
-    totals = [
-        {"expected": sum(r["months"][i].expected for r in grid),
-         "paid": sum(r["months"][i].paid for r in grid)}
-        for i in range(12)
-    ]
+    totals = [month_totals(grid, i) for i in range(12)]
     return render(request, "dues.html", year=y, grid=grid, totals=totals,
                   check_start_set=check_start_is_set(conn),
                   proposals=proposed_months(conn, y), waiting=proposed_tx_count(conn),
