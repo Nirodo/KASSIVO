@@ -26,6 +26,8 @@ credentials*.json
 *.STA
 samples/
 exports/
+# Sicherungen für einen anderen PC (enthalten Namen und IBANs)
+*.kassivo
 
 # Lokale Daten / DBs
 *.db
