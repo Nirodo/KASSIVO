@@ -1,6 +1,6 @@
 # Design: Buchhaltung wie bei Webling (#54 bis #57)
 
-Stand: 2026-11-27. Status: **wartet auf Freigabe.**
+Stand: 2026-11-27. Status: **freigegeben am 2026-11-27.**
 
 ## Ziel
 
