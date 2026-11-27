@@ -114,6 +114,35 @@ td select { max-width: 14rem; }
 .alert { background: var(--err-bg); color: var(--err-fg); }
 .notice { background: var(--ok-bg); color: var(--ok-fg); }
 
+/* Übersicht: Karten, Aufgaben mit Zahl, ganze Zeile ist der Link */
+.page-sub { margin: -.75rem 0 .75rem; }
+.actions { margin: 0 0 1rem; }
+.dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr)); gap: 1rem; align-items: start; }
+.card { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1rem; }
+.card h2 { margin-top: 0; }
+.card h3 { font-size: .9375rem; margin: 1rem 0 0; }
+.todo { list-style: none; margin: 0; padding: 0; }
+.todo li { border-top: 1px solid var(--line-soft); }
+.todo li:first-child { border-top: 0; }
+.todo a { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; gap: .75rem; align-items: center;
+  min-height: 2.75rem; padding: .5rem .25rem; color: var(--fg); text-decoration: none; }
+.todo a:hover { background: var(--accent-soft); }
+.todo-n { text-align: center; font-size: 1.25rem; font-weight: 800; font-variant-numeric: tabular-nums;
+  padding: .25rem 0; border-radius: var(--radius); background: var(--accent-soft); }
+.todo-n.is-err { background: var(--err-bg); color: var(--err-fg); }
+.todo-n.is-zero { background: var(--panel); color: var(--muted); }
+.todo-text small { display: block; color: var(--muted); font-size: .875rem; }
+.todo-go { color: var(--accent); font-weight: 600; white-space: nowrap; }
+@media (max-width: 30rem) {
+  .todo a { grid-template-columns: 3rem minmax(0, 1fr); }
+  .todo-go { grid-column: 2; }
+}
+.kpi { font-size: 1.5rem; font-weight: 800; margin: 0 0 .5rem; font-variant-numeric: tabular-nums; }
+.pills { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .5rem; }
+.pills li { padding: .125rem .625rem; border-radius: 999px; border: 1px solid var(--line); }
+.card dl.sums dd { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
 /* Listenkarte: Tabellen scrollen im eigenen Rahmen */
 .table-wrap { overflow-x: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 table { border-collapse: collapse; width: 100%; }

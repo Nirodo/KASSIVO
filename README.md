@@ -20,6 +20,7 @@ Kontoumsätze kommen per Datei-Import (CAMT V8, Sparkasse). Eine direkte Bankabf
 - **Verteilung** (Wiki: "Verteilung auf Beitragsmonate"): Jede Zahlung wird auf Beitragsmonate verteilt. Eindeutige Zahlungen verteilt KASSIVO selbst (Seite "Automatisch verteilt", mit "Rückgängig"), nur echte Ausnahmen bleiben ein Vorschlag, den Sie prüfen und bestätigen.
 - **Kategorien und Regeln** (Wiki: "Kategorien und Regeln"): Regeln nach Zweck, Name oder IBAN der Gegenpartei mit Priorität und Betragsgrenzen ordnen Buchungen Kategorien zu.
 - **Beitragsübersicht** (Wiki: "Beitragsübersicht"): Raster Mitglieder mal Monate mit den Status Bezahlt, Teilweise, Offen, Überfällig, dazu die Zahlungshistorie je Mitglied.
+- **Übersicht** (Wiki: "Erste Schritte"): Startseite "Heute zu tun" mit dem Knopf "Kontoauszug importieren", Zählern mit Direktlink (unklare Zahlungen, offene Vorschläge, überfällige Monatsbeiträge je Jahr, ohne gespeicherten Prüfungsstart nur das laufende Jahr, automatisch verteilt), dem Beitragsstand des laufenden Monats und Einnahmen, Ausgaben und Saldo des Jahres. Die Zahlen stammen aus denselben Funktionen wie die Zielseiten. Der Saldo ist Einnahmen minus Ausgaben, nicht der Kontostand. Die Seite ist nur zum Lesen.
 - **Prognose** (Wiki: "Prognose"): Offene Mitgliedsbeiträge bis zu einem Stichtag, getrennt in überfällig und noch fällig.
 - **Jahresreport** (Wiki: "Jahresreport"): Einnahmen, Ausgaben, Saldo, Diagramme und Tabellen je Kategorie und Monat.
 - **Backup** (Wiki: "Sicherung und Wiederherstellung"): Sicherung der Datenbank auf Knopfdruck.
@@ -69,7 +70,7 @@ Von Hand starten Sie so:
 python -m kassivo
 ```
 
-Danach ist KASSIVO unter http://127.0.0.1:8000 im Browser erreichbar. Die Adresse ohne Pfad leitet auf das Beitragsraster (Bereich "Auswertung") weiter. Beim Start schreibt KASSIVO in die Konsole:
+Danach ist KASSIVO unter http://127.0.0.1:8000 im Browser erreichbar. Die Adresse ohne Pfad zeigt die Startseite (Bereich "Übersicht"). Beim Start schreibt KASSIVO in die Konsole:
 
 ```
 Datenbank: <vollständiger Pfad zur kassivo.db>
@@ -116,7 +117,7 @@ Der cmd-Befehl `set` setzt in PowerShell keine Umgebungsvariable. KASSIVO starte
 
 Ausführlicher im Wiki unter "Erste Schritte" (`/wiki/start`).
 
-1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Beitragsübersicht und Import einen Hinweis. Am besten den ersten vollen Monat wählen, den der Kontoexport abdeckt: Beginnt der Export mitten im Monat, fehlen frühere Zahlungen dieses Monats und er erschiene als überfällig. Zahlungen, die vor dem Prüfungsstart-Monat gebucht sind (zum Beispiel am 20.03. bei Prüfungsstart 2026-04), bleiben dem Mitglied zugeordnet, werden aber nicht auf Monate verteilt und erscheinen nicht als Vorschlag. Wird der Prüfungsstart später geändert, berechnet KASSIVO alle automatischen Verteilungen und Vorschläge neu; von Ihnen bestätigte Verteilungen bleiben unverändert.
+1. **Prüfungsstart festlegen** (Einstellungen): ab welchem Monat Beiträge geprüft werden. Solange er fehlt, zeigen Übersicht, Beitragsübersicht und Import einen Hinweis. Am besten den ersten vollen Monat wählen, den der Kontoexport abdeckt: Beginnt der Export mitten im Monat, fehlen frühere Zahlungen dieses Monats und er erschiene als überfällig. Zahlungen, die vor dem Prüfungsstart-Monat gebucht sind (zum Beispiel am 20.03. bei Prüfungsstart 2026-04), bleiben dem Mitglied zugeordnet, werden aber nicht auf Monate verteilt und erscheinen nicht als Vorschlag. Wird der Prüfungsstart später geändert, berechnet KASSIVO alle automatischen Verteilungen und Vorschläge neu; von Ihnen bestätigte Verteilungen bleiben unverändert.
 2. **Mitglieder und Beiträge anlegen** (Mitglieder, Einstellungen).
 3. **Kontoexport importieren** (Import).
 4. **"Unklar" zuordnen**: jede Zahlung einem Mitglied zuordnen, mit "Absender merken". Weitere unklare Zahlungen derselben IBAN werden dann gleich mit zugeordnet. Der Knopf "Unklare automatisch zuordnen" wendet Gelerntes erneut auf die ganze Liste an, auch auf Zahlungen, die Sie mit "— keins —" auf Unklar zurückgesetzt haben. Zahlt eine IBAN für mehrere Mitglieder (z. B. ein Elternteil für zwei Kinder), wird sie nicht automatisch zugeordnet.
@@ -251,6 +252,7 @@ src/kassivo/
   members.py           Mitglieder und Mitgliedsarten
   money.py             Geldbeträge (ganze Cent)
   months.py            Monatsrechnung
+  overview.py          Zahlen der Startseite (nur lesend)
   reports.py           Jahresreport
   settings.py          Ort der Datenbank (Standardordner, KASSIVO_DB, Cloud-Warnung)
   update.py            Update: Release prüfen, Paket laden und prüfen, installieren (update.bat)
@@ -263,6 +265,7 @@ src/kassivo/
     dues_routes.py     Beitragsübersicht, Zahlungshistorie, Prognose
     import_routes.py   Upload und Import
     members_routes.py  Mitglieder
+    overview_routes.py Startseite "Heute zu tun"
     reports_routes.py  Jahresreport und Diagrammdaten
     settings_routes.py Beiträge und Prüfungsstart
     update_routes.py   Update-Seite: Opt-in, nach Updates suchen, Paket herunterladen
