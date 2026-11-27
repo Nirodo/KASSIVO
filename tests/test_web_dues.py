@@ -244,7 +244,7 @@ CHECK_NOTE = "Prüfungsstart ist noch nicht festgelegt – bitte vor dem ersten 
 def test_check_start_notice_until_set(client, db, path):
     html = client.get(path).text
     assert CHECK_NOTE in _text(html)
-    assert 'href="/settings/fees"' in html.split("<main>")[1]
+    assert 'href="/settings/fees"' in html.split("<main ")[1]
     set_check_start(db, "2026-01")
     assert CHECK_NOTE not in _text(client.get(path).text)
 
