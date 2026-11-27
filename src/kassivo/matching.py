@@ -1,6 +1,7 @@
 """Zuordnung von Zahlungseingängen zu Mitgliedern, mit Lernen der Absender-IBAN.
 
-Eine Buchung wird nie geändert, nur member_id und category_id. Alle Prüfungen
+Eine Buchung wird nie geändert, nur member_id,
+category_id und no_member. Alle Prüfungen
 laufen vor dem ersten Schreiben: bei ValueError bleibt die DB unverändert.
 IBANs erscheinen nie in Fehlermeldungen.
 

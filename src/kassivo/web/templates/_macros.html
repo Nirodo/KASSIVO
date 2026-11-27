@@ -54,7 +54,8 @@
 <form method="post" action="/transactions/{{ tx_id }}/member" class="inline">
   <input type="hidden" name="next" value="{{ next_url }}">
   <label class="visually-hidden" for="member-{{ tx_id }}">Mitglied für Buchung {{ tx_id }}</label>
-  <select id="member-{{ tx_id }}" name="member_id">{{ member_options(members, selected) }}</select>
+  <select id="member-{{ tx_id }}" name="member_id"{% if selected is none %} required{% endif %}>
+    {%- if selected is none %}<option value="" selected>Bitte wählen</option>{% endif %}{{ member_options(members, selected) }}</select>
   <label class="check"><input type="checkbox" name="learn" value="on"{% if learn_checked %} checked{% endif %}> Absender merken</label>
   <button type="submit">Zuordnen</button>
 </form>
