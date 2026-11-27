@@ -17,17 +17,24 @@ import os
 import re
 import shutil
 import socket
+import sqlite3
 import ssl
 import stat
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
 import uuid
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
+# Alles, was apply_update braucht, wird hier oben importiert: Während des Austauschs liegt
+# der alte Programmordner schon woanders, späte Importe kämen aus dem neuen Stand.
+from kassivo import __version__, backup, settings
 
 REPO = "Nirodo/KASSIVO"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -374,3 +381,233 @@ def extract_archive(zip_path: Path, version: str, dest: Path) -> Path:
             raise _bad("Archiv beschädigt") from None
         raise
     return dest / f"kassivo-{version}"
+
+
+# --- Installieren (aus update.bat, KASSIVO ist beendet) ------------------------------------
+
+E_RUNNING = ("KASSIVO läuft noch (Port 8000 ist belegt). Bitte KASSIVO beenden"
+             " (Fenster schließen) und update.bat erneut starten.")
+E_NOT_EDITABLE = ("KASSIVO ist nicht als editierbare Installation aus diesem Projektordner"
+                  " installiert. Das Update braucht die Installation mit"
+                  " „pip install -e .“ (siehe README). Bitte von Hand aktualisieren.")
+E_SUM_FILE = "Die Prüfsumme des Update-Pakets fehlt oder stimmt nicht. Bitte erneut herunterladen."
+E_INSIDE = ("Datenbank, Sicherungen oder Update-Paket liegen in einem Programmordner, der"
+            " ausgetauscht würde. Update abgebrochen, es wurde nichts geändert.")
+SMOKE = "import kassivo, kassivo.web.app; print(kassivo.__version__)"
+_DEPS_RE = re.compile(r"^dependencies\s*=\s*\[(.*?)\]", re.S | re.M)
+
+
+@dataclass(frozen=True)
+class ApplyResult:
+    version: str
+    backup_name: str | None
+    rollback_dir: Path
+
+
+def port_in_use(port: int = PORT) -> bool:
+    """Läuft KASSIVO noch? Nur ein Verbindungsversuch auf 127.0.0.1, es wird nichts gesendet."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _sidecar(zip_path: Path) -> Path:
+    return zip_path.with_name(zip_path.name + ".sha256")
+
+
+def _verify_sidecar(zip_path: Path) -> None:
+    try:
+        expected = _sidecar(zip_path).read_text("ascii").strip().lower()
+        digest = hashlib.sha256()
+        with open(zip_path, "rb") as f:
+            while chunk := f.read(1024 * 1024):
+                digest.update(chunk)
+    except (OSError, UnicodeDecodeError):
+        raise UpdateError(E_SUM_FILE) from None
+    if not re.fullmatch(r"[0-9a-f]{64}", expected) or not hmac.compare_digest(
+            digest.hexdigest(), expected):
+        raise UpdateError(E_SUM_FILE)
+
+
+def find_package(update_dir, current: str) -> Path | None:
+    """Neuestes heruntergeladenes Paket mit Prüfsummen-Datei, das neuer ist als current."""
+    update_dir = Path(update_dir)
+    if not update_dir.is_dir():
+        return None
+    found = []
+    for p in update_dir.iterdir():
+        m = _ZIP_NAME_RE.fullmatch(p.name)
+        if m and is_newer(m[1], current) and p.is_file() and _sidecar(p).is_file():
+            found.append((parse_version(m[1]), p))
+    return max(found)[1] if found else None
+
+
+def _dependencies(pyproject: Path) -> list[str]:
+    m = _DEPS_RE.search(pyproject.read_text("utf-8"))
+    return sorted(re.findall(r'"([^"]+)"', m[1])) if m else []
+
+
+def _inside(path: Path, folder: Path) -> bool:
+    path, folder = Path(path).resolve(), Path(folder).resolve()
+    return path == folder or folder in path.parents
+
+
+def _backup_database(db_path: Path) -> str | None:
+    """Kopie über die SQLite-Backup-API; die Datenbank wird nur lesend geöffnet."""
+    db_path = Path(db_path)
+    if not db_path.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            return backup.backup_db(conn, settings.backup_dir(db_path)).name
+        finally:
+            conn.close()
+    except (sqlite3.Error, OSError) as exc:
+        raise UpdateError("Die Sicherung der Datenbank ist fehlgeschlagen. Das Update wurde"
+                          f" abgebrochen, es wurde nichts geändert ({type(exc).__name__}).") from None
+
+
+class _Log:
+    """Protokoll ohne personenbezogene Daten: nur Zeit, Versionen und Schritte."""
+
+    def __init__(self, path: Path, out):
+        self.path, self.out = path, out
+
+    def __call__(self, text: str) -> None:
+        self.out(text)
+        try:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {text}\n")
+        except OSError:
+            pass  # ein fehlendes Protokoll darf das Update nicht stoppen
+
+
+def _rollback(project: Path, old_dir: Path, failed_dir: Path, moved: list) -> None:
+    """moved: [name, alter Eintrag verschoben?, neuer Eintrag an seinem Platz?] in Reihenfolge."""
+    for name, had_old, new_in_place in reversed(moved):
+        if new_in_place:
+            failed_dir.mkdir(parents=True, exist_ok=True)
+            os.replace(project / name, failed_dir / name)
+        if had_old:
+            os.replace(old_dir / name, project / name)
+
+
+def _check_target(project: Path, package_dir: Path, db_path: Path, zip_path: Path,
+                  tops: list[str]) -> None:
+    if not (project / "pyproject.toml").is_file() or not _inside(
+            package_dir, project / "src" / "kassivo") or not _inside(
+            project / "src" / "kassivo", package_dir):
+        raise UpdateError(E_NOT_EDITABLE)
+    for name in tops:
+        for local in (db_path, zip_path, settings.backup_dir(db_path)):
+            if _inside(local, project / name):
+                raise UpdateError(E_INSIDE)
+
+
+def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
+                 port_in_use=port_in_use, run=subprocess.run, python: str = sys.executable,
+                 package_dir=None, now: datetime | None = None, out=lambda s: None) -> ApplyResult:
+    """Installiert ein heruntergeladenes, geprüftes Paket. Ablauf siehe Design R4."""
+    project, zip_path, db_path = Path(project_dir), Path(zip_path), Path(db_path)
+    m = _ZIP_NAME_RE.fullmatch(zip_path.name)
+    if not m or not is_newer(m[1], current):
+        raise UpdateError(f"Das Paket ist nicht neuer als die installierte Version {current}.")
+    version = m[1]
+    package_dir = Path(package_dir) if package_dir is not None else Path(__file__).parent
+    if port_in_use():
+        raise UpdateError(E_RUNNING)
+    _verify_sidecar(zip_path)
+    with open(zip_path, "rb") as f:
+        tops = check_archive(f, version)
+    _check_target(project, package_dir, db_path, zip_path, tops)
+
+    log = _Log(zip_path.parent / "update.log", out)
+    log(f"Update {current} -> {version} gestartet.")
+    backup_name = _backup_database(db_path)
+    log(f"Datenbank gesichert: {backup_name}." if backup_name else "Keine Datenbank vorhanden.")
+
+    tag = f"{(now or datetime.now()):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
+    work = project / ".update"
+    new_root = extract_archive(zip_path, version, work / f"neu-{version}-{tag}")
+    old_dir = work / f"alt-{current}-{tag}"
+    failed_dir = work / f"fehlgeschlagen-{version}-{tag}"
+    old_dir.mkdir(parents=True)
+    deps_changed = _dependencies(project / "pyproject.toml") != _dependencies(
+        new_root / "pyproject.toml")
+
+    moved: list = []
+    try:
+        for name in tops:
+            dst = project / name
+            had_old = dst.exists() or dst.is_symlink()
+            if had_old:
+                os.replace(dst, old_dir / name)
+            moved.append([name, had_old, False])
+            os.replace(new_root / name, dst)
+            moved[-1][2] = True
+        log("Programmdateien ausgetauscht.")
+        if deps_changed:
+            log("Abhängigkeiten haben sich geändert: pip install -e . läuft.")
+            r = run([python, "-m", "pip", "install", "-e", "."], cwd=project,
+                    capture_output=True, text=True, timeout=600)
+            if r.returncode != 0:
+                raise UpdateError("pip install -e . ist fehlgeschlagen (PyPI erreichbar?).")
+        r = run([python, "-I", "-c", SMOKE], cwd=project, capture_output=True, text=True,
+                timeout=120)
+        if r.returncode != 0 or r.stdout.strip() != version:
+            raise UpdateError("Die neue Version startet nicht.")
+    except (UpdateError, OSError, subprocess.SubprocessError) as exc:
+        reason = str(exc) if isinstance(exc, UpdateError) else type(exc).__name__ + "."
+        try:
+            _rollback(project, old_dir, failed_dir, moved)
+        except OSError:
+            log("Zurücksetzen fehlgeschlagen.")
+            raise UpdateError(
+                f"Update fehlgeschlagen ({reason}) und das Zurücksetzen auch. Der alte Stand"
+                f" liegt in {old_dir}; bitte die Einträge von dort zurück in den Projektordner"
+                " verschieben.") from None
+        log(f"Update fehlgeschlagen, alter Stand zurückgesetzt: {reason}")
+        raise UpdateError(f"Update fehlgeschlagen: {reason} Der alte Stand wurde"
+                          " zurückgesetzt.") from None
+    shutil.rmtree(new_root.parent, ignore_errors=True)  # nur der eigene, jetzt leere Entpackordner
+    log(f"Update auf {version} abgeschlossen. Alter Stand: {old_dir}")
+    return ApplyResult(version=version, backup_name=backup_name, rollback_dir=old_dir)
+
+
+def main(argv=None, *, db_path=None, project_dir=None, package_dir=None,
+         current: str = __version__, ask=input, out=print, **apply_kw) -> int:
+    """python -I -m kassivo.update apply. Rückgabe 0 = installiert, 1 = nichts getan, 2 = Fehler."""
+    argv = sys.argv[1:] if argv is None else argv
+    if argv != ["apply"]:
+        out("Aufruf: python -I -m kassivo.update apply")
+        return 2
+    db_path = Path(db_path) if db_path is not None else settings.default_db_path()
+    project = Path(project_dir) if project_dir is not None else Path(__file__).resolve().parents[2]
+    package = find_package(settings.update_dir(db_path), current)
+    if package is None:
+        out("Kein heruntergeladenes Update gefunden. Bitte zuerst in KASSIVO unter"
+            " Einstellungen, Update das Update herunterladen.")
+        return 1
+    version = _ZIP_NAME_RE.fullmatch(package.name)[1]
+    out(f"Installiert: {current}. Heruntergeladen und geprüft: {version}.")
+    out("Vorher wird die Datenbank gesichert. Die Datenbank selbst wird nicht verändert.")
+    try:
+        answer = ask(f"Update auf {version} jetzt installieren? (j/n) ")
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+    if answer.strip().lower() not in ("j", "ja"):
+        out("Update abgebrochen. Es wurde nichts geändert.")
+        return 1
+    try:
+        apply_update(project, package, db_path, current=current, package_dir=package_dir,
+                     out=out, **apply_kw)
+    except UpdateError as exc:
+        out(f"Fehler: {exc}")
+        return 2
+    out(f"KASSIVO {version} ist installiert. Bitte jetzt start.bat starten.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
