@@ -5,17 +5,25 @@ Schema-Version, Erstellzeit, SHA-256 und Größe der Datenbank) und kassivo.db (
 Kopie über die SQLite-Backup-API). Nicht verschlüsselt: sie enthält Klarnamen und IBANs.
 
 Einspielen in zwei Schritten:
-  1. stage_upload / stage_local: Datei prüfen und als <token>.db in den Bereitstellungsordner
-     neben der Datenbank legen. Die aktuelle Datenbank bleibt unberührt.
-  2. restore: bereitgestellte Datei erneut prüfen, ältere Schema-Version mit der bestehenden
-     Migration umstellen (mit Sicherung), Sicherheitskopie der aktuellen Datenbank anlegen,
-     dann atomar per os.replace austauschen.
+  1. stage_upload / stage_local: Datei als Kopie in den Bereitstellungsordner neben der
+     Datenbank legen, prüfen (Kopf, integrity_check, keine Trigger/Views/virtuellen Tabellen),
+     ältere Schema-Version mit der bestehenden Migration umstellen (ohne Sicherung: das
+     Original bleibt ja erhalten), dann streng gegen eine Referenz-Datenbank derselben
+     Schema-Version vergleichen und Geldspalten auf ganze Zahlen prüfen. Die aktuelle
+     Datenbank bleibt unberührt.
+  2. restore: bereitgestellte Datei erneut streng prüfen, Journal neben der aktuellen
+     Datenbank ausschließen, Sicherheitskopie anlegen, dann atomar per os.replace austauschen.
+
+Fremde Dateien werden nur gehärtet geöffnet (trusted_schema=OFF, SQLITE_DBCONFIG_DEFENSIVE).
 
 Verworfen:
   - ZIP entpacken (extractall): Namen aus dem Archiv werden nie als Pfad benutzt, es gibt nur
     die zwei festen Einträge; so ist Zip-Slip ausgeschlossen.
   - Erst ersetzen, dann migrieren: Scheitert die Migration, wäre die aktive Datenbank halb
     umgestellt. Migriert wird deshalb die bereitgestellte Kopie.
+  - Struktur nur über Tabellennamen prüfen: lässt fehlende UNIQUE-Bedingungen, REAL-Beträge
+    oder virtuelle Tabellen durch. Verglichen wird deshalb mit einer frisch angelegten und
+    migrierten Referenz (normalisierter CREATE-Text, table_xinfo, Fremdschlüssel, Indizes).
   - Rechnername im Manifest: wird nicht gebraucht und gibt unnötig etwas über den PC preis.
   - Verschlüsselung mit Passwort: nicht in v1 (offener Punkt im Issue).
 """
@@ -27,6 +35,7 @@ import secrets
 import shutil
 import sqlite3
 import stat
+import time
 import zipfile
 import zlib
 from dataclasses import dataclass
@@ -44,8 +53,13 @@ MAX_MANIFEST_BYTES = 64 * 1024
 MAX_DB_BYTES = 512 * 1024 * 1024
 CHUNK = 1024 * 1024
 SQLITE_MAGIC = b"SQLite format 3\x00"
+SIDECARS = ("-journal", "-wal", "-shm")
 TOKEN_RE = re.compile(r"[0-9a-f]{32}", re.ASCII)
-_STAGED_RE = re.compile(r"\.?[0-9a-f]{32}\.(db|part)", re.ASCII)
+_STAGED_RE = re.compile(
+    r"(?:[0-9a-f]{32}\.(?:db|done)|\.[0-9a-f]{32}\.part)(?:-journal|-wal|-shm)?", re.ASCII)
+# Eigene Zwischenordner im Datenordner (tempfile.mkdtemp: Präfix + Zufallszeichen)
+_LEFTOVER_RE = re.compile(r"\.(?:export|upload)-[A-Za-z0-9_]{1,64}", re.ASCII)
+LEFTOVER_MAX_AGE = 3600  # Sekunden; jüngere Ordner können zu einer laufenden Anfrage gehören
 _VERSION_RE = re.compile(r"[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}", re.ASCII)
 _SHA_RE = re.compile(r"[0-9a-f]{64}", re.ASCII)
 _DATE_RE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})", re.ASCII)
@@ -53,6 +67,10 @@ _DATE_RE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})", re.ASCII)
 REQUIRED_TABLES = frozenset({
     "account", "membership_type", "fee_rate", "member", "member_type_history", "member_iban",
     "category", "category_rule", "import_batch", "transaction", "allocation", "settings"})
+# Geldspalten: (Tabelle, Spalte, NULL erlaubt). Beträge sind immer ganze Cent.
+MONEY_COLUMNS = (("transaction", "amount_cents", False), ("allocation", "cents", False),
+                 ("fee_rate", "cents", False), ("category_rule", "min_cents", True),
+                 ("category_rule", "max_cents", True))
 
 E_ZIP = "Die Datei ist keine gültige KASSIVO-Sicherung (beschädigtes oder fremdes ZIP-Archiv)."
 E_ENTRIES = ("Die Sicherung enthält unerwartete Einträge. Erwartet werden genau "
@@ -64,7 +82,13 @@ E_TOO_BIG = (f"Die Datenbank in der Sicherung ist zu groß "
 E_NOT_DB = "Die Sicherung enthält keine gültige SQLite-Datenbank."
 E_CORRUPT = "Die Datenbank in der Sicherung ist beschädigt (Integritätsprüfung fehlgeschlagen)."
 E_SCHEMA = "Die Datenbank in der Sicherung hat nicht den Aufbau einer KASSIVO-Datenbank."
+E_MONEY = ("Die Datenbank in der Sicherung enthält Beträge, die keine ganzen Cent sind. "
+           "Sie stammt nicht unverändert aus KASSIVO.")
+E_MIGRATE = ("Die Sicherung konnte nicht auf das Datenbankformat dieser KASSIVO-Version "
+             "umgestellt werden.")
 E_EXPIRED = "Die Vorschau ist nicht mehr gültig. Bitte die Sicherung erneut auswählen."
+E_DONE = ("Diese Sicherung wurde bereits eingespielt (zum Beispiel nach einem Doppelklick). "
+          "Es wurde nichts weiter geändert.")
 E_BUSY = ("Die aktuelle Datenbank ist gerade von einem anderen Programm oder einer zweiten "
           "KASSIVO-Instanz geöffnet. Es wurde nichts ersetzt.")
 E_SAFETY = ("Die Sicherheitskopie der aktuellen Datenbank ist fehlgeschlagen. "
@@ -82,7 +106,7 @@ class RestoreError(Exception):
 class Staged:
     token: str
     path: Path
-    schema: int
+    schema: int           # Schema-Version der Sicherung vor der Umstellung
     summary: dict
     created: str          # Anzeige, TT.MM.JJJJ HH:MM
     app_version: str | None
@@ -94,6 +118,36 @@ class Restored:
     safety: str | None    # Dateiname der Sicherheitskopie in backups/
     members: int
     transactions: int
+
+
+# --- Verbindungen ---
+
+def harden(conn: sqlite3.Connection) -> None:
+    """Für Dateien, die nicht von dieser KASSIVO-Instanz stammen."""
+    if hasattr(conn, "setconfig"):  # Python 3.12+
+        conn.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
+        conn.setconfig(sqlite3.SQLITE_DBCONFIG_TRUSTED_SCHEMA, False)
+    conn.execute("pragma trusted_schema = OFF")
+
+
+def _open(path: Path) -> sqlite3.Connection:
+    """Nur für eigene Kopien (Bereitstellung, Export-Schnappschuss), nie die Datei des Nutzers."""
+    conn = sqlite3.connect(str(path), timeout=1.0)
+    try:
+        harden(conn)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
+def _remove(path: Path) -> None:
+    """Datei samt -journal/-wal/-shm entfernen; Fehler verdecken nie den eigentlichen Fehler."""
+    for p in [path] + [Path(str(path) + s) for s in SIDECARS]:
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 # --- Export ---
@@ -108,11 +162,6 @@ def _sha256(path: Path) -> str:
         while chunk := f.read(CHUNK):
             h.update(chunk)
     return h.hexdigest()
-
-
-def _open(path: Path) -> sqlite3.Connection:
-    # Nur eigene Kopien werden so geöffnet, nie die Datei des Nutzers selbst.
-    return sqlite3.connect(str(path), timeout=1.0)
 
 
 def summary(conn: sqlite3.Connection) -> dict:
@@ -145,11 +194,11 @@ def export_backup(conn: sqlite3.Connection, out: Path, now: datetime | None = No
             z.writestr(MANIFEST, json.dumps(manifest, indent=2))
             z.write(snap, DB_ENTRY)
     finally:
-        snap.unlink(missing_ok=True)
+        _remove(snap)
     return manifest
 
 
-# --- Prüfen ---
+# --- Manifest ---
 
 def _int(v, lo=0, hi=2**62) -> bool:
     return type(v) is int and lo <= v <= hi
@@ -179,45 +228,155 @@ def _parse_manifest(raw: bytes) -> dict:
     return m
 
 
-def check_db(path: Path) -> dict:
-    """Prüft eine bereitgestellte Kopie. Gibt summary() zurück.
+# --- Struktur ---
 
-    Fehler: RestoreError, SchemaTooNewError (aus einer neueren KASSIVO-Version)."""
+def _norm(sql) -> str:
+    """CREATE-Text ohne Leerraum, Anführungszeichen, Groß/Klein und IF NOT EXISTS."""
+    return re.sub(r'[\s"`\[\]]', "", (sql or "").lower()).replace("ifnotexists", "")
+
+
+def _objects(conn) -> list:
+    return sorted((t, n, tb, _norm(s)) for t, n, tb, s in conn.execute(
+        "select type, name, tbl_name, sql from sqlite_master "
+        "where name not like 'sqlite\\_%' escape '\\'").fetchall())
+
+
+def _rows(conn, sql) -> list:
+    """Als Tupel (die Referenz-Verbindung liefert sqlite3.Row)."""
+    return [tuple(r) for r in conn.execute(sql).fetchall()]
+
+
+def _details(conn, tables) -> list:
+    """Spalten, Fremdschlüssel und Indizes (auch die automatischen für UNIQUE/PRIMARY KEY)."""
+    out = []
+    for name in sorted(tables):
+        q = name.replace('"', '""')
+        out.append(("xinfo", name, _rows(conn, f'pragma table_xinfo("{q}")')))
+        out.append(("fk", name, _rows(conn, f'pragma foreign_key_list("{q}")')))
+        indexes = []
+        for row in _rows(conn, f'pragma index_list("{q}")'):
+            # (seq, name, unique, origin, partial); Name der Auto-Indizes hängt von der
+            # Reihenfolge ab, ist aber für gleichen CREATE-Text gleich.
+            iq = row[1].replace('"', '""')
+            cols = _rows(conn, f'pragma index_xinfo("{iq}")')
+            indexes.append((row[1], row[2], row[3], row[4], cols))
+        out.append(("idx", name, sorted(indexes)))
+    return out
+
+
+def _signature(conn):
+    objects = _objects(conn)
+    tables = [n for t, n, _, _ in objects if t == "table"]
+    return objects, tables
+
+
+def _reference():
+    """Frisch angelegte und migrierte Datenbank im Speicher: Sollzustand dieser Version."""
+    ref = db.connect(":memory:", on_open=harden)
+    try:
+        objects, tables = _signature(ref)
+        return objects, _details(ref, tables)
+    finally:
+        ref.close()
+
+
+def _quick_check(c) -> int:
+    """Vor jeder Umstellung: Version, Unversehrtheit, keine Trigger/Views/virtuellen Tabellen."""
+    version = db.schema_version(c)
+    target = db.current_schema_version(db.MIGRATIONS)
+    if version > target:
+        raise db._too_new(version, target)
+    if c.execute("pragma integrity_check").fetchall() != [("ok",)]:
+        raise RestoreError(E_CORRUPT)
+    rows = c.execute("select type, name, sql from sqlite_master").fetchall()
+    tables = {n for t, n, _ in rows if t == "table"}
+    # Trigger würden bei der Umstellung oder später beim Schreiben laufen.
+    if (not REQUIRED_TABLES <= tables
+            or any(t in ("trigger", "view") for t, _, _ in rows)
+            or any(_norm(s).startswith("createvirtualtable") for _, _, s in rows)):
+        raise RestoreError(E_SCHEMA)
+    return version
+
+
+def _strict_check(c) -> dict:
+    """Nach der Umstellung: genau der Aufbau der Referenz, Beträge nur ganze Cent."""
+    if db.schema_version(c) != db.current_schema_version(db.MIGRATIONS):
+        raise RestoreError(E_SCHEMA)
+    if c.execute("pragma integrity_check").fetchall() != [("ok",)]:
+        raise RestoreError(E_CORRUPT)
+    ref_objects, ref_details = _reference()
+    objects, tables = _signature(c)
+    if objects != ref_objects or _details(c, tables) != ref_details:
+        raise RestoreError(E_SCHEMA)
+    for table, col, nullable in MONEY_COLUMNS:
+        cond = f"typeof({col}) != 'integer'" + (f" and {col} is not null" if nullable else "")
+        if c.execute(f'select count(*) from "{table}" where {cond}').fetchall()[0][0]:
+            raise RestoreError(E_MONEY)
+    return summary(c)
+
+
+def _header_ok(path: Path) -> None:
     with open(path, "rb") as f:
         if f.read(len(SQLITE_MAGIC)) != SQLITE_MAGIC:
             raise RestoreError(E_NOT_DB)
+
+
+def _with_conn(path: Path, check):
     try:
         c = _open(path)
     except sqlite3.DatabaseError as exc:
         raise RestoreError(E_NOT_DB) from exc
     try:
-        try:
-            version = db.schema_version(c)
-            target = db.current_schema_version(db.MIGRATIONS)
-            if version > target:
-                raise db._too_new(version, target)
-            if c.execute("pragma integrity_check").fetchall() != [("ok",)]:
-                raise RestoreError(E_CORRUPT)
-            kinds = c.execute("select type, name from sqlite_master").fetchall()
-            tables = {n for t, n in kinds if t == "table"}
-            # KASSIVO legt nie Trigger oder Views an. Fremde Trigger würden bei der Migration
-            # oder später beim Schreiben laufen: ablehnen.
-            if not REQUIRED_TABLES <= tables or any(t in ("trigger", "view") for t, _ in kinds):
-                raise RestoreError(E_SCHEMA)
-            return summary(c)
-        except sqlite3.DatabaseError as exc:
-            raise RestoreError(E_CORRUPT) from exc
+        return check(c)
+    except sqlite3.DatabaseError as exc:
+        raise RestoreError(E_CORRUPT) from exc
     finally:
         c.close()
+
+
+def _set_delete_mode(c) -> None:
+    """Rollback-Journal statt WAL; sonst entstehen -wal/-shm neben der aktiven Datenbank."""
+    if c.execute("pragma journal_mode = delete").fetchall()[0][0].lower() != "delete":
+        raise RestoreError(E_CORRUPT)
+
+
+def verify(path: Path) -> dict:
+    """Strenge Prüfung einer bereitgestellten Kopie (aktuelles Schema). Gibt summary() zurück."""
+    path = Path(path)
+    _header_ok(path)
+
+    def check(c):
+        _set_delete_mode(c)
+        return _strict_check(c)
+    info = _with_conn(path, check)
+    if any(os.path.exists(str(path) + s) for s in SIDECARS):
+        raise RestoreError(E_CORRUPT)
+    return info
+
+
+def prepare(path: Path) -> tuple[int, dict]:
+    """Prüft, stellt ältere Versionen um (ohne Sicherung) und prüft streng.
+
+    Gibt (Schema-Version vorher, summary) zurück. Fehler: RestoreError, SchemaTooNewError."""
+    path = Path(path)
+    _header_ok(path)
+    original = _with_conn(path, _quick_check)
+    try:
+        db.connect(path, on_open=harden, backup_before_migration=False, timeout=1.0).close()
+    except db.SchemaTooNewError:
+        raise
+    except (db.DatabaseOpenError, sqlite3.Error) as exc:
+        raise RestoreError(E_MIGRATE) from exc
+    return original, verify(path)
 
 
 # --- Bereitstellen ---
 
 def clear_staging(staging: Path) -> None:
-    """Entfernt frühere Bereitstellungen (nur eigene Dateinamen, keine Links)."""
-    if not staging.is_dir():
+    """Entfernt frühere Bereitstellungen und Erledigt-Marker (nur eigene Namen, keine Links)."""
+    if not Path(staging).is_dir():
         return
-    for p in staging.iterdir():
+    for p in Path(staging).iterdir():
         if not _STAGED_RE.fullmatch(p.name):
             continue
         try:
@@ -225,6 +384,33 @@ def clear_staging(staging: Path) -> None:
                 p.unlink()
         except OSError:
             pass
+
+
+def cleanup_leftovers(data_dir: Path, max_age: float = LEFTOVER_MAX_AGE) -> None:
+    """Löscht eigene Zwischenordner .export-*/.upload-*, die älter als max_age Sekunden sind.
+
+    Warum ein Alter: Anfragen laufen im selben Prozess nebeneinander (ein Export wird noch
+    gestreamt, während ein Upload beginnt). Ein jüngerer Ordner kann noch in Gebrauch sein.
+    Beim Start (keine Anfrage läuft) wird mit max_age=0 alles Eigene entfernt."""
+    if not Path(data_dir).is_dir():
+        return
+    now = time.time()
+    for p in Path(data_dir).iterdir():
+        if not _LEFTOVER_RE.fullmatch(p.name):
+            continue
+        try:
+            st = p.lstat()
+        except OSError:
+            continue
+        if stat.S_ISDIR(st.st_mode) and now - st.st_mtime >= max_age:
+            shutil.rmtree(p, ignore_errors=True)
+
+
+def startup_cleanup(db_path: Path) -> None:
+    """Beim Start: alle eigenen Reste neben der Datenbank entfernen."""
+    data = Path(db_path).parent
+    cleanup_leftovers(data, max_age=0)
+    clear_staging(data / "restore")
 
 
 def _new_slot(staging: Path) -> tuple[str, Path, Path]:
@@ -285,24 +471,23 @@ def _publish(part: Path, final: Path) -> None:
     os.replace(part, final)
 
 
-def _swap(staged: Path, db_path: Path) -> None:
-    """Austausch in einem Schritt (gleicher Ordner, gleiches Laufwerk)."""
-    os.replace(staged, db_path)
-
-
 def stage_upload(path: Path, staging: Path) -> Staged:
     """Prüft eine hochgeladene .kassivo-Datei und stellt die Datenbank bereit."""
     token, part, final = _new_slot(Path(staging))
     try:
         manifest = _read_zip(Path(path), part)
-        info = check_db(part)
-        if info["schema"] != manifest["schema_version"]:
+        _header_ok(part)
+        with open(part, "rb") as f:
+            f.seek(60)
+            header_version = int.from_bytes(f.read(4), "big")  # user_version im Dateikopf
+        if header_version != manifest["schema_version"]:
             raise RestoreError(E_MANIFEST)
+        original, info = prepare(part)
         _publish(part, final)
     except BaseException:
-        part.unlink(missing_ok=True)
+        _remove(part)
         raise
-    return Staged(token, final, info["schema"], info,
+    return Staged(token, final, original, info,
                   manifest["_created"].strftime("%d.%m.%Y %H:%M"), manifest["app_version"])
 
 
@@ -316,14 +501,14 @@ def stage_local(src: Path, staging: Path) -> Staged:
         if Path(src).stat().st_size > MAX_DB_BYTES:
             raise RestoreError(E_TOO_BIG)
         shutil.copyfile(src, part)
-        info = check_db(part)
+        original, info = prepare(part)
         _publish(part, final)
     except BaseException:
-        part.unlink(missing_ok=True)
+        _remove(part)
         raise
     d, t = m[1], m[2]
     created = f"{d[6:]}.{d[4:6]}.{d[:4]} {t[:2]}:{t[2:4]}:{t[4:]}"
-    return Staged(token, final, info["schema"], info, created, None, Path(src).name)
+    return Staged(token, final, original, info, created, None, Path(src).name)
 
 
 def format_day(value) -> str | None:
@@ -335,6 +520,30 @@ def format_day(value) -> str | None:
 
 
 # --- Einspielen ---
+
+def _sidecar_present(db_path: Path) -> bool:
+    return any(os.path.exists(str(db_path) + s) for s in SIDECARS)
+
+
+def _ensure_no_journal(db_path: Path, timeout: float) -> None:
+    """Ein Journal neben der Datenbank darf nie auf die eingespielte Datei angewendet werden.
+
+    Liegt eines da, wird einmal lesend geöffnet: ein heißes Journal nach einem Absturz rollt
+    SQLite dabei zurück und löscht es. Bleibt es (offene Transaktion eines anderen Programms),
+    wird abgebrochen, bevor irgendetwas angelegt wird."""
+    if not _sidecar_present(db_path):
+        return
+    try:
+        c = sqlite3.connect(str(db_path), timeout=timeout)
+        try:
+            c.execute("select count(*) from sqlite_master").fetchall()
+        finally:
+            c.close()
+    except sqlite3.Error as exc:
+        raise RestoreError(E_BUSY) from exc
+    if _sidecar_present(db_path):
+        raise RestoreError(E_BUSY)
+
 
 def _safety_copy(db_path: Path, backup_dir: Path, timeout: float) -> str | None:
     if not db_path.exists():
@@ -354,6 +563,11 @@ def _safety_copy(db_path: Path, backup_dir: Path, timeout: float) -> str | None:
         c.close()
 
 
+def _swap(staged: Path, db_path: Path) -> None:
+    """Austausch in einem Schritt (gleicher Ordner, gleiches Laufwerk)."""
+    os.replace(staged, db_path)
+
+
 def restore(db_path: Path, token: str, staging: Path, backup_dir: Path,
             timeout: float = 5.0) -> Restored:
     """Ersetzt db_path durch die bereitgestellte Sicherung.
@@ -362,30 +576,30 @@ def restore(db_path: Path, token: str, staging: Path, backup_dir: Path,
     db_path, staging = Path(db_path), Path(staging)
     if not isinstance(token, str) or not TOKEN_RE.fullmatch(token):
         raise RestoreError(E_EXPIRED)
-    staged = staging / f"{token}.db"
+    staged, done = staging / f"{token}.db", staging / f"{token}.done"
     try:
         if not stat.S_ISREG(staged.lstat().st_mode):
             raise RestoreError(E_EXPIRED)
     except FileNotFoundError as exc:
-        raise RestoreError(E_EXPIRED) from exc
-    check_db(staged)  # erneut: die Datei lag zwischen Vorschau und Bestätigung auf der Platte
-    # Ältere Schema-Version: bestehende Migration auf der Kopie, mit Sicherung vorher.
+        raise RestoreError(E_DONE if done.exists() else E_EXPIRED) from exc
     try:
-        db.connect(staged, backup_dir=backup_dir).close()
-    except sqlite3.Error as exc:
-        # z. B. Schema 0 mit passenden Tabellennamen, aber fremden Spalten
-        raise RestoreError(E_SCHEMA) from exc
-    info = check_db(staged)
-    backup._fsync_file(staged)
+        # erneut: die Datei lag zwischen Vorschau und Bestätigung auf der Platte
+        info = verify(staged)
+    except (RestoreError, db.DatabaseOpenError):
+        _remove(staged)
+        raise
+    _ensure_no_journal(db_path, timeout)
     safety = _safety_copy(db_path, backup_dir, timeout)
-    # Ein Journal neben der Datenbank gehört zu einer offenen Transaktion eines anderen
-    # Programms. Es darf nie auf die eingespielte Datei angewendet werden.
-    for suffix in ("-journal", "-wal"):
-        if Path(str(db_path) + suffix).exists():
-            raise RestoreError(E_BUSY)
+    if _sidecar_present(db_path):  # zwischen Kopie und Austausch geöffnet
+        raise RestoreError(E_BUSY)
+    backup._fsync_file(staged)
     try:
         _swap(staged, db_path)
     except OSError as exc:
         raise RestoreError(E_REPLACE.format(name=safety or "keine")) from exc
     backup._fsync_dir(db_path.parent)
+    try:
+        done.touch()  # Doppelklick: zweite Anfrage bekommt eine klare Meldung
+    except OSError:
+        pass
     return Restored(safety, info["members"], info["transactions"])

@@ -13,7 +13,7 @@ import pytest
 
 from kassivo import __version__, restore
 from kassivo import db as dbmod
-from kassivo.db import MigrationError, SchemaTooNewError, connect, schema_version
+from kassivo.db import SchemaTooNewError, connect, schema_version
 from kassivo.restore import RestoreError
 from tests.helpers import make_client
 
@@ -435,7 +435,7 @@ def test_restore_replaces_and_keeps_safety_copy(tmp_path, target):
     c.close()
 
 
-def test_restore_old_schema_is_migrated_with_backup(tmp_path, target):
+def test_restore_old_schema_is_migrated_without_extra_backup(tmp_path, target):
     def setup(c):
         c.executescript(dbmod.SCHEMA)
         c.execute("pragma user_version = 1")
@@ -450,15 +450,14 @@ def test_restore_old_schema_is_migrated_with_backup(tmp_path, target):
                                "kassivo.db": data}))
     st = restore.stage_upload(p, _staging(tmp_path))
     assert st.schema == 1
+    assert _backups(target) == []  # die Fremddatei landet nie unter einem Sicherungsnamen
     res = restore.restore(target, st.token, _staging(tmp_path), target.parent / "backups")
     c = connect(target)
     assert schema_version(c) == dbmod.SCHEMA_VERSION
     assert c.execute("select source from allocation").fetchone()[0] == "auto"
     c.close()
-    # Sicherung vor der Umstellung (Stand Schema 1) und Sicherheitskopie des alten Stands
-    assert len(_backups(target)) == 2 and res.safety in _backups(target)
-    olds = [n for n in _backups(target) if n != res.safety]
-    assert _names(target.parent / "backups" / olds[0]) == ["Vor Migration"]
+    assert _names(target) == ["Vor Migration"]
+    assert _backups(target) == [res.safety]  # nur die Sicherheitskopie des alten Stands
 
 
 def test_restore_unknown_token(tmp_path, target):
@@ -491,15 +490,17 @@ def test_restore_migration_failure_changes_nothing(tmp_path, target, monkeypatch
     data = _db_bytes(tmp_path, setup)
     p = _write(tmp_path, _zip({"manifest.json": _manifest_for(data, schema_version=1),
                                "kassivo.db": data}))
-    st = restore.stage_upload(p, _staging(tmp_path))
     before = target.read_bytes()
 
     def bad(conn):
         raise sqlite3.OperationalError("kaputt")
     monkeypatch.setitem(dbmod.MIGRATIONS, 2, bad)
-    with pytest.raises(MigrationError):
-        restore.restore(target, st.token, _staging(tmp_path), target.parent / "backups")
+    with pytest.raises(RestoreError) as e:
+        restore.stage_upload(p, _staging(tmp_path))
+    assert str(e.value) == restore.E_MIGRATE
+    assert "Sicherung:" not in str(e.value) and "angelegte" not in str(e.value)
     assert target.read_bytes() == before
+    assert _backups(target) == [] and _staged_files(tmp_path) == []
 
 
 def test_restore_replace_failure_changes_nothing(tmp_path, target, monkeypatch):
@@ -527,10 +528,12 @@ def test_restore_refuses_with_leftover_journal(tmp_path, target):
             restore.restore(target, st.token, _staging(tmp_path), target.parent / "backups",
                             timeout=0.1)
         assert str(e.value) == restore.E_BUSY
+        assert _backups(target) == []  # geprüft vor der Sicherheitskopie
     finally:
         holder.rollback()
         holder.close()
     assert target.read_bytes() == before
+    assert st.path.exists()  # erneuter Versuch bleibt möglich
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Dateisperre nur unter Windows")
@@ -816,12 +819,10 @@ def test_restore_v0_with_foreign_columns_is_clean_error(tmp_path, target):
     p = tmp_path / "backups" / "kassivo-20250101-000000.db"
     p.parent.mkdir()
     p.write_bytes(_db_bytes(tmp_path, setup))
-    st = restore.stage_local(p, _staging(tmp_path))
-    before = target.read_bytes()
     with pytest.raises(RestoreError) as e:
-        restore.restore(target, st.token, _staging(tmp_path), target.parent / "backups")
-    assert str(e.value) == restore.E_SCHEMA
-    assert target.read_bytes() == before
+        restore.stage_local(p, _staging(tmp_path))
+    assert str(e.value) in (restore.E_MIGRATE, restore.E_SCHEMA)
+    assert _staged_files(tmp_path) == []
 
 
 def test_export_route_leaves_no_temp_files(client, db_path):
