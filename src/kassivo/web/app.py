@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from kassivo.db import connect
 from kassivo.web import (
     auto_routes, backup_routes, categories_routes, dues_routes, import_routes, members_routes, reports_routes,
-    settings_routes, transactions_routes, wiki_routes,
+    settings_routes, transactions_routes, update_routes, wiki_routes,
 )
 from kassivo.web.common import HERE, render
 
@@ -81,6 +81,7 @@ def create_app(db_path, extra_hosts=()) -> FastAPI:
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     app.include_router(members_routes.router)
     app.include_router(settings_routes.router)
+    app.include_router(update_routes.router)
     app.include_router(import_routes.router)
     app.include_router(transactions_routes.router)
     app.include_router(categories_routes.router)

@@ -41,6 +41,7 @@ API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 DOWNLOAD_PREFIX = f"{RELEASES_PAGE}/download/"
 USER_AGENT = "KASSIVO-Update"
+SETTING_KEY = "update_check"  # Tabelle settings: "1" = Update-Prüfung erlaubt, Standard aus
 
 TIMEOUT = 10  # Sekunden je Verbindungsschritt
 TOTAL_DEADLINE = 120  # Sekunden für eine ganze Antwort (gegen tröpfelnde Server)
@@ -68,7 +69,7 @@ _VERSION_RE = re.compile(r"v?(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][
                          re.ASCII)
 _SUMS_LINE_RE = re.compile(r"([0-9a-fA-F]{64}) [ *](\S+)", re.ASCII)
 _DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})", re.ASCII)
-_INIT_VERSION_RE = re.compile(r'^__version__ = "([^"]+)"$', re.M)
+_INIT_VERSION_RE = re.compile(r'^__version__ = "([^"]+)"\s*$', re.M)  # auch CRLF
 _ZIP_NAME_RE = re.compile(r"kassivo-(\d+\.\d+\.\d+)\.zip", re.ASCII)
 
 FORBIDDEN_TOP = frozenset({".git", ".venv", ".update", ".env"})

@@ -1,0 +1,58 @@
+{% extends "wiki/_wiki_base.html" %}
+{% block body %}
+<h2>Wofür ist das?</h2>
+<p>KASSIVO kann nachsehen, ob es auf GitHub eine neuere Version gibt, das Update-Paket herunterladen und prüfen. Installiert wird es danach mit dem Skript <code>update.bat</code> im Projektordner. So müssen Sie neue Versionen nicht mehr von Hand zusammensuchen.</p>
+
+<h2>So geht's</h2>
+<h3>Update-Prüfung einschalten</h3>
+<ol class="steps">
+  <li>Öffnen Sie <a href="/settings/update">Update</a> (/settings/update). Sie erreichen die Seite auch über Einstellungen, Link „Update: nach neuer Version suchen“.</li>
+  <li>Setzen Sie den Haken „Update-Prüfung erlauben“ und wählen Sie „Einstellung speichern“.</li>
+</ol>
+<h3>Nach Updates suchen und herunterladen</h3>
+<ol class="steps">
+  <li>Wählen Sie „Jetzt nach Updates suchen“. KASSIVO zeigt „Version … ist verfügbar.“ mit den Release-Notizen oder „Sie haben die aktuelle Version.“</li>
+  <li>Wählen Sie „Update herunterladen“. KASSIVO lädt das Paket, prüft die SHA-256-Prüfsumme und den Inhalt und meldet „Update … ist heruntergeladen und geprüft.“</li>
+</ol>
+<h3>Update installieren</h3>
+<ol class="steps">
+  <li>Beenden Sie KASSIVO: Schließen Sie das Fenster von <code>start.bat</code>.</li>
+  <li>Starten Sie <code>update.bat</code> im Projektordner per Doppelklick.</li>
+  <li>Bestätigen Sie die Frage „Update auf … jetzt installieren? (j/n)“ mit <code>j</code>.</li>
+  <li>Das Skript sichert die Datenbank, tauscht die Programmdateien aus und prüft, ob die neue Version startet. Am Ende steht „KASSIVO … ist installiert. Bitte jetzt start.bat starten.“</li>
+  <li>Starten Sie <code>start.bat</code>.</li>
+</ol>
+
+<h2>Beispiele</h2>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Sie haben 1.3.0 installiert, auf GitHub gibt es 1.4.0. Nach „Jetzt nach Updates suchen“ steht „Version 1.4.0 ist verfügbar.“. Nach „Update herunterladen“ liegt das Paket <code>kassivo-1.4.0.zip</code> im Ordner <code>updates</code> neben der Datenbank. <code>update.bat</code> legt zuerst eine Sicherung <code>kassivo-JJJJMMTT-HHMMSS.db</code> im Ordner <code>backups</code> an und installiert dann 1.4.0.</p>
+</div>
+<div class="callout callout-example">
+  <p><strong>Beispiel:</strong> Die neue Version startet nach dem Austausch nicht. Das Skript meldet „Update fehlgeschlagen“ mit dem Grund und „Der alte Stand wurde zurückgesetzt.“ Sie arbeiten mit der bisherigen Version weiter.</p>
+</div>
+
+<h2>Gut zu wissen</h2>
+<ul>
+  <li><strong>Standardmäßig aus.</strong> Ohne den Haken baut KASSIVO keine Verbindung ins Internet auf. Auch eingeschaltet fragt es nur, wenn Sie „Jetzt nach Updates suchen“ oder „Update herunterladen“ wählen, nicht beim Start und nicht im Hintergrund.</li>
+  <li><strong>Was gesendet wird.</strong> Nur eine Anfrage an api.github.com und github.com für das feste Projekt, ohne Anmeldung, ohne Token und ohne Daten aus KASSIVO. Die Verbindung ist verschlüsselt, das Zertifikat wird geprüft, nach 10 Sekunden ohne Antwort bricht KASSIVO ab. Ein Firmen-Proxy aus der Umgebungsvariable <code>HTTPS_PROXY</code> wird verwendet.</li>
+  <li><strong>Prüfsumme.</strong> Stimmt die Prüfsumme nicht, meldet KASSIVO „Die Prüfsumme des Update-Pakets stimmt nicht. Es wurde nichts gespeichert.“ Das Paket darf höchstens 50 MB groß sein und wird vor dem Speichern auf gefährliche Dateinamen geprüft.</li>
+  <li><strong>Ihre Daten bleiben.</strong> Die Datenbank wird nie überschrieben. Ausgetauscht werden nur die Programmdateien im Projektordner. Die virtuelle Umgebung <code>.venv</code>, ein Git-Ordner <code>.git</code> und eigene Dateien, die nicht im Paket stehen, bleiben unberührt. Der alte Programmstand bleibt im Ordner <code>.update</code> im Projektordner; den können Sie nach einem erfolgreichen Update löschen.</li>
+  <li><strong>Datenbankformat.</strong> Braucht die neue Version ein neues Datenbankformat, stellt sie es beim ersten Start um und legt vorher noch einmal eine Sicherung an.</li>
+  <li><strong>Kein Neustart von selbst.</strong> KASSIVO startet sich nie selbst neu und tauscht nichts aus, solange es läuft. Läuft es noch, meldet <code>update.bat</code> „KASSIVO läuft noch (Port 8000 ist belegt).“ und ändert nichts.</li>
+  <li><strong>Neue Abhängigkeiten.</strong> Braucht eine neue Version zusätzliche Python-Pakete, ruft <code>update.bat</code> <code>pip install -e .</code> auf. Dafür muss PyPI erreichbar sein. Klappt das nicht, wird der alte Stand zurückgesetzt.</li>
+  <li><strong>Protokoll.</strong> Jeder Schritt steht in <code>update.log</code> im Ordner <code>updates</code> neben der Datenbank, ohne Namen oder IBANs.</li>
+</ul>
+<div class="callout callout-warn">
+  <p><strong>Achtung:</strong> Die Update-Funktion setzt eine Installation mit <code>pip install -e .</code> im Projektordner voraus (wie in Erste Schritte beschrieben). Bei einer anderen Installation bricht <code>update.bat</code> mit einem Hinweis ab. Wer den Projektordner mit Git verwaltet, sieht nach dem Update geänderte Dateien in <code>git status</code>, bis er selbst auf das neue Tag wechselt.</p>
+</div>
+<div class="callout callout-tip">
+  <p><strong>Tipp:</strong> Darf Ihr Rechner nicht ins Internet (Firmenregeln), lassen Sie die Update-Prüfung aus und aktualisieren Sie wie bisher von Hand.</p>
+</div>
+
+<h2>Siehe auch</h2>
+<ul>
+  <li><a href="/wiki/backup">Sicherung und Wiederherstellung</a></li>
+  <li><a href="/wiki/sicherheit">Datenschutz und Sicherheit</a></li>
+  <li><a href="/wiki/grenzen">Bekannte Einschränkungen</a></li>
+</ul>
+{% endblock %}

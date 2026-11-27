@@ -5,7 +5,7 @@
 
 <h2>Wie KASSIVO die Daten schützt</h2>
 <ul>
-  <li><strong>Nur lokal.</strong> KASSIVO lauscht nur auf <code>127.0.0.1</code> (Port 8000). Andere Rechner im Netz erreichen es nicht. Es schickt nichts ins Internet. Auch die Diagramm-Bibliothek liegt lokal im Programm.</li>
+  <li><strong>Nur lokal.</strong> KASSIVO lauscht nur auf <code>127.0.0.1</code> (Port 8000). Andere Rechner im Netz erreichen es nicht. Es schickt nichts ins Internet. Einzige Ausnahme ist die <a href="/wiki/update">Update-Prüfung</a>: Sie ist standardmäßig aus und fragt auch eingeschaltet nur auf Knopfdruck bei GitHub nach, ohne Daten aus KASSIVO. Auch die Diagramm-Bibliothek liegt lokal im Programm.</li>
   <li><strong>Keine Bankzugangsdaten.</strong> KASSIVO kennt weder Zugangsdaten noch PINs. Es liest nur Exportdateien, die Sie selbst im Online-Banking erzeugen und hochladen. Es gibt keine Verbindung zur Bank und keinen Schreibzugriff auf ein Konto.</li>
   <li><strong>Prüfung des Hosts.</strong> KASSIVO beantwortet nur Anfragen, die an <code>127.0.0.1</code> oder <code>localhost</code> gerichtet sind. Alles andere lehnt es mit „Ungültiger Host.“ ab. Das verhindert, dass eine fremde Webseite Ihren Browser dazu bringt, KASSIVO unter anderem Namen anzusprechen.</li>
   <li><strong>Prüfung der Herkunft.</strong> Aktionen, die etwas ändern (Speichern, Importieren, Zuordnen), lehnt KASSIVO ab, wenn sie von einer anderen Webseite kommen. Sie sehen dann „Anfrage von fremder Herkunft abgelehnt.“ So kann keine andere offene Webseite heimlich Daten in KASSIVO ändern.</li>

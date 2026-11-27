@@ -255,6 +255,7 @@ src/kassivo/
     members_routes.py  Mitglieder
     reports_routes.py  Jahresreport und Diagrammdaten
     settings_routes.py Beiträge und Prüfungsstart
+    update_routes.py   Update-Seite: Opt-in, nach Updates suchen, Paket herunterladen
     transactions_routes.py  Buchungen, Unklar, Verteilung
     wiki_routes.py     Wiki im Programm (feste Themenliste, nur lesend)
     templates/         HTML-Vorlagen (Jinja2)

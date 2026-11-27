@@ -32,7 +32,7 @@ PY_TEXT = re.sub(r'"\s*\n\s*"', "", "\n".join(p.read_text("utf-8") for p in SRC.
 
 EXPECTED_SLUGS = ["start", "begriffe", "mitglieder", "beitraege", "import", "zuordnung",
                   "verteilung", "kategorien", "beitragsuebersicht", "prognose", "reports",
-                  "backup", "sicherheit", "faq", "grenzen"]
+                  "backup", "update", "sicherheit", "faq", "grenzen"]
 
 
 @pytest.fixture(scope="module")
@@ -185,6 +185,8 @@ LABELS = {
                 "Die Beiträge je Mitglied zählen nach Beitragsmonat, die Einnahmen oben nach "
                 "Buchungsdatum."],
     "backup": ["Sicherung erstellen", "Sicherung erstellt:", "Vorhandene Sicherungen"],
+    "update": ["Update-Prüfung erlauben", "Einstellung speichern", "Jetzt nach Updates suchen",
+               "Update herunterladen", "Update: nach neuer Version suchen"],
     "start": ["Prüfungsstart speichern", "Mitglied anlegen", "Beitrag speichern", "Importieren",
               "Absender merken", "Zuordnen", "Offene Vorschläge", "Verteilung bestätigen",
               "Prüfungsstart (Monat)"],
@@ -227,6 +229,13 @@ MESSAGES = [
     ("kategorien", "Zum Überschreiben bitte ausdrücklich bestätigen."),
     ("prognose", "Das Datum liegt zu weit in der Zukunft (höchstens 50 Jahre)."),
     ("sicherheit", "Ungültiger Host."),
+    ("update", "Sie haben die aktuelle Version."),
+    ("update", "Die Prüfsumme des Update-Pakets stimmt nicht. Es wurde nichts gespeichert."),
+    ("update", "KASSIVO läuft noch (Port 8000 ist belegt)."),
+    ("update", "Der alte Stand wurde zurückgesetzt."),
+    ("update", "ist heruntergeladen und geprüft."),
+    ("update", "jetzt installieren? (j/n)"),
+    ("update", "Bitte jetzt start.bat starten."),
     ("sicherheit", "Anfrage von fremder Herkunft abgelehnt."),
 ]
 
@@ -688,3 +697,12 @@ def test_readme_names_recompute_triggers():
     readme = (ROOT / "README.md").read_text("utf-8")
     assert "Automatische Verteilungen bezahlen keinen Monat doppelt." in readme
     assert "Beitrag, Mitgliedsart oder Austritt ändern" in readme
+
+
+def test_update_page_numbers_match_code(pages):
+    from kassivo import update
+    t = _text(pages["update"])
+    assert f"nach {update.TIMEOUT} Sekunden" in t
+    assert f"höchstens {_mb(update.MAX_ZIP_BYTES)} groß" in t
+    assert "api.github.com" in t and update.API_URL.startswith("https://api.github.com/")
+    assert "Update-Prüfung" in _text(pages["sicherheit"])
