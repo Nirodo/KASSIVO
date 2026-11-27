@@ -215,9 +215,10 @@ def test_forecast_empty(client, db):
 
 # --- Wurzel, Sicherheit ------------------------------------------------------
 
-def test_root_redirects_to_dues(client):
+def test_root_shows_overview(client):
     r = client.get("/")
-    assert r.status_code in (302, 303, 307) and r.headers["location"] == "/dues"
+    assert r.status_code == 200 and "location" not in r.headers
+    assert "<h1>Übersicht</h1>" in r.text
 
 
 @pytest.mark.parametrize("path", ["/dues", "/forecast", "/members/1/history"])
