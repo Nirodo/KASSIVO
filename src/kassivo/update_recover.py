@@ -53,12 +53,17 @@ def safe_rel(project, rel) -> bool:
     if any(ord(c) < 32 or ord(c) == 127 for c in rel):
         return False
     parts = rel.split("/")
-    if any(part in ("", ".", "..") for part in parts):
+    # Windows-Aliasse: Punkt/Leerzeichen am Ende werden gestrichen (".git." ist ".git"),
+    # "~" kann ein 8.3-Kurzname sein ("GIT~1")
+    if any(part in ("", ".", "..") or part.endswith((".", " ")) or "~" in part
+           for part in parts):
         return False
     if parts[0].casefold() in FORBIDDEN_TOP:
         return False
     root = Path(project).resolve()
-    return root in (root / rel).resolve().parents
+    target = (root / rel).resolve()
+    # noch einmal am aufgelösten Pfad: ein Link darf nicht in einen geschützten Ordner zeigen
+    return root in target.parents and target.relative_to(root).parts[0].casefold() not in FORBIDDEN_TOP
 
 
 def validate_journal(project, j) -> None:

@@ -1,4 +1,5 @@
 """Journal-Prüfung der Wiederherstellung (H1): manipulierte Werte ändern nichts."""
+import os
 import json
 import subprocess
 
@@ -90,3 +91,25 @@ def test_pip_timeout_during_restore_is_reported(tmp_path):
         raise subprocess.TimeoutExpired("pip", 600)
     notes = update_recover.recover(p, run=slow)
     assert any("Reparatur" in n for n in notes)
+
+
+@pytest.mark.parametrize("rel", [
+    ".git./config", ".git /config", "GIT~1/config", ".venv./x", ".update./journal.json",
+    ".env.", "docs./a.txt", "docs /a.txt", "src/datei.", "src/VENV~1/x",
+])
+def test_windows_aliases_of_protected_names_are_refused(tmp_path, rel):
+    # Windows streicht Punkt und Leerzeichen am Ende und kennt 8.3-Kurznamen
+    (tmp_path / ".git").mkdir()
+    assert not update_recover.safe_rel(tmp_path, rel)
+
+
+def test_link_into_protected_folder_is_refused(tmp_path):
+    (tmp_path / ".git").mkdir()
+    link = tmp_path / "harmlos"
+    if os.name == "nt":
+        # Junction braucht kein Symlink-Recht
+        import _winapi
+        _winapi.CreateJunction(str(tmp_path / ".git"), str(link))
+    else:
+        link.symlink_to(tmp_path / ".git", target_is_directory=True)
+    assert not update_recover.safe_rel(tmp_path, "harmlos/config")
