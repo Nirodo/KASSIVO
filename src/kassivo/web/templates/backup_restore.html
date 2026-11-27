@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help_link %}
+{% block title %}Sicherung einspielen{% endblock %}
+{% block content %}
+{{ help_link("backup") }}
+<p class="alert" role="alert"><strong>Achtung:</strong> Die aktuelle Datenbank wird vollständig durch diese Sicherung ersetzt. Was seit der Sicherung hier eingetragen wurde, fehlt danach. Vorher legt KASSIVO automatisch eine Sicherheitskopie der aktuellen Datenbank im Ordner „backups“ an.</p>
+{% if staged.schema < program_schema %}<p class="notice">Die Sicherung stammt aus einem älteren Datenbankformat (Schema {{ staged.schema }}). KASSIVO hat eine Kopie bereits auf Schema {{ program_schema }} umgestellt und geprüft; die Originaldatei bleibt unverändert.</p>{% endif %}
+<section>
+  <h2>Eckdaten im Vergleich</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th></th><th>Sicherung</th><th>Aktuelle Datenbank</th></tr></thead>
+    <tbody>
+      {% if staged.source %}<tr><th scope="row">Datei</th><td>{{ staged.source }}</td><td>–</td></tr>{% endif %}
+      <tr><th scope="row">Erstellt</th><td>{{ staged.created }}</td><td>–</td></tr>
+      <tr><th scope="row">Programmversion</th><td>{{ staged.app_version or "unbekannt" }}</td><td>{{ version }}</td></tr>
+      <tr><th scope="row">Schema</th><td class="num">{{ staged.schema }}</td><td class="num">{{ current.schema }}</td></tr>
+      <tr><th scope="row">Mitglieder</th><td class="num">{{ staged.summary.members }}</td><td class="num">{{ current.members }}</td></tr>
+      <tr><th scope="row">Buchungen</th><td class="num">{{ staged.summary.transactions }}</td><td class="num">{{ current.transactions }}</td></tr>
+      <tr><th scope="row">Letzte Buchung</th><td>{{ day(staged.summary.last_booking) or "–" }}</td><td>{{ day(current.last_booking) or "–" }}</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <form method="post" action="/backup/restore">
+    <input type="hidden" name="token" value="{{ staged.token }}">
+    <p><label><input type="checkbox" name="confirm" value="1" required> Ich bestätige, dass die aktuelle Datenbank ersetzt wird</label></p>
+    <button type="submit">Sicherung einspielen</button>
+  </form>
+  <form method="post" action="/backup/cancel">
+    <button type="submit">Abbrechen</button>
+  </form>
+</section>
+{% endblock %}

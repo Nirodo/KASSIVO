@@ -120,9 +120,21 @@ def _migrate_to_2(conn: sqlite3.Connection) -> None:
     conn.execute("update allocation set source='auto' where status='proposed'")
 
 
+def _migrate_to_3(conn: sqlite3.Connection) -> None:
+    """Schema 3 (#6): transaction.no_member, der Nutzer hat „— keins —“ gewählt.
+
+    1 = bewusst ohne Mitglied: die automatische Zuordnung (Import, „Unklare
+    automatisch zuordnen“, „Absender merken“) lässt die Buchung aus. Wie
+    category_id und member_id eine Anmerkung, keine Änderung der Buchung.
+    Bestehende Buchungen: 0 (wer früher „— keins —“ gewählt hat, ist nicht bekannt).
+    """
+    conn.execute('alter table "transaction" add column no_member integer not null default 0'
+                 " check (no_member in (0,1))")
+
+
 BASELINE_VERSION = 1
-SCHEMA_VERSION = 2
-MIGRATIONS: dict = {2: _migrate_to_2}
+SCHEMA_VERSION = 3
+MIGRATIONS: dict = {2: _migrate_to_2, 3: _migrate_to_3}
 
 
 class DatabaseOpenError(RuntimeError):
@@ -156,7 +168,10 @@ def schema_version(conn: sqlite3.Connection) -> int:
 
 
 def current_schema_version(migrations) -> int:
-    return max(SCHEMA_VERSION, max(migrations, default=0))
+    # Ziel ist die höchste bekannte Migration; für MIGRATIONS gleich SCHEMA_VERSION
+    # (Test test_registry_matches_constant). Injizierte Migrationen (Tests) dürfen
+    # damit unter SCHEMA_VERSION enden, ohne als lückenhaft zu gelten.
+    return max(migrations, default=BASELINE_VERSION)
 
 
 def _has_user_tables(conn: sqlite3.Connection) -> bool:
@@ -269,8 +284,13 @@ def _migrate(conn, path, migrations, target: int, backup_dir, do_backup: bool) -
         step += 1
 
 
-def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0) -> sqlite3.Connection:
+def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0,
+            on_open=None, backup_before_migration: bool = True) -> sqlite3.Connection:
     """Öffnet die Datenbank, legt sie bei Bedarf an und stellt das Datenformat um.
+
+    on_open(conn) läuft direkt nach dem Öffnen (z. B. Härtung für fremde Dateien).
+    backup_before_migration=False: keine Sicherung vor der Umstellung (nur für Kopien, deren
+    Original erhalten bleibt, etwa beim Einspielen einer Sicherung).
 
     Fehler mit Meldung für Nutzer (alle DatabaseOpenError): SchemaTooNewError,
     MigrationError, DatabaseBusyError, InvalidDatabaseError."""
@@ -283,6 +303,8 @@ def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0) -> 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=timeout)
     try:
+        if on_open is not None:
+            on_open(conn)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         version = schema_version(conn)
@@ -296,7 +318,7 @@ def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0) -> 
             version = schema_version(conn)
         if version < target:
             _migrate(conn, path, migrations, target, backup_dir,
-                     do_backup=not memory and not fresh)
+                     do_backup=backup_before_migration and not memory and not fresh)
     except sqlite3.OperationalError as exc:
         conn.close()
         text = str(exc).lower()

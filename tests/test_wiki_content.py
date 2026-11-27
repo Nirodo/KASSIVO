@@ -184,7 +184,10 @@ LABELS = {
                 "Keine Einnahmen in diesem Jahr.", "Keine Ausgaben in diesem Jahr.",
                 "Die Beiträge je Mitglied zählen nach Beitragsmonat, die Einnahmen oben nach "
                 "Buchungsdatum."],
-    "backup": ["Sicherung erstellen", "Sicherung erstellt:", "Vorhandene Sicherungen"],
+    "backup": ["Sicherung erstellen", "Sicherung erstellt:", "Vorhandene Sicherungen",
+               "Für anderen PC exportieren", "Sicherung einspielen", "Datei prüfen",
+               "Wiederherstellen", "Sicherung eingespielt",
+               "Ich bestätige, dass die aktuelle Datenbank ersetzt wird"],
     "update": ["Update-Prüfung erlauben", "Einstellung speichern", "Jetzt nach Updates suchen",
                "Update herunterladen", "Update: nach neuer Version suchen"],
     "start": ["Prüfungsstart speichern", "Mitglied anlegen", "Beitrag speichern", "Importieren",
@@ -517,7 +520,7 @@ def test_sibling_reassignment_flow():
     assert _rows(conn, tx) == [("2026-02", 1700, "proposed")]  # bleibt manueller Vorschlag
 
 
-def test_keins_is_reassigned_by_auto_assign_and_ambiguity_is_permanent():
+def test_keins_holds_against_auto_assign_and_ambiguity_is_permanent():
     from kassivo import matching
     conn, mid = _setup()
     other = create_member(conn, "Erika Musterfrau", "Aktiv", date(2025, 12, 10))
@@ -527,7 +530,7 @@ def test_keins_is_reassigned_by_auto_assign_and_ambiguity_is_permanent():
     matching.assign_member(conn, tx, mid)
     dues.clear_allocations(conn, tx)
     matching.assign_member(conn, tx, None)
-    assert matching.auto_assign(conn, [tx]) == 1  # "— keins —" hält nicht
+    assert matching.auto_assign(conn, [tx]) == 0  # "— keins —" hält (#6)
     dues.clear_allocations(conn, tx)
     matching.assign_member(conn, tx, None)
     matching.assign_member(conn, tx, other)  # mit "Absender merken": jetzt mehrdeutig

@@ -108,6 +108,7 @@ _NOTES = {
     "ambiguous": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
                  " künftig nicht automatisch zugeordnet.",
     "cleaned": "Gelöschte Sicherungen: {n}.",
+    "restored": "Sicherung eingespielt: {n} Mitglieder, {m} Buchungen.",
     "cleaned_partial": "Gelöschte Sicherungen: {n}. {m} konnten nicht gelöscht werden.",
     "reproposed": "Prüfungsstart gespeichert. {n} Zahlungen neu verteilt.",
     "undone": "Automatische Verteilung rückgängig gemacht. Die Zahlung steht jetzt unter"

@@ -196,7 +196,16 @@ Sicherung: Seite `/backup` (Bereich "Einstellungen", Punkt "Backup") öffnen und
 
 Datenbankformat: Die Datenbank trägt eine Schema-Version (angezeigt auf der Seite `/backup`). Muss eine neue KASSIVO-Version das Format ändern, legt sie vorher automatisch eine Sicherung `kassivo-JJJJMMTT-HHMMSS.db` in `<DB-Ordner>/backups` an. Sonst sichert KASSIVO nicht automatisch. Eine Datenbank aus einer neueren KASSIVO-Version öffnet KASSIVO nicht: Es meldet das beim Start und beendet sich, die Datei bleibt unverändert. Versionen bis 1.1.1 prüfen die Schema-Version nicht. Kehren Sie deshalb nach einem Update nicht mit derselben Datenbank zu einer älteren KASSIVO-Version zurück, und legen Sie vor jedem Update eine Sicherung an.
 
-Wiederherstellung (von Hand):
+Sicherung auf einem anderen PC einspielen (zum Beispiel Arbeits-PC und Heim-PC abwechselnd):
+
+1. Auf dem ersten PC auf `/backup` "Für anderen PC exportieren" wählen. Der Browser lädt eine Datei `kassivo-backup-JJJJMMTT-HHMMSS.kassivo` herunter. Sie ist ein ZIP mit der Datenbank und einer Beschreibung `manifest.json` (Programmversion, Schema-Version, Erstellzeit, Prüfsumme SHA-256). Die Datei ist nicht verschlüsselt und enthält Klarnamen, Adressen und IBANs. Übertragen Sie sie nur auf einem Weg, den Sie kontrollieren (USB-Stick), und löschen Sie sie danach.
+2. Auf dem zweiten PC auf `/backup` unter "Sicherung einspielen" die Datei wählen und "Datei prüfen" drücken. KASSIVO prüft das Archiv (genau zwei erwartete Einträge, Größengrenzen, Prüfsumme), die Datenbank (`PRAGMA integrity_check`, erwartete Tabellen) und die Schema-Version. Die aktuelle Datenbank bleibt dabei unberührt.
+3. Die Vorschau zeigt Erstellzeit, Programmversion, Schema, Anzahl Mitglieder und Buchungen sowie die letzte Buchung der Sicherung neben den Werten der aktuellen Datenbank. Prüfen Sie, dass Sie nicht versehentlich einen älteren Stand einspielen.
+4. Haken "Ich bestätige, dass die aktuelle Datenbank ersetzt wird" setzen und "Sicherung einspielen" wählen. KASSIVO legt vorher automatisch eine Sicherheitskopie der aktuellen Datenbank in `<DB-Ordner>/backups` an und tauscht die Datei dann in einem Schritt aus. Ein Neustart ist nicht nötig. Die Meldung nennt den Namen der Sicherheitskopie.
+
+Eine vorhandene Sicherung aus der Liste auf `/backup` spielen Sie mit "Wiederherstellen" genauso ein (Prüfung, Vorschau, Bestätigung, Sicherheitskopie); die gewählte Sicherung selbst bleibt erhalten. Eine Sicherung aus einer älteren KASSIVO-Version stellt KASSIVO schon bei der Prüfung auf einer Kopie auf das aktuelle Datenbankformat um; die Originaldatei bleibt unverändert, im Ordner `backups` entsteht dafür keine Datei. Danach muss der Aufbau genau dem einer KASSIVO-Datenbank dieser Version entsprechen (Tabellen, Spalten, Indizes, keine Trigger, Views oder virtuellen Tabellen), und alle Beträge müssen ganze Cent sein. Eine Sicherung aus einer neueren Version lehnt KASSIVO ab, bitte dann zuerst KASSIVO aktualisieren. Wurde auf beiden PCs gearbeitet, führt KASSIVO nichts zusammen: der eingespielte Stand ersetzt den aktuellen. Ist die Datenbank gerade von einem anderen Programm oder einer zweiten KASSIVO-Instanz geöffnet, ersetzt KASSIVO nichts und meldet das. Die geprüfte Kopie liegt bis zum Einspielen, "Abbrechen", zur nächsten Prüfung oder zum nächsten Start im Ordner `<DB-Ordner>/restore`.
+
+Wiederherstellung (von Hand), falls KASSIVO nicht mehr startet:
 
 1. KASSIVO beenden.
 2. Die aktuelle `kassivo.db` im DB-Ordner an einen anderen Ort kopieren oder umbenennen, damit sie nicht verloren geht.
@@ -215,7 +224,7 @@ KASSIVO ist für den Betrieb durch eine Person auf dem eigenen Rechner gebaut.
 - **Host-Prüfung:** KASSIVO beantwortet nur Anfragen an `127.0.0.1` oder `localhost` und weist andere Host-Namen mit "Ungültiger Host." ab. Das schützt davor, dass eine fremde Webseite den Browser dazu bringt, KASSIVO unter einem anderen Namen anzusprechen.
 - **Origin-Prüfung:** Anfragen, die etwas ändern (POST und ähnliche), lehnt KASSIVO ab, wenn der Origin-Header auf eine andere Herkunft zeigt. Andere offene Webseiten können so nichts in KASSIVO ändern.
 - **Content-Security-Policy:** Die Seiten laden nur eigene Dateien (`default-src 'self'`) und lassen sich nicht einbetten (`frame-ancestors 'none'`). Dazu kommen `X-Content-Type-Options: nosniff` und `Referrer-Policy: same-origin`. Es gibt kein Inline-JavaScript.
-- **Uploads:** Größengrenzen (siehe Import), Dateityp-Prüfung am Inhalt, ZIP-Dateien werden nie entpackt, XML mit DOCTYPE oder ENTITY wird abgelehnt. Der Dateiname des Browsers wird nie verwendet.
+- **Uploads:** Größengrenzen (siehe Import, auch für Sicherungen 100 MB), Dateityp-Prüfung am Inhalt, ZIP-Dateien werden nie entpackt (aus einer Sicherung liest KASSIVO nur die zwei festen Einträge, Namen aus dem Archiv werden nie als Pfad verwendet), XML mit DOCTYPE oder ENTITY wird abgelehnt. Der Dateiname des Browsers wird nie verwendet.
 - IBANs erscheinen in Listen und Meldungen gekürzt.
 - **Sec-Fetch-Site:** Zusätzlich zur Origin-Prüfung lehnt KASSIVO ändernde Anfragen ab, wenn der Browser mit `Sec-Fetch-Site` meldet, dass sie von einer anderen Seite stammen (`cross-site`, `same-site`). Jeder andere Wert außer `same-origin` und `none` wird ebenfalls abgelehnt, einschließlich unbekannter Werte, falls ein künftiger Browser neue Werte sendet.
 - **Konsolenausgabe:** Das Konsolenfenster protokolliert Anfragen (Uvicorn-Zugriffsprotokoll) ohne Suchtexte: aus `/transactions?q=Name` wird `/transactions`. Fehlermeldungen können trotzdem Namen oder Beträge enthalten, Konsolenausgaben deshalb nie ungeprüft in Issues oder Nachrichten einfügen.
@@ -239,6 +248,7 @@ Die Tests laufen zusätzlich bei jedem Pull Request automatisch auf GitHub. Die 
 src/kassivo/
   __main__.py          Startpunkt (python -m kassivo)
   backup.py            Sicherung der Datenbank
+  restore.py           Export als .kassivo-Datei, Prüfen und Einspielen einer Sicherung
   camt.py              Einlesen von CAMT-Dateien (camt.052.001.08)
   categories.py        Kategorien und Regeln
   db.py                Datenbankschema und Verbindung
@@ -261,7 +271,7 @@ src/kassivo/
     app.py             App-Fabrik, Host-, Origin- und Sec-Fetch-Site-Prüfung, Sicherheits-Header, Fehlerseiten
     auto_routes.py     Automatisch verteilt, Rückgängig, offene Vorschläge neu verteilen
     common.py          Gemeinsame Helfer: Vorlagen, DB je Anfrage, Eingabeprüfung
-    backup_routes.py   Backup-Seite
+    backup_routes.py   Backup-Seite, Export und Einspielen
     categories_routes.py  Kategorien und Regeln
     dues_routes.py     Beitragsübersicht, Zahlungshistorie, Prognose
     import_routes.py   Upload und Import
@@ -308,8 +318,9 @@ Der Entwurf des Programms steht in `docs/superpowers/specs/2026-11-24-kassivo-de
 - Nur Datei-Import im Format camt.052.001.08. Keine Direktabfrage der Bank (FinTS, finAPI), kein C24-Adapter.
 - Ein Nutzer, ein Rechner, keine Anmeldung.
 - Einträge mit 0,00 € werden beim Import übersprungen und als Warnung gemeldet, nicht gespeichert. Mehr als ein Bericht pro Datei geht nicht.
-- Eine gelernte IBAN lässt sich nicht vergessen. Eine einmal mehrdeutig gewordene IBAN bleibt es, und eine falsch gemerkte IBAN wird nie für das richtige Mitglied neu gelernt. "— keins —" setzt eine Zahlung nur vorübergehend auf Unklar: "Unklare automatisch zuordnen" ordnet sie über die gemerkte IBAN wieder zu.
-- Duplikaterkennung: Eine Buchung mit derselben Bankreferenz, aber anderem Betrag oder Datum, wird als Duplikat gezählt und mit einer Warnung gemeldet. Eine zweite gleiche Zahlung ohne Bankreferenz am selben Tag wird verworfen, wenn sie in einer späteren Datei kommt (die laufende Nummer beginnt je Datei neu, gewollt; betrifft nur Zwischenstände desselben Tages, Sparkasse-Tagesdateien tragen Bankreferenzen). Der Import speichert die Buchungen vor Regeln und automatischer Zuordnung: Scheitern diese, bleiben die Buchungen unkategorisiert und unzugeordnet, ein erneuter Import zählt sie als Duplikate. Abhilfe: "Regeln anwenden" und "Unklare automatisch zuordnen".
+- Eine gelernte IBAN lässt sich nicht vergessen. Eine einmal mehrdeutig gewordene IBAN bleibt es, und eine falsch gemerkte IBAN wird nie für das richtige Mitglied neu gelernt. "— keins —" ist eine Entscheidung: KASSIVO ordnet die Zahlung danach nie mehr automatisch zu (auch nicht über "Unklare automatisch zuordnen" oder "Absender merken"). Sie bleibt in "Unklar", bis Sie ein Mitglied oder eine Kategorie wählen.
+- Duplikaterkennung: Eine Buchung mit derselben Bankreferenz, aber anderem Betrag oder Datum, wird als Duplikat gezählt und mit einer Warnung gemeldet. Eine zweite gleiche Zahlung ohne Bankreferenz am selben Tag wird verworfen, wenn sie in einer späteren Datei kommt (die laufende Nummer beginnt je Datei neu, gewollt; betrifft nur Zwischenstände desselben Tages, Sparkasse-Tagesdateien tragen Bankreferenzen).
+- Import, Regeln, automatische Zuordnung und Neuverteilung laufen in einer Transaktion: Scheitert ein Schritt, speichert KASSIVO nichts und meldet "Es wurde nichts importiert". Ein erneuter Import derselben Datei legt dann alles vollständig an.
 - Barzahlungen und eigene Ausgaben lassen sich nicht von Hand buchen. Der Monat bleibt überfällig, es gibt in 1.0.0 keine Abhilfe.
 - Die automatische Verteilung kennt den gemeinten Monat nicht: Sie nimmt zuerst den Buchungsmonat. Eine Nachzahlung für einen versäumten Monat ohne Mehrbetrag zählt deshalb für den Buchungsmonat (korrigierbar mit "Rückgängig"). Verteilungen, die vor der Umstellung auf Datenbankschema 2 schon bestätigt waren, gelten als von Ihnen bestätigt.
 - Zwei offene Vorschläge desselben Mitglieds können denselben Monat treffen (nur der Hinweis "Monat bereits bezahlt"). Ein Austritt vor dem Eintritt wird akzeptiert. Die Textfelder der Mitglieder haben keine Längenbegrenzung.
