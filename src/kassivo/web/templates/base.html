@@ -1,3 +1,4 @@
+{% import "_nav.html" as nav with context %}
 <!doctype html>
 <html lang="de">
 <head>
@@ -7,20 +8,26 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header class="site">
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<header class="bar"><div class="bar-in">
   <a class="brand" href="/">KASSIVO</a>
-  <nav aria-label="Hauptnavigation">
-    <ul>
-      {% for href, label in [("/dues", "Beiträge"), ("/members", "Mitglieder"), ("/transactions", "Buchungen"), ("/unmatched", "Unklar"), ("/categories", "Kategorien"), ("/forecast", "Prognose"), ("/reports", "Reports"), ("/import", "Import"), ("/backup", "Backup"), ("/settings/fees", "Einstellungen"), ("/wiki", "Wiki")] %}
-      <li><a href="{{ href }}"{% if request.url.path == href %} aria-current="page"{% endif %}>{{ label }}</a></li>
-      {% endfor %}
-    </ul>
-  </nav>
-</header>
-<main>
-<h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
-{% set note = page_note(request) %}{% if note %}<p class="notice" role="status">{{ note }}</p>{% endif %}
-{% block content %}{% endblock %}
-</main>
+  <div class="nav-desktop">{{ nav.areas("Hauptnavigation") }}</div>
+  <div class="right"><a class="round" href="/wiki" aria-label="Hilfe (Wiki)">?</a></div>
+  <details class="mnav">
+    <summary>Menü</summary>
+    <div class="panel">{{ nav.areas("Hauptmenü") }}</div>
+  </details>
+</div></header>
+<div class="layout">
+  <aside class="side" aria-label="Bereichsmenü {{ nav.ns.area[0] if nav.ns.area else '' }}">{{ nav.groups() }}</aside>
+  <div class="content">
+    {% if nav.ns.area %}<details class="subnav"><summary>{{ nav.ns.area[0] }}: Bereichsmenü</summary>{{ nav.groups() }}</details>{% endif %}
+    <main id="main" class="page">
+      <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
+      {% set note = page_note(request) %}{% if note %}<p class="notice" role="status">{{ note }}</p>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
 </body>
 </html>

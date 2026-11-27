@@ -689,7 +689,7 @@ def test_learn_cascade_skipped_when_ambiguous(client, db):
 @pytest.mark.parametrize("q", ["note=evil", "note=auto&n=abc", "note=<script>", "n=5"])
 def test_unknown_note_codes_show_nothing(client, q):
     t = client.get(f"/unmatched?{q}").text
-    assert "automatisch zugeordnet." not in t and "<script>" not in t.split("<main>")[1]
+    assert "automatisch zugeordnet." not in t and "<script>" not in t.split("<main ")[1]
 
 
 def test_allocation_rejects_arabic_indic_digits(client, db):

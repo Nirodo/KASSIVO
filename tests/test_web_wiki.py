@@ -110,7 +110,7 @@ def test_no_dead_internal_links(client):
     seen = set()
     for page, text in _all_pages(client).items():
         for href in _hrefs(text):
-            if href == "#wiki-inhalt":  # Sprungmarke zum Inhalt, Ziel wird eigens geprüft
+            if href in ("#wiki-inhalt", "#main"):  # Sprungmarken zum Inhalt, Ziele werden eigens geprüft
                 continue
             if href.startswith(("http:", "https:", "mailto:", "#")):
                 pytest.fail(f"externer oder Anker-Link auf {page}: {href}")
@@ -222,8 +222,8 @@ def test_wiki_css_present():
 
 def test_nav_has_wiki_link(client):
     text = client.get("/dues").text
-    nav = re.search(r"<nav aria-label=\"Hauptnavigation\">.*?</nav>", text, re.S)[0]
-    assert 'href="/wiki"' in nav and ">Wiki<" in nav
+    bar = re.search(r"<header.*?</header>", text, re.S)[0]
+    assert 'href="/wiki"' in bar and 'aria-label="Hilfe (Wiki)"' in bar
 
 
 @pytest.fixture

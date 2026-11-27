@@ -1,0 +1,48 @@
+{# Bereiche und Seitenleisten. Jeder Eintrag: (Ziel, Beschriftung, passende Pfadanfänge; leer = nie aktiv). #}
+{% set AREAS = [
+  ("Übersicht", "/", ["="], [
+    ("Heute", [("/", "Übersicht", ["="]), ("/import", "Kontoauszug importieren", [])])]),
+  ("Mitglieder", "/members", ["/members"], [
+    ("Mitglieder", [("/members", "Alle Mitglieder", ["/members"]), ("/members/new", "Mitglied anlegen", [])])]),
+  ("Zahlungen", "/transactions", ["/transactions", "/unmatched", "/auto", "/import"], [
+    ("Zahlungen", [("/transactions", "Buchungen", ["/transactions"]),
+                   ("/transactions?year=all&proposed=1", "Offene Vorschläge", []),
+                   ("/unmatched", "Unklar", ["/unmatched"]),
+                   ("/auto", "Automatisch verteilt", ["/auto"])]),
+    ("Kontoauszug", [("/import", "Import", ["/import"])])]),
+  ("Auswertung", "/dues", ["/dues", "/forecast", "/reports"], [
+    ("Auswertung", [("/dues", "Beitragsraster", ["/dues"]), ("/forecast", "Prognose", ["/forecast"]),
+                    ("/reports", "Reports", ["/reports"])])]),
+  ("Einstellungen", "/settings/fees", ["/settings", "/categories", "/backup", "/wiki"], [
+    ("Einstellungen", [("/settings/fees", "Beiträge", ["/settings/fees"]), ("/categories", "Kategorien", ["/categories"]),
+                       ("/backup", "Backup", ["/backup"])]),
+    ("Hilfe", [("/wiki", "Wiki", ["/wiki"])])]),
+] %}
+{% macro hit(path, prefixes) -%}
+{%- for p in prefixes -%}{%- if (p == "=" and path == "/") or (p != "=" and (path == p or path.startswith(p ~ "/"))) %}1{% endif -%}{%- endfor -%}
+{%- endmacro %}
+{% set path = request.url.path %}
+{% set ns = namespace(area=none) %}
+{% for a in AREAS if ns.area is none and hit(path, a[2]) | trim %}{% set ns.area = a %}{% endfor %}
+
+{% macro areas(label) %}
+<nav aria-label="{{ label }}"><ul>
+  {% for a in AREAS %}<li><a class="nav" href="{{ a[1] }}"{% if a is sameas ns.area %} aria-current="page"{% endif %}>{{ a[0] }}</a></li>
+  {% endfor %}
+</ul></nav>
+{% endmacro %}
+
+{% macro groups() %}
+{% if ns.area %}
+{% set cur = namespace(href=none, size=0) %}
+{% for g in ns.area[3] %}{% for l in g[1] %}{% for p in l[2] %}
+  {% if hit(path, [p]) | trim and p | length > cur.size %}{% set cur.href = l[0] %}{% set cur.size = p | length %}{% endif %}
+{% endfor %}{% endfor %}{% endfor %}
+<div class="sn">
+{% for g in ns.area[3] %}
+  <h2>{{ g[0] }}</h2>
+  <ul>{% for l in g[1] %}<li><a href="{{ l[0] }}"{% if l[0] == cur.href %} aria-current="page"{% endif %}>{{ l[1] }}</a></li>{% endfor %}</ul>
+{% endfor %}
+</div>
+{% endif %}
+{% endmacro %}

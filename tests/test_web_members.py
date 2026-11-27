@@ -58,8 +58,8 @@ def test_root_redirects_to_dues(client):
 
 def test_nav_links(client):
     html = client.get("/members").text
-    for href in ("/dues", "/members", "/transactions", "/unmatched", "/categories",
-                 "/forecast", "/reports", "/import", "/settings/fees"):
+    # Fünf Bereiche; die Unterseiten stehen in der Seitenleiste des jeweiligen Bereichs
+    for href in ("/", "/members", "/transactions", "/dues", "/settings/fees"):
         assert f'href="{href}"' in html
 
 
