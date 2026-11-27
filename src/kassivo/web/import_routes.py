@@ -19,12 +19,14 @@ MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 UPLOAD_OVERHEAD_BYTES = 1024 * 1024  # Multipart-Rahmen kommt zur Dateigröße hinzu
 CHUNK = 1024 * 1024
 TOO_BIG = "Die Datei ist zu groß (Grenze 100 MB). Es wurde nichts importiert."
+# Pfade mit Datei-Upload; für sie gilt die frühe Größenprüfung in der Middleware
+UPLOAD_PATHS = frozenset({"/import", "/backup/upload"})
 
 
 def upload_too_large(request) -> bool:
     """Früh ablehnen: Starlette spoolt den ganzen Multipart-Body auf die Platte, bevor der
     Handler läuft. Ohne (oder mit ungültigem) Content-Length greift die Grenze im Handler."""
-    if request.method != "POST" or request.url.path != "/import":
+    if request.method != "POST" or request.url.path not in UPLOAD_PATHS:
         return False
     raw = request.headers.get("content-length", "")
     if not re.fullmatch(r"[0-9]{1,15}", raw):  # alles andere: Grenze im Handler

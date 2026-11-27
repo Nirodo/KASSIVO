@@ -284,8 +284,13 @@ def _migrate(conn, path, migrations, target: int, backup_dir, do_backup: bool) -
         step += 1
 
 
-def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0) -> sqlite3.Connection:
+def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0,
+            on_open=None, backup_before_migration: bool = True) -> sqlite3.Connection:
     """Öffnet die Datenbank, legt sie bei Bedarf an und stellt das Datenformat um.
+
+    on_open(conn) läuft direkt nach dem Öffnen (z. B. Härtung für fremde Dateien).
+    backup_before_migration=False: keine Sicherung vor der Umstellung (nur für Kopien, deren
+    Original erhalten bleibt, etwa beim Einspielen einer Sicherung).
 
     Fehler mit Meldung für Nutzer (alle DatabaseOpenError): SchemaTooNewError,
     MigrationError, DatabaseBusyError, InvalidDatabaseError."""
@@ -298,6 +303,8 @@ def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0) -> 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=timeout)
     try:
+        if on_open is not None:
+            on_open(conn)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         version = schema_version(conn)
@@ -311,7 +318,7 @@ def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0) -> 
             version = schema_version(conn)
         if version < target:
             _migrate(conn, path, migrations, target, backup_dir,
-                     do_backup=not memory and not fresh)
+                     do_backup=backup_before_migration and not memory and not fresh)
     except sqlite3.OperationalError as exc:
         conn.close()
         text = str(exc).lower()
