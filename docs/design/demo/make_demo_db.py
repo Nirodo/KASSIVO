@@ -119,6 +119,7 @@ def build(folder: Path) -> Path:
     zpath = folder / "demo-2026.zip"
     zpath.write_bytes(make_zip(files))
 
+    conn.commit()  # import_path verlangt: keine offene Transaktion
     res = ingest.import_path(conn, zpath)
     categories.apply_rules(conn, res.new_tx_ids)
     conn.commit()
