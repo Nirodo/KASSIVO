@@ -49,8 +49,11 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
         )
 
     try:
+        # "— keins —" des Nutzers ist eine Entscheidung (#6): no_member=1, die
+        # automatische Zuordnung lässt die Buchung aus. Ein Mitglied hebt das auf.
         conn.execute(
-            'update "transaction" set member_id=? where id=?', (member_id, tx_id)
+            'update "transaction" set member_id=?, no_member=? where id=?',
+            (member_id, 1 if member_id is None else 0, tx_id),
         )
         changed = member_id != tx["member_id"]
         had_manual = False
@@ -166,7 +169,7 @@ def _auto_assign(conn, tx_ids: list[int]) -> int:
     rows = conn.execute(
         'select id, cp_iban, booking_date from "transaction"'
         " where amount_cents > 0 and member_id is null and cp_iban is not null"
-        " and "+_NEEDS_MEMBER+
+        " and no_member = 0 and "+_NEEDS_MEMBER+
         " order by booking_date, id"
     ).fetchall()
     for tx in rows:
