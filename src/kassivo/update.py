@@ -557,11 +557,51 @@ def _package_files(root: Path) -> list[str]:
     return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
 
 
-def _old_manifest(work: Path) -> set[str]:
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+_MANIFEST_LINE_RE = re.compile(r"([0-9a-f]{64})  (.+)")
+
+
+def _old_manifest(project: Path) -> dict[str, str]:
+    """Dateiliste des vorigen Pakets: Pfad -> SHA-256. Unzulässige Zeilen zählen nicht."""
     try:
-        return {ln for ln in (work / MANIFEST).read_text("utf-8").splitlines() if ln}
+        lines = (project / WORK / MANIFEST).read_text("utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
-        return set()
+        return {}
+    out = {}
+    for line in lines:
+        m = _MANIFEST_LINE_RE.fullmatch(line)
+        if m and update_recover.safe_rel(project, m[2]):
+            out[m[2]] = m[1]
+    return out
+
+
+def _stale_files(project: Path, new_files: list[str]) -> list[str]:
+    """Veraltet ist nur eine Datei, die im vorigen Paket stand, im neuen fehlt (auch nicht in
+    anderer Groß-/Kleinschreibung) und noch genau den Inhalt aus dem vorigen Paket hat.
+
+    So bleibt jede eigene oder geänderte Datei, selbst wenn jemand dateien.txt manipuliert:
+    ein Eintrag wirkt nur auf eine Datei, deren Inhalt mit dem eingetragenen Hash
+    übereinstimmt, also eine unveränderte Programmdatei. Geschützte Ordner und Pfade außerhalb
+    des Projekts filtert safe_rel. Verschoben wird ohnehin nur in den alt-Ordner, nie gelöscht."""
+    new_keys = {rel.casefold() for rel in new_files}
+    stale = []
+    for rel, digest in sorted(_old_manifest(project).items()):
+        path = project / rel
+        if rel.casefold() in new_keys or not path.is_file() or path.is_symlink():
+            continue
+        try:
+            if hmac.compare_digest(_file_hash(path), digest):
+                stale.append(rel)
+        except OSError:
+            continue
+    return stale
 
 
 def _freeze(run, python, project, work: Path, tag: str) -> str:
@@ -583,9 +623,12 @@ def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
     """Installiert ein heruntergeladenes, geprüftes Paket. Ablauf siehe Design R4."""
     project, zip_path, db_path = Path(project_dir), Path(zip_path), Path(db_path)
     work = project / WORK
-    if update_recover.read_journal(project) is not None:
-        update_recover.recover(project, run=run, python=python)
-        raise UpdateError(E_UNFINISHED)
+    try:
+        if update_recover.read_journal(project) is not None:
+            update_recover.recover(project, run=run, python=python)
+            raise UpdateError(E_UNFINISHED)
+    except update_recover.JournalError as exc:
+        raise UpdateError(str(exc)) from None
     version = preflight(project, zip_path, db_path, current=current, port_in_use=port_in_use,
                         package_dir=package_dir)
     log = _Log(zip_path.parent / "update.log", out)
@@ -600,9 +643,9 @@ def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
         _verify_handle(f, zip_path)
         neu = extract_archive(f, version, work / names["neu"], strip=True)
     new_files = _package_files(neu)
-    stale = sorted(_old_manifest(work) - set(new_files))
+    manifest = "".join(f"{_file_hash(neu / rel)}  {rel}\n" for rel in new_files)
     plan = [[rel, (project / rel).is_file()] for rel in new_files]
-    plan += [[rel, True] for rel in stale if (project / rel).is_file()]
+    plan += [[rel, True] for rel in _stale_files(project, new_files)]
     deps_changed = _dependencies(project / "pyproject.toml") != _dependencies(
         neu / "pyproject.toml")
     shutil.copyfile(Path(update_recover.__file__), work / "wiederherstellen.py")
@@ -612,7 +655,7 @@ def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
         journal["freeze"] = _freeze(run, python, project, work, tag)
     update_recover.write_journal(work, journal)  # ab hier ist jeder Schritt zurücksetzbar
 
-    alt, ok = work / names["alt"], False
+    alt, ok, rolled_back = work / names["alt"], False, False
     try:
         for rel, had_old in plan:
             if had_old:
@@ -633,17 +676,20 @@ def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
         if r.returncode != 0 or r.stdout.strip() != version:
             raise UpdateError("Die neue Version startet nicht.")
         ok = True
-    except (UpdateError, OSError, subprocess.SubprocessError) as exc:
+    except (UpdateError, OSError, subprocess.SubprocessError, TypeError, ValueError) as exc:
         reason = str(exc) if isinstance(exc, UpdateError) else type(exc).__name__ + "."
+        rolled_back = True  # auch wenn der Rückweg scheitert: nicht noch einmal im finally
         notes = _rollback(project, run, python, log, reason)
         raise UpdateError(f"Update fehlgeschlagen: {reason} Der alte Stand wurde"
                           f" zurückgesetzt. {' '.join(notes)}".strip()) from None
     finally:
-        if not ok and update_recover.read_journal(project) is not None:
+        if not ok and not rolled_back:
             # BaseException (Strg+C, SystemExit): zurücksetzen und danach weiterwerfen
             _rollback(project, run, python, log, "Abbruch")
-    (work / MANIFEST).write_text("\n".join(new_files) + "\n", "utf-8")
+    # Erst das Journal weg (Update gilt als fertig), dann die Liste: bricht es dazwischen ab,
+    # fehlt nur die Liste, und das nächste Update räumt eben keine veralteten Dateien weg.
     (work / update_recover.JOURNAL).unlink()
+    (work / MANIFEST).write_text(manifest, "utf-8")
     shutil.rmtree(neu, ignore_errors=True)  # nur der eigene, jetzt leere Entpackordner
     log(f"Update auf {version} abgeschlossen. Alter Stand: {WORK}/{names['alt']}")
     return ApplyResult(version=version, backup_name=backup_name, rollback_dir=alt)
@@ -652,7 +698,7 @@ def apply_update(project_dir, zip_path, db_path, *, current: str = __version__,
 def _rollback(project: Path, run, python, log, reason: str) -> list[str]:
     try:
         notes = update_recover.recover(project, run=run, python=python)
-    except OSError:
+    except (OSError, update_recover.JournalError):
         log("Zurücksetzen fehlgeschlagen.")
         raise UpdateError(
             f"Update fehlgeschlagen ({reason}) und das Zurücksetzen auch. Bitte update.bat"
@@ -671,14 +717,19 @@ def main(argv=None, *, db_path=None, project_dir=None, package_dir=None,
         return 2
     db_path = Path(db_path) if db_path is not None else settings.default_db_path()
     project = Path(project_dir) if project_dir is not None else Path(__file__).resolve().parents[2]
-    if update_recover.read_journal(project) is not None:
-        try:
+    try:
+        unfinished = update_recover.read_journal(project) is not None
+        if unfinished:
             update_recover.recover(project, run=apply_kw.get("run", subprocess.run),
                                    python=apply_kw.get("python", sys.executable))
-        except OSError:
-            out("Fehler: Ein früheres Update ist unvollständig und ließ sich nicht"
-                " zurücksetzen. Siehe Wiki „Update“, Wiederherstellung von Hand.")
-            return 2
+    except update_recover.JournalError as exc:
+        out(f"Fehler: {exc}")
+        return 2
+    except OSError:
+        out("Fehler: Ein früheres Update ist unvollständig und ließ sich nicht"
+            " zurücksetzen. Siehe Wiki „Update“, Wiederherstellung von Hand.")
+        return 2
+    if unfinished:
         out(f"Fehler: {E_UNFINISHED}")
         return 2
     package = find_package(settings.update_dir(db_path), current)
@@ -709,6 +760,9 @@ def main(argv=None, *, db_path=None, project_dir=None, package_dir=None,
                      out=out, **apply_kw)
     except UpdateError as exc:
         out(f"Fehler: {exc}")
+        return 2
+    except KeyboardInterrupt:
+        out("Abgebrochen (Strg+C). Der alte Stand wurde zurückgesetzt.")
         return 2
     out(f"KASSIVO {version} ist installiert. Bitte jetzt start.bat starten.")
     return 0

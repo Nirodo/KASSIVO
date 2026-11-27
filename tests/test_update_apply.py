@@ -145,7 +145,8 @@ def test_user_files_in_program_folders_stay(env):
 def test_files_of_previous_package_are_removed_via_manifest(env):
     p = env["project"]
     _apply(env)
-    manifest = (p / ".update" / "dateien.txt").read_text("utf-8").splitlines()
+    manifest = [ln.split("  ", 1)[1] for ln in
+                (p / ".update" / "dateien.txt").read_text("utf-8").splitlines()]
     assert "src/kassivo/neu_modul.py" in manifest and "README.md" in manifest
     # nächste Version ohne neu_modul.py: es war Paketinhalt und wird weggeräumt
     archive = make_archive("1.4.0")
@@ -223,7 +224,7 @@ def test_rollback_after_pip_restores_previous_packages(env):
     assert run.kinds() == ["freeze", "pip", "smoke", "restore"]
     freeze_arg = run.calls[3][0][-1]
     assert run.calls[3][0][:5] == ["python-test", "-m", "pip", "install", "-r"]
-    assert "Python-Pakete auf den alten Stand" in str(info.value)
+    assert "Python-Pakete aus der vorher gesicherten Liste" in str(info.value)
     assert "kassivo" not in Path(freeze_arg).read_text() if Path(freeze_arg).exists() else True
 
 
@@ -572,3 +573,107 @@ def test_update_bat_recovers_unfinished_update_without_kassivo():
 def test_recover_module_uses_only_stdlib():
     src = (ROOT / "src" / "kassivo" / "update_recover.py").read_text("utf-8")
     assert "import kassivo" not in src and "from kassivo" not in src
+
+
+# --- Re-Review: Manifest (M1), Groß/Kleinschreibung (M2), Kleinigkeiten ---------------------
+
+def _second_update(env, archive, version="1.4.0"):
+    z = env["updates"] / f"kassivo-{version}.zip"
+    z.write_bytes(archive)
+    (env["updates"] / f"kassivo-{version}.zip.sha256").write_text(sha(archive))
+    p = env["project"]
+    return update.apply_update(p, z, env["db"], current="1.3.0", run=FakeRun(version),
+                               python="p", now=NOW, port_in_use=lambda: False,
+                               package_dir=p / "src" / "kassivo")
+
+
+def test_manifest_stores_hash_per_file(env):
+    _apply(env)
+    lines = (env["project"] / ".update" / "dateien.txt").read_text("utf-8").splitlines()
+    entry = [ln for ln in lines if ln.endswith("  README.md")][0]
+    assert entry.split("  ")[0] == hashlib.sha256(b"# KASSIVO\n").hexdigest()
+
+
+def test_manipulated_manifest_cannot_remove_own_or_protected_files(env):
+    p = env["project"]
+    _apply(env)
+    (p / "eigene.txt").write_text("meins")
+    h = hashlib.sha256(b"meins").hexdigest()
+    head = hashlib.sha256((p / ".git" / "HEAD").read_bytes()).hexdigest()
+    manifest = p / ".update" / "dateien.txt"
+    manifest.write_text(manifest.read_text("utf-8")
+                        + f"{'0' * 64}  eigene-notiz.txt\n"   # falscher Hash: eigene Datei
+                        + f"{head}  .git/HEAD\n"              # geschützter Ordner
+                        + f"{h}  ../projekt/eigene.txt\n"      # außerhalb/umständlich
+                        + "kaputte Zeile\n", "utf-8")
+    _second_update(env, make_archive("1.4.0"))
+    assert (p / "eigene-notiz.txt").read_text() == "bleibt"
+    assert (p / ".git" / "HEAD").is_file()
+    assert (p / "eigene.txt").read_text() == "meins"
+
+
+def test_changed_program_file_of_old_package_is_kept(env):
+    """Eine Datei des alten Pakets, die der Nutzer geändert hat, gilt nicht als veraltet."""
+    p = env["project"]
+    _apply(env)
+    (p / "src" / "kassivo" / "neu_modul.py").write_text("eigene Änderung")
+    _second_update(env, make_archive("1.4.0"))
+    assert (p / "src" / "kassivo" / "neu_modul.py").read_text() == "eigene Änderung"
+
+
+def test_case_rename_is_not_treated_as_stale(env):
+    p = env["project"]
+    _apply(env)
+    archive = make_archive("1.4.0", skip=("README.md",))
+    archive = make_archive("1.4.0", {"kassivo-1.4.0/readme.md": "# neu\n"}, skip=("README.md",))
+    _second_update(env, archive)
+    names = [x.name for x in p.iterdir()]
+    assert any(n.lower() == "readme.md" for n in names)
+    assert next(x for x in p.iterdir() if x.name.lower() == "readme.md").read_text() == "# neu\n"
+
+
+def test_journal_removed_before_manifest_written(env, monkeypatch):
+    order = []
+    real_unlink, real_write = Path.unlink, Path.write_text
+
+    def unlink(self, *a, **k):
+        if self.name == "journal.json":
+            order.append("journal")
+        return real_unlink(self, *a, **k)
+
+    def write_text(self, *a, **k):
+        if self.name == "dateien.txt":
+            order.append("manifest")
+        return real_write(self, *a, **k)
+    monkeypatch.setattr(Path, "unlink", unlink)
+    monkeypatch.setattr(Path, "write_text", write_text)
+    _apply(env)
+    assert order == ["journal", "manifest"]
+
+
+def test_main_reports_ctrl_c_without_traceback(env):
+    code, text = _main(env, "j", run=FakeRun(fail={"smoke-interrupt"}))
+    assert code == 2 and "Strg+C" in text and "zurückgesetzt" in text
+
+
+@pytest.mark.parametrize("exc", [subprocess.TimeoutExpired("x", 1), TypeError("kaputt")])
+def test_run_errors_roll_back(env, exc):
+    before = _snapshot(env["project"])
+
+    def boom(args, **kw):
+        raise exc
+    with pytest.raises(update.UpdateError) as info:
+        _apply(env, boom)
+    assert str(info.value).count("zurückgesetzt") == 1
+    assert _snapshot(env["project"]) == before
+
+
+def test_failed_recovery_reported_once(env, monkeypatch):
+    def broken(*a, **k):
+        raise OSError("weg")
+    monkeypatch.setattr(update_recover, "recover", broken)
+    with pytest.raises(update.UpdateError) as info:
+        _apply(env, FakeRun(fail={"smoke"}))
+    assert "Zurücksetzen auch" in str(info.value)
+    log = (env["updates"] / "update.log").read_text("utf-8")
+    assert log.count("Zurücksetzen fehlgeschlagen") == 1
