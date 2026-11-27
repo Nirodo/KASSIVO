@@ -54,7 +54,9 @@ def create_app(db_path, extra_hosts=()) -> FastAPI:
                     or (origin is not None and urlsplit(origin).netloc != host)):
                 resp = PlainTextResponse("Anfrage von fremder Herkunft abgelehnt.", status_code=403)
             elif import_routes.upload_too_large(request):
-                resp = render(request, "error.html", 413, message=import_routes.TOO_BIG)
+                too_big = (backup_routes.TOO_BIG if request.url.path.startswith("/backup")
+                           else import_routes.TOO_BIG)
+                resp = render(request, "error.html", 413, message=too_big)
             else:
                 resp = await call_next(request)
         resp.headers.update(SECURITY_HEADERS)
