@@ -423,3 +423,42 @@ def test_tests_never_reach_the_network():
     """Die Autouse-Fixture sperrt den echten Client in allen Tests."""
     with pytest.raises(RuntimeError):
         update.urllib_fetch(update.API_URL, 100)
+
+
+# --- Fix-Runde: Kurznamen, Host-Allowlist ------------------------------------------------
+
+@pytest.mark.parametrize("name", ["kassivo-1.3.0/KASSIV~1/x.py", "kassivo-1.3.0/src~/a"])
+def test_archive_rejects_tilde_short_names(name):
+    with pytest.raises(update.UpdateError):
+        _check(make_archive("1.3.0", {name: "x"}))
+
+
+@pytest.mark.parametrize("url", ["https://evil.example/x", "https://github.com.evil.example/x",
+                                 "https://github.com:8443/x", "https://user@evil.example/x"])
+def test_fetch_only_github_hosts(url):
+    op = _Opener(b"x")
+    with pytest.raises(update.UpdateError):
+        update.urllib_fetch(url, 100, opener=op)
+    assert op.requests == []
+
+
+@pytest.mark.parametrize("target,ok", [
+    ("https://release-assets.githubusercontent.com/y", True),
+    ("https://objects.githubusercontent.com/y", True),
+    ("https://evil.example/y", False),
+    ("https://githubusercontent.com.evil.example/y", False),
+])
+def test_redirect_host_allowlist(target, ok):
+    handler = update._HttpsOnlyRedirect()
+    req = urllib.request.Request("https://github.com/x")
+    if ok:
+        assert handler.redirect_request(req, None, 302, "Found", {}, target).full_url == target
+    else:
+        with pytest.raises(urllib.error.HTTPError):
+            handler.redirect_request(req, None, 302, "Found", {}, target)
+
+
+def test_extract_from_open_handle(tmp_path):
+    data = make_archive("1.3.0")
+    root = update.extract_archive(io.BytesIO(data), "1.3.0", tmp_path / "neu")
+    assert (root / "pyproject.toml").is_file()

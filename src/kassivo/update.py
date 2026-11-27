@@ -41,6 +41,9 @@ API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 DOWNLOAD_PREFIX = f"{RELEASES_PAGE}/download/"
 USER_AGENT = "KASSIVO-Update"
+# Nur diese Hosts, auch bei Weiterleitungen (Release-Dateien liegen hinter Weiterleitungen)
+ALLOWED_HOSTS = frozenset({"api.github.com", "github.com", "objects.githubusercontent.com",
+                           "release-assets.githubusercontent.com"})
 SETTING_KEY = "update_check"  # Tabelle settings: "1" = Update-Prüfung erlaubt, Standard aus
 
 TIMEOUT = 10  # Sekunden je Verbindungsschritt
@@ -58,7 +61,7 @@ E_NETWORK = "GitHub ist nicht erreichbar. Bitte Internetverbindung oder Proxy pr
 E_TIMEOUT = "Zeitüberschreitung bei der Verbindung zu GitHub. Bitte später erneut versuchen."
 E_TLS = "Die sichere Verbindung zu GitHub konnte nicht geprüft werden (Zertifikat)."
 E_TOO_BIG = "Die Antwort von GitHub ist größer als erlaubt."
-E_HTTPS = "Nur HTTPS-Verbindungen sind erlaubt."
+E_HTTPS = "Nur HTTPS-Verbindungen zu GitHub sind erlaubt."
 E_ANSWER = "Die Antwort von GitHub ist ungültig."
 E_NO_RELEASE = "Es wurde kein gültiges Release gefunden."
 E_NO_PACKAGE = ("Für diese Version gibt es kein prüfbares Update-Paket"
@@ -107,10 +110,16 @@ def _tls_context() -> ssl.SSLContext:
     return ctx
 
 
+def _allowed_url(url: str) -> bool:
+    parts = urlsplit(url)
+    return parts.scheme == "https" and (parts.hostname or "") in ALLOWED_HOSTS and (
+        parts.port in (None, 443))
+
+
 class _HttpsOnlyRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if urlsplit(newurl).scheme != "https":
-            raise urllib.error.HTTPError(newurl, code, "Weiterleitung ohne HTTPS", headers, fp)
+        if not _allowed_url(newurl):
+            raise urllib.error.HTTPError(newurl, code, "Weiterleitung abgelehnt", headers, fp)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -125,7 +134,7 @@ def _is_timeout(exc) -> bool:
 
 def urllib_fetch(url: str, max_bytes: int, *, opener=None, timeout: float = TIMEOUT) -> bytes:
     """GET ohne Anmeldung, nur HTTPS, mit Zeitlimit und Größengrenze."""
-    if urlsplit(url).scheme != "https":
+    if not _allowed_url(url):
         raise UpdateError(E_HTTPS)
     opener = opener or _build_opener()
     accept = "application/vnd.github+json" if url == API_URL else "application/octet-stream"
@@ -281,7 +290,8 @@ def _bad(why: str) -> UpdateError:
 
 
 def _check_parts(rest: str) -> None:
-    if "\\" in rest or ":" in rest or any(ord(c) < 32 or ord(c) == 127 for c in rest):
+    # "~" wegen 8.3-Kurznamen unter Windows (KASSIV~1 könnte einen anderen Ordner treffen)
+    if "\\" in rest or ":" in rest or "~" in rest or any(ord(c) < 32 or ord(c) == 127 for c in rest):
         raise _bad("unzulässiges Zeichen im Dateinamen")
     parts = rest.split("/")
     for part in parts:
@@ -343,11 +353,19 @@ def check_archive(fileobj, version: str) -> list[str]:
     return sorted(tops)
 
 
-def extract_archive(zip_path: Path, version: str, dest: Path) -> Path:
-    """Entpackt in einen neuen, leeren Ordner. Zählt die echten Bytes mit."""
+def extract_archive(source, version: str, dest: Path) -> Path:
+    """Entpackt in einen neuen, leeren Ordner. Zählt die echten Bytes mit.
+
+    source: Pfad oder offene Datei. Mit offener Datei prüft und entpackt dieselbe Datei, die
+    vorher gehasht wurde (kein Austausch zwischen Prüfung und Entpacken)."""
+    if isinstance(source, (str, os.PathLike)):
+        with open(source, "rb") as f:
+            return extract_archive(f, version, dest)
     dest = Path(dest)
-    with open(zip_path, "rb") as f:
-        check_archive(f, version)
+    source.seek(0)
+    check_archive(source, version)
+    source.seek(0)
+    zip_path = source
     try:
         dest.mkdir(parents=True)
     except FileExistsError:
