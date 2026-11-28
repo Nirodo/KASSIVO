@@ -93,6 +93,7 @@ E_BUSY = ("Die aktuelle Datenbank ist gerade von einem anderen Programm oder ein
           "KASSIVO-Instanz geöffnet. Es wurde nichts ersetzt.")
 E_SAFETY = ("Die Sicherheitskopie der aktuellen Datenbank ist fehlgeschlagen. "
             "Es wurde nichts ersetzt.")
+E_FRESH = "Die neue, leere Datenbank konnte nicht angelegt werden. Es wurde nichts gelöscht."
 E_REPLACE = ("Die Datenbank konnte nicht ersetzt werden, vermutlich ist sie von einem anderen "
              "Programm geöffnet. Die bisherige Datenbank ist unverändert. "
              "Sicherheitskopie: {name}.")
@@ -588,6 +589,18 @@ def restore(db_path: Path, token: str, staging: Path, backup_dir: Path,
     except (RestoreError, db.DatabaseOpenError):
         _remove(staged)
         raise
+    safety = _replace(db_path, staged, backup_dir, timeout)
+    try:
+        done.touch()  # Doppelklick: zweite Anfrage bekommt eine klare Meldung
+    except OSError:
+        pass
+    return Restored(safety, info["members"], info["transactions"])
+
+
+def _replace(db_path: Path, staged: Path, backup_dir: Path, timeout: float) -> str | None:
+    """Journal ausschließen, Sicherheitskopie anlegen, atomar austauschen.
+
+    staged ist bereits streng geprüft. Gibt den Namen der Sicherheitskopie zurück."""
     _ensure_no_journal(db_path, timeout)
     safety = _safety_copy(db_path, backup_dir, timeout)
     if _sidecar_present(db_path):  # zwischen Kopie und Austausch geöffnet
@@ -598,8 +611,33 @@ def restore(db_path: Path, token: str, staging: Path, backup_dir: Path,
     except OSError as exc:
         raise RestoreError(E_REPLACE.format(name=safety or "keine")) from exc
     backup._fsync_dir(db_path.parent)
+    return safety
+
+
+# --- Neu anfangen (#65) ---
+
+def reset(db_path: Path, staging: Path, backup_dir: Path, timeout: float = 5.0) -> str | None:
+    """Ersetzt db_path durch eine frische Datenbank (wie beim ersten Start).
+
+    Gleiche Schutzmechanismen wie restore(): die neue Datei entsteht im
+    Bereitstellungsordner (gleiches Laufwerk), wird streng geprüft, und erst nach der
+    Sicherheitskopie atomar ausgetauscht. Scheitert ein Schritt, bleibt die alte Datenbank.
+    Danach werden eigene Reste in staging entfernt. Gibt den Namen der Sicherheitskopie zurück.
+
+    Verworfen: Tabellen leeren (delete from ...). Das hinterließe alte Daten in freien
+    Seiten der Datei, Einstellungen und Schema-Reste müssten einzeln behandelt werden, und
+    ein Abbruch mitten drin ergäbe einen Teilzustand."""
+    db_path, staging = Path(db_path), Path(staging)
+    _, part, _ = _new_slot(staging)
     try:
-        done.touch()  # Doppelklick: zweite Anfrage bekommt eine klare Meldung
-    except OSError:
-        pass
-    return Restored(safety, info["members"], info["transactions"])
+        try:
+            db.connect(part, backup_before_migration=False, timeout=timeout).close()
+        except (db.DatabaseOpenError, sqlite3.Error) as exc:
+            raise RestoreError(E_FRESH) from exc
+        verify(part)
+        safety = _replace(db_path, part, Path(backup_dir), timeout)
+    except BaseException:
+        _remove(part)
+        raise
+    clear_staging(staging)
+    return safety

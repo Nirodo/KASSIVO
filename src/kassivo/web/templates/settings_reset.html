@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help_link %}
+{% block title %}Datenbank löschen und neu anfangen{% endblock %}
+{% block content %}
+{{ help_link("backup") }}
+{% if done %}<p class="notice" role="status"><strong>Die Datenbank wurde gelöscht und neu angelegt.</strong>
+{% if safety %}Sicherheitskopie des bisherigen Stands: {{ safety }}. Zurückholen: unter <a href="/backup">Backup</a> in der Liste „Vorhandene Sicherungen“ bei dieser Datei „Wiederherstellen“ wählen.{% endif %}</p>{% endif %}
+{% if error %}<p class="alert" role="alert"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
+<section>
+  <h2>Gefahrenbereich</h2>
+  <p class="alert"><strong>Achtung:</strong> Alle Mitglieder, Buchungen, Zuordnungen, Kategorien, Beiträge und Einstellungen werden gelöscht. KASSIVO startet danach wie beim ersten Mal (Update-Prüfung wieder aus).</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Das geht verloren</th><th>Anzahl</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Mitglieder</th><td class="num">{{ current.members }}</td></tr>
+      <tr><th scope="row">Buchungen</th><td class="num">{{ current.transactions }}</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Letzte Sicherung: {{ last_backup or "noch keine" }}.</p>
+  <p>Vorher legt KASSIVO automatisch eine Sicherheitskopie im Ordner „backups“ an. Gelingt sie nicht, wird nichts gelöscht. Vorhandene Sicherungen im Ordner „backups“ bleiben erhalten und enthalten weiterhin Namen und IBANs. Löschen können Sie sie unter <a href="/backup">Backup</a> oder direkt im Ordner.</p>
+  <form method="post" action="/settings/reset">
+    <input type="hidden" name="token" value="{{ token }}">
+    <p><label for="confirm">Zur Bestätigung {{ word }} eintippen</label>
+    <input id="confirm" name="confirm" type="text" autocomplete="off" required></p>
+    <button type="submit">Datenbank löschen und neu anfangen</button>
+  </form>
+</section>
+{% endblock %}

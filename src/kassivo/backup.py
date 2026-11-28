@@ -147,12 +147,35 @@ def list_backups(dest_dir: Path | None) -> list[dict]:
     return out
 
 
+def _has_data(path: Path) -> bool:
+    """True, wenn die Sicherung Mitglieder oder Buchungen enthält. Nicht lesbar zählt als
+    Daten: im Zweifel wird nicht gelöscht."""
+    try:
+        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro&immutable=1", uri=True)
+        try:
+            return bool(conn.execute(
+                'select exists(select 1 from member) or exists(select 1 from "transaction")'
+            ).fetchone()[0])
+        finally:
+            conn.close()
+    except (sqlite3.Error, OSError, ValueError):
+        return True
+
+
 def delete_old(dest_dir: Path | None, keep: int) -> tuple[int, int]:
     """Löscht alle außer den neuesten keep Sicherungen (mindestens 1 bleibt).
 
+    Enthält keine der behaltenen Sicherungen Daten (z. B. nach "Neu anfangen"), bleibt
+    zusätzlich die neueste ältere Sicherung mit Daten.
+
     Gibt (gelöscht, nicht löschbar) zurück. Eine inzwischen verschwundene Datei zählt nicht."""
     deleted = failed = 0
-    for p, _, _ in _scan(dest_dir)[max(1, keep):]:
+    found = _scan(dest_dir)
+    kept, old = found[:max(1, keep)], found[max(1, keep):]
+    if old and not any(_has_data(p) for p, _, _ in kept):
+        spare = next((p for p, _, _ in old if _has_data(p)), None)
+        old = [entry for entry in old if entry[0] != spare]
+    for p, _, _ in old:
         try:
             p.unlink()
         except FileNotFoundError:
