@@ -271,6 +271,7 @@ src/kassivo/
     settings_routes.py Beiträge und Prüfungsstart
     transactions_routes.py  Buchungen, Unklar, Verteilung
     wiki_routes.py     Wiki im Programm (feste Themenliste, nur lesend)
+    zuordnungen_routes.py  Gemerkte Zuordnungen: ansehen, ändern, vergessen
     templates/         HTML-Vorlagen (Jinja2)
       wiki/            Vorlagen der Wiki-Themen
     static/            style.css, reports.js, reports-lib.js

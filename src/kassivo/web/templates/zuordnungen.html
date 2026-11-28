@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Gemerkte Zuordnungen{% endblock %}
+{% block content %}
+{{ ui.help_link("zuordnung") }}
+<p>Hier steht, welchem Mitglied KASSIVO die Zahlungen eines Absenders zuordnet. Gemerkt wird beim Zuordnen mit „Absender merken“; die letzte Entscheidung gilt. „Zahlt für mehrere“ heißt: KASSIVO ordnet Zahlungen dieses Absenders nie selbst zu.</p>
+<p>Ändern und Vergessen ordnet keine Zahlungen um. Es gilt für neue Zahlungen und für „Unklare automatisch zuordnen“. Nach dem Vergessen gilt wieder die IBAN aus den Mitgliedsdaten, falls eine eingetragen ist.</p>
+{% if rows %}
+<div class="table-wrap">
+<table>
+  <caption>Gemerkte Absender</caption>
+  <thead><tr><th>Absender-IBAN</th><th>Gehört zu</th><th>Ändern</th><th>Vergessen</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.iban }}</td>
+    <td>{% if r.member_id is none %}zahlt für mehrere{% else %}{{ r.member_name }}{% endif %}</td>
+    <td><form method="post" action="/zuordnungen/{{ r.id }}" class="inline">
+      <label class="visually-hidden" for="remembered-{{ r.id }}">Mitglied für Absender {{ r.iban }}</label>
+      <select id="remembered-{{ r.id }}" name="member_id">
+        <option value="{{ multi }}"{% if r.member_id is none %} selected{% endif %}>zahlt für mehrere</option>
+        {% for m in members %}<option value="{{ m['id'] }}"{% if m['id'] == r.member_id %} selected{% endif %}>{{ m["name"] }}{% if m["austritt"] %} (ausgetreten){% endif %}</option>{% endfor %}
+      </select>
+      <button type="submit">Speichern</button>
+    </form></td>
+    <td><form method="post" action="/zuordnungen/{{ r.id }}/forget" class="inline">
+      <button type="submit">Vergessen</button>
+    </form></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>Noch nichts gemerkt. Ordnen Sie eine Zahlung mit „Absender merken“ einem Mitglied zu.</p>
+{% endif %}
+{% endblock %}

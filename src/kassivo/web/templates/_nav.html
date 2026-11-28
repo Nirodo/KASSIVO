@@ -4,11 +4,12 @@
     ("Heute", [("/", "Übersicht", ["="])])]),
   ("Mitglieder", "/members", ["/members"], [
     ("Mitglieder", [("/members", "Alle Mitglieder", ["/members"]), ("/members/new", "Mitglied anlegen", [])])]),
-  ("Zahlungen", "/transactions", ["/transactions", "/unmatched", "/auto", "/import"], [
+  ("Zahlungen", "/transactions", ["/transactions", "/unmatched", "/auto", "/zuordnungen", "/import"], [
     ("Zahlungen", [("/transactions", "Buchungen", ["/transactions"]),
                    ("/transactions?year=all&proposed=1", "Offene Vorschläge", []),
                    ("/unmatched", "Unklar", ["/unmatched"]),
-                   ("/auto", "Automatisch verteilt", ["/auto"])]),
+                   ("/auto", "Automatisch verteilt", ["/auto"]),
+                   ("/zuordnungen", "Gemerkte Zuordnungen", ["/zuordnungen"])]),
     ("Kontoauszug", [("/import", "Import", ["/import"])])]),
   ("Auswertung", "/dues", ["/dues", "/forecast", "/reports"], [
     ("Auswertung", [("/dues", "Beitragsraster", ["/dues"]), ("/forecast", "Prognose", ["/forecast"]),

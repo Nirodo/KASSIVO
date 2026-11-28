@@ -49,14 +49,14 @@
 {% for m in members %}<option value="{{ m['id'] }}"{% if m['id'] == selected %} selected{% endif %}>{{ m["name"] }}{% if m["austritt"] %} (ausgetreten){% endif %}</option>{% endfor %}
 {% endmacro %}
 
-{# learn_checked: nur auf /unmatched vorbelegt; beim Korrigieren in /transactions nicht #}
-{% macro member_form(tx_id, selected, members, next_url, learn_checked=false) %}
+{# "Absender merken" ist überall vorausgewählt (#55): die letzte Entscheidung gilt #}
+{% macro member_form(tx_id, selected, members, next_url) %}
 <form method="post" action="/transactions/{{ tx_id }}/member" class="inline">
   <input type="hidden" name="next" value="{{ next_url }}">
   <label class="visually-hidden" for="member-{{ tx_id }}">Mitglied für Buchung {{ tx_id }}</label>
   <select id="member-{{ tx_id }}" name="member_id"{% if selected is none %} required{% endif %}>
     {%- if selected is none %}<option value="" selected>Bitte wählen</option>{% endif %}{{ member_options(members, selected) }}</select>
-  <label class="check"><input type="checkbox" name="learn" value="on"{% if learn_checked %} checked{% endif %}> Absender merken</label>
+  <label class="check"><input type="checkbox" name="learn" value="on" checked> Absender merken</label>
   <button type="submit">Zuordnen</button>
 </form>
 {% endmacro %}

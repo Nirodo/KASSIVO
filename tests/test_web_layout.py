@@ -22,6 +22,7 @@ PAGES = {
     "/unmatched": ("Zahlungen", "/unmatched"),
     "/auto": ("Zahlungen", "/auto"),
     "/import": ("Zahlungen", "/import"),
+    "/zuordnungen": ("Zahlungen", "/zuordnungen"),
     "/settings/fees": ("Einstellungen", "/settings/fees"),
     "/categories": ("Einstellungen", "/categories"),
     "/backup": ("Einstellungen", "/backup"),
@@ -73,7 +74,7 @@ def test_sidebar_marks_current_subpage(client, path):
 
 def test_sidebar_groups_per_area(client):
     zahl = client.get("/transactions").text
-    for href in ("/transactions", "/unmatched", "/auto", "/import"):
+    for href in ("/transactions", "/unmatched", "/auto", "/zuordnungen", "/import"):
         assert f'href="{href}"' in zahl
     ausw = client.get("/dues").text
     for href in ("/dues", "/forecast", "/reports"):

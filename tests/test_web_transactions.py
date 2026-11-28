@@ -503,7 +503,7 @@ def test_foreign_origin_403(client, path):
     assert r.status_code == 403
 
 
-# --- I1: "Absender merken" nur auf /unmatched vorbelegt ------------------------
+# --- "Absender merken" ist überall vorbelegt (#55; bis 1.2.0 nur /unmatched) ---
 
 _LEARN = re.compile(r'<input type="checkbox" name="learn" value="on"( checked)?>')
 
@@ -514,10 +514,10 @@ def test_learn_checkbox_checked_on_unmatched(client):
     assert boxes and all(b == " checked" for b in boxes)
 
 
-def test_learn_checkbox_not_checked_on_transactions(client):
+def test_learn_checkbox_checked_on_transactions(client):
     _upload(client, [E_ERIKA])
     boxes = _LEARN.findall(client.get("/transactions?year=all").text)
-    assert boxes and all(b == "" for b in boxes)
+    assert boxes and all(b == " checked" for b in boxes)
 
 
 def test_siblings_web_second_child_learn_leaves_feb_unmatched(client, db):

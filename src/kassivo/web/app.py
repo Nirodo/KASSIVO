@@ -11,7 +11,7 @@ from kassivo import restore
 from kassivo.db import connect
 from kassivo.web import (
     auto_routes, backup_routes, categories_routes, dues_routes, import_routes, members_routes, reports_routes,
-    overview_routes, settings_routes, transactions_routes, wiki_routes,
+    overview_routes, settings_routes, transactions_routes, wiki_routes, zuordnungen_routes,
 )
 from kassivo.web.common import HERE, render
 
@@ -88,6 +88,7 @@ def create_app(db_path, extra_hosts=()) -> FastAPI:
     app.include_router(categories_routes.router)
     app.include_router(dues_routes.router)
     app.include_router(auto_routes.router)
+    app.include_router(zuordnungen_routes.router)
     app.include_router(reports_routes.router)
     app.include_router(backup_routes.router)
     app.include_router(wiki_routes.router)

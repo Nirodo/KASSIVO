@@ -106,7 +106,10 @@ _NOTES = {
     "learned": "Zugeordnet. {n} weitere Zahlungen mit derselben Absender-IBAN wurden"
                " automatisch zugeordnet.",
     "ambiguous": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
-                 " künftig nicht automatisch zugeordnet.",
+                 " künftig nicht automatisch zugeordnet. Ändern lässt sich das unter"
+                 " „Gemerkte Zuordnungen“ oder in den Mitgliedsdaten.",
+    "remembered_saved": "Gespeichert. Bereits zugeordnete Zahlungen bleiben, wie sie sind.",
+    "remembered_forgotten": "Vergessen. Bereits zugeordnete Zahlungen bleiben, wie sie sind.",
     "changed": "Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu"
                " einem anderen). Zahlt er für mehrere Mitglieder, legen Sie das unter"
                " „Gemerkte Zuordnungen“ fest. Weitere offene Zahlungen ordnet „Unklare"
@@ -127,7 +130,9 @@ _NOTES = {
     "learned_r": "Zugeordnet. {n} weitere Zahlungen mit derselben Absender-IBAN wurden"
                  " automatisch zugeordnet. {m} weitere Zahlungen neu verteilt.",
     "ambiguous_r": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
-                   " künftig nicht automatisch zugeordnet. {n} weitere Zahlungen neu verteilt.",
+                   " künftig nicht automatisch zugeordnet. Ändern lässt sich das unter"
+                   " „Gemerkte Zuordnungen“ oder in den Mitgliedsdaten."
+                   " {n} weitere Zahlungen neu verteilt.",
     "undone_r": "Automatische Verteilung rückgängig gemacht. Die Zahlung steht jetzt unter"
                 " „Offene Vorschläge“ und kann auf der Seite „Verteilung“ geändert und"
                 " bestätigt werden. {m} weitere Zahlungen neu verteilt.",
