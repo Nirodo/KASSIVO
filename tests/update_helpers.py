@@ -25,9 +25,12 @@ def make_archive(version="1.3.0", extra=None, *, prefix=None, init_version=None,
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for name, data in files.items():
-            z.writestr(prefix + name, data)
+            # fester Zeitstempel: zwei Aufrufe müssen dieselben Bytes liefern
+            info = zipfile.ZipInfo(prefix + name, date_time=(2026, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data)
         for name, data in (extra or {}).items():
-            info = zipfile.ZipInfo("platzhalter")
+            info = zipfile.ZipInfo("platzhalter", date_time=(2026, 1, 1, 0, 0, 0))
             info.filename = name  # unverändert, ohne Normalisierung durch zipfile
             info.compress_type = zipfile.ZIP_DEFLATED
             z.writestr(info, data)
