@@ -410,7 +410,7 @@ Hinweise:
 - Feste SQL-Bausteine für Abfragen mit Alias `t` für `"transaction"` (nie aus Nutzereingaben gebaut): `VALID` (Alias `p`: kein Storno, nicht storniert), `BOOKED` (Umsatz hat gültige Buchung), `COUNTER` (Gegenkonto-ID, wenn genau eines, sonst NULL), `ON_FEES` (gültige Buchung hat eine Zeile auf dem Konto mit Rolle `fees`).
 - `check(conn) -> list[str]`: Befunde, leer heißt in Ordnung. Prüft mengenbasiert: Buchung ohne Zeilen; Storno spiegelt das Original nicht genau; Bankseite einer gültigen Umsatz-Buchung ungleich `amount_cents`; mehr als eine gültige Buchung je Umsatz oder Eröffnungsbestand je Konto; gültige Buchung auf einem 0-Cent-Umsatz; Bankkonto ohne Aktivkonto; Buchung außerhalb jeder Periode. Texte nennen nur Buchungs- und Kontonummern (ohne Nummer "Konto-ID n").
 
-- [ ] Tests zuerst, `tests/test_ledger_db.py` (rohes SQL gegen die Trigger, ohne `ledger.py`):
+- [x] Tests zuerst, `tests/test_ledger_db.py` (rohes SQL gegen die Trigger, ohne `ledger.py`):
   - `test_row_amount_zero_negative_float_rejected`: `cents` 0, -1, 1.5, '1.5', '100x', NULL ergeben `IntegrityError`; '100' wird durch Integer-Affinität exakt die Zahl 100 (`test_row_amount_text_digits_become_integer`).
   - `test_same_account_both_sides_rejected`.
   - `test_update_and_delete_of_posting_and_row_rejected`: alle vier Trigger, Meldung enthält "Storno".
@@ -425,8 +425,8 @@ Hinweise:
   - `test_seed_links_first_bank_and_creates_more`: Zwei Bankkonten: das erste an 1200 "Bank", das zweite an 1201 "Bank DE11…1111". Startplan vollständig, Rollen eindeutig.
   - Gruppen und Namen (E12, E13): `test_number_optional_and_unique` (zwei Konten ohne Nummer gehen, doppelte Nummer nicht); `test_same_name_other_kind_or_group_ok` ("Spenden" Ertrag und Aufwand; "Essen" in zwei Aufwandsgruppen); `test_same_name_same_group_rejected` (auch Groß/Klein, auch ohne Gruppe); `test_group_kind_must_match` (insert und update); `test_group_name_unique_per_kind`; `test_used_group_kind_fixed`; `test_seed_groups`.
   - `test_seed_periods_from_first_tx_year`: Umsätze ab 2023, `today` 2026-11-28: Perioden "Jahr 2023" bis "Jahr 2026", alle offen, aktiv ist 2026. Ohne Umsätze nur "Jahr 2026".
-- [ ] Tests zuerst, `tests/test_periods.py`: `test_create_validates` (Ende vor Start, Name leer oder doppelt, Überschneidung: `PeriodError`); `test_vereinsjahr_july_to_june`; `test_ensure_period_creates_calendar_year`; `test_ensure_period_fills_gap_only` (Nachbarn 2026-07-01..2027-06-30 und keine davor: 2026-03-05 ergibt 2026-01-01..2026-06-30); `test_ensure_period_name_taken_gets_suffix`; `test_get_active_falls_back_to_today_then_last`; `test_delete_only_without_postings`; `test_update_cannot_drop_postings`.
-- [ ] Tests zuerst, `tests/test_ledger.py`:
+- [x] Tests zuerst, `tests/test_periods.py`: `test_create_validates` (Ende vor Start, Name leer oder doppelt, Überschneidung: `PeriodError`); `test_vereinsjahr_july_to_june`; `test_ensure_period_creates_calendar_year`; `test_ensure_period_fills_gap_only` (Nachbarn 2026-07-01..2027-06-30 und keine davor: 2026-03-05 ergibt 2026-01-01..2026-06-30); `test_ensure_period_name_taken_gets_suffix`; `test_get_active_falls_back_to_today_then_last`; `test_delete_only_without_postings`; `test_update_cannot_drop_postings`.
+- [x] Tests zuerst, `tests/test_ledger.py`:
   - Gruppen: `test_group_create_rename_delete`; `test_group_validates` (leer, doppelt je Art, Art "x"); `test_find_group_casefold`; `test_delete_used_group_rejected`.
   - Konten: `test_create_account_validates` (Nummer 0, 100000, "12" oder doppelt; Name leer, 101 Zeichen, "beiträge" gegen "Beiträge" in derselben Gruppe, "Ohne Kategorie"; Art "x"; Gruppe anderer Art oder unbekannt: jeweils `LedgerError`, DB unverändert); `test_create_account_without_number`; `test_same_name_in_other_group_or_kind_ok`; `test_update_account_group_and_clear_number`; `test_list_accounts_order_kind_group_number`; `test_update_account_renames_and_renumbers`; `test_hide_role_or_bank_account_rejected`; `test_delete_only_unused`; `test_list_accounts_used_counts_rows_and_rules`; `test_next_free_number_skips_taken`; `test_bank_ledger_account_links_default_then_creates`.
   - Kostenstellen: `test_cost_center_create_rename_hide_delete`; `test_delete_used_cost_center_rejected`; `test_hidden_cost_center_not_bookable`.
@@ -436,7 +436,7 @@ Hinweise:
   - Eröffnungsbestand und Kontostand: `test_opening_positive_and_negative` (+50 000 und -1 234: Soll und Haben richtig, Gegenkonto Vereinsvermögen); `test_opening_zero_reverses`; `test_opening_same_twice_is_noop`; `test_opening_change_reverses_and_rebooks`; `test_opening_only_for_asset_and_liability` (Ertrag, Aufwand und Vereinsvermögen abgelehnt; Passivkonto positiv: Haben Konto); `test_balance_until_date`; `test_money_accounts_shows_unbooked_difference` (Eröffnung 10 000, Umsätze +1 700 gebucht und -300 nicht gebucht: `booked_cents` 11 700, `statement_cents` 11 400, `unbooked` 1, `diff_cents` -300); `test_money_accounts_skips_hidden`.
   - Abfragen: `test_counter_accounts_for_split_and_reversed`; `test_sql_fragments_match_python` (30 zufällige, festgesäte Umsätze mit Buchungen, Storni und Teilungen: `BOOKED`, `COUNTER`, `ON_FEES` per SQL gleich `counter_accounts` und `valid_posting_id`).
   - Prüfung: `test_check_clean_db_empty`; `test_check_finds_bank_side_mismatch` (Zeilen per rohem SQL mit falschem Betrag); `test_check_finds_posting_without_rows`; `test_check_finds_bad_reversal`; `test_check_messages_without_personal_data` (Name und IBAN des Umsatzes kommen in keinem Befund vor).
-- [ ] Rot sehen, umsetzen, grün. Volle Suite grün (App unverändert auf Schema 3). Commit `feat: Buchungskern mit Konten, Perioden, Eröffnungsbestand und Storno` (Refs #57).
+- [x] Rot sehen, umsetzen, grün. Volle Suite grün (App unverändert auf Schema 3). Commit `feat: Buchungskern mit Konten, Perioden, Eröffnungsbestand und Storno` (Refs #57).
 
 ### Task 4: Migration 4 mit Summenvergleich (noch nicht eingetragen)
 
@@ -474,7 +474,7 @@ Hinweise:
 
 Leistung: Ziel unter 10 s für 20 000 Umsätze auf dem CI-Rechner. Messung mit `time.perf_counter` wie `tests/test_auto_perf.py`.
 
-- [ ] Tests zuerst, `tests/test_migration_4.py` (Hilfsfunktion `_v3(tmp_path, rows)` baut eine Schema-3-Datei mit `db.connect`, erfundenen Mitgliedern, Kategorien, Regeln, Umsätzen, Verteilungen, `no_member`, `member_iban`):
+- [x] Tests zuerst, `tests/test_migration_4.py` (Hilfsfunktion `_v3(tmp_path, rows)` baut eine Schema-3-Datei mit `db.connect`, erfundenen Mitgliedern, Kategorien, Regeln, Umsätzen, Verteilungen, `no_member`, `member_iban`):
   - `test_fresh_db_gets_start_plan_and_period`: Neue Datenbank: Startplan (10 Konten), Perioden, keine Buchung, keine Tabelle `category`, keine Spalte `category_id`.
   - `test_categories_become_accounts`: "Beiträge" ist 3000 mit Rolle `fees`, "Hauptverein" ist 4000, "Sonstiges" ist 3900 und 4900, eigene "Miete" (`out`) ist 4500, eigene "Müller" (`both`) ist 3500 "Müller (Einnahmen)" und 4501 "Müller (Ausgaben)".
   - `test_same_name_other_kind_no_suffix`: Kategorie "Spenden" mit `out` ergibt Aufwandskonto "Spenden" (Ertragskonto 3100 "Spenden" bleibt, E13).
@@ -495,8 +495,8 @@ Leistung: Ziel unter 10 s für 20 000 Umsätze auf dem CI-Rechner. Messung mit `
   - `test_second_start_is_noop`: zweites `connect` ändert nichts (gleiche Zahl Buchungen).
   - `test_periods_cover_all_tx_years` (Umsätze 2021 und 2026, Lücke 2022 bis 2025: alle Jahre angelegt).
   - `test_messages_without_personal_data`: bei erzwungenem Fehler enthält die Meldung weder `cp_name` noch IBAN noch Zweck.
-- [ ] `tests/test_migration_4_perf.py`: `test_migrate_20000_tx_fast` (20 000 Umsätze, 300 Mitglieder, 5 Kategorien, unter 10 s, danach `ledger.check` leer).
-- [ ] Rot sehen, umsetzen, grün. Volle Suite grün (App weiter auf Schema 3). Commit `feat: Umstellung auf Schema 4 mit Summenvergleich` (Refs #57).
+- [x] `tests/test_migration_4_perf.py`: `test_migrate_20000_tx_fast` (20 000 Umsätze, 300 Mitglieder, 5 Kategorien, unter 10 s, danach `ledger.check` leer).
+- [x] Rot sehen, umsetzen, grün. Volle Suite grün (App weiter auf Schema 3). Commit `feat: Umstellung auf Schema 4 mit Summenvergleich` (Refs #57).
 
 ### Task 5: Umschalten auf Schema 4 (alle Schreib- und Lesepfade über das Journal)
 
