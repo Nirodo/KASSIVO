@@ -172,7 +172,7 @@ def _require_entry(conn, entry_id: int, check: str) -> str:
         "select iban from member_iban where rowid=?", (entry_id,)
     ).fetchone()
     if row is None or not hmac.compare_digest(
-        entry_check(row["iban"]), str(check or "")
+        entry_check(row["iban"]).encode(), str(check or "").encode()
     ):
         raise ValueError(f"unbekannte gemerkte Zuordnung {entry_id}")
     return row["iban"]

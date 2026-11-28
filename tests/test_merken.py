@@ -292,3 +292,11 @@ def test_member_leaving_in_future_learns(conn):
     a = _member(conn, "A")
     _left(conn, a, "2099-12-31")
     assert assign_member(conn, _tx(conn), a) == "new"
+
+
+def test_non_ascii_check_is_refused_not_crashing(conn):
+    a = _member(conn, "A")
+    conn.execute("insert into member_iban(iban, member_id) values(?,?)", (PARENT, a))
+    entry = conn.execute("select rowid from member_iban").fetchone()[0]
+    with pytest.raises(ValueError):
+        forget(conn, entry, "ü" * 64)
