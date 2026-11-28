@@ -6,7 +6,12 @@ Storno plus neue Buchung (E3). Keine Funktion ruft commit(), die Aufrufer commit
 Meldungen sind deutsch und nennen nie IBAN, Namen oder Verwendungszweck.
 """
 import sqlite3
+from collections import Counter
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import date, datetime
 
+from kassivo import periods
 from kassivo.iban import mask_iban
 
 KINDS = ("asset", "liability", "income", "expense")
@@ -316,3 +321,240 @@ def list_cost_centers(conn, *, visible_only: bool = False) -> list[sqlite3.Row]:
     if visible_only:
         sql += " where c.hidden = 0"
     return conn.execute(sql + " order by c.name collate nocase, c.id").fetchall()
+
+
+# --- Buchen ------------------------------------------------------------------------
+
+MAX_ROW_CENTS = 100_000_000_000  # wie CHECK in posting_row
+
+
+@dataclass(frozen=True)
+class Part:
+    """Teil eines Umsatzes. cents mit dem Vorzeichen aus Sicht der Bank (Eingang positiv)."""
+    account_id: int
+    cents: int
+    cost_center_id: int | None = None
+
+
+def _is_int(value) -> bool:
+    return type(value) is int  # bool und float sind keine Cent-Beträge
+
+
+@contextmanager
+def _atomic(conn):
+    """Savepoint: bei Fehler bleibt nichts von diesem Schritt übrig, ohne commit().
+    Ohne offene Transaktion wird erst eine begonnen; sonst würde release committen."""
+    if not conn.in_transaction:
+        conn.execute("begin")
+    conn.execute("savepoint ledger_step")
+    try:
+        yield
+    except BaseException:
+        conn.execute("rollback to ledger_step")
+        conn.execute("release ledger_step")
+        raise
+    conn.execute("release ledger_step")
+
+
+def _db_error(exc: sqlite3.IntegrityError) -> LedgerError:
+    """Trigger-Meldungen sind deutsch und ohne Personendaten; sonst eine feste Meldung."""
+    text = str(exc)
+    if text and not any(word in text for word in ("constraint", "FOREIGN KEY", "UNIQUE")):
+        return LedgerError(text)
+    return LedgerError("Die Buchung verletzt eine Regel der Datenbank.")
+
+
+def _check_day(day: str) -> str:
+    try:
+        return date.fromisoformat(day).isoformat()
+    except (TypeError, ValueError):
+        raise LedgerError("Ungültiges Buchungsdatum.") from None
+
+
+def _bookable(conn, account_id) -> sqlite3.Row:
+    row = conn.execute("select id, kind, hidden from ledger_account where id = ?",
+                       (account_id,)).fetchone()
+    if row is None:
+        raise LedgerError("Das Konto gibt es nicht (mehr).")
+    if row["hidden"]:
+        raise LedgerError("Auf ein ausgeblendetes Konto wird nicht neu gebucht.")
+    return row
+
+
+def _check_rows(conn, rows) -> None:
+    for debit, credit, cents, cc in rows:
+        kinds = {_bookable(conn, debit)["kind"], _bookable(conn, credit)["kind"]}
+        if debit == credit:
+            raise LedgerError("Soll und Haben müssen verschiedene Konten sein.")
+        if not _is_int(cents) or not 1 <= cents <= MAX_ROW_CENTS:
+            raise LedgerError("Der Betrag einer Zeile muss eine positive ganze Zahl in Cent sein.")
+        if cc is not None:
+            row = conn.execute("select hidden from cost_center where id = ?", (cc,)).fetchone()
+            if row is None or row["hidden"]:
+                raise LedgerError("Die Kostenstelle gibt es nicht oder sie ist ausgeblendet.")
+            if not kinds & {"income", "expense"}:
+                raise LedgerError("Kostenstellen gibt es nur bei Ertrags- und Aufwandskonten.")
+
+
+def _insert(conn, day: str, rows, *, source: str, tx_id=None, opening_account_id=None,
+            reversal_of=None, text=None, voucher=None) -> int:
+    with _atomic(conn):
+        try:
+            pid = conn.execute(
+                "insert into posting(booking_date, text, voucher, tx_id, opening_account_id,"
+                " reversal_of, source, created_at) values(?,?,?,?,?,?,?,?)",
+                (day, text, voucher, tx_id, opening_account_id, reversal_of, source,
+                 datetime.now().replace(microsecond=0).isoformat())).lastrowid
+            for debit, credit, cents, cc in rows:
+                conn.execute(
+                    "insert into posting_row(posting_id, debit_account_id, credit_account_id,"
+                    " cents, cost_center_id) values(?,?,?,?,?)", (pid, debit, credit, cents, cc))
+        except sqlite3.IntegrityError as exc:
+            raise _db_error(exc) from None
+    return pid
+
+
+def _check_source(source: str) -> None:
+    if source not in SOURCES:
+        raise LedgerError("Unbekannte Herkunft der Buchung.")
+
+
+def post(conn, booking_date: str, rows: list[tuple[int, int, int, int | None]], *,
+         source: str, tx_id: int | None = None, opening_account_id: int | None = None,
+         text: str | None = None, voucher: str | None = None) -> int:
+    """Neue Buchung. Zeilen (Soll, Haben, Cent > 0, Kostenstelle)."""
+    _check_source(source)
+    day = _check_day(booking_date)
+    rows = [tuple(r) for r in rows]
+    if not rows:
+        raise LedgerError("Eine Buchung braucht mindestens eine Zeile.")
+    _check_rows(conn, rows)
+    if not periods.is_open(conn, day):
+        raise LedgerError("Für dieses Datum gibt es keine offene Buchungsperiode.")
+    return _insert(conn, day, rows, source=source, tx_id=tx_id,
+                   opening_account_id=opening_account_id, text=text, voucher=voucher)
+
+
+def _rows(conn, posting_id: int) -> list[tuple]:
+    return [tuple(r) for r in conn.execute(
+        "select debit_account_id, credit_account_id, cents, cost_center_id from posting_row"
+        " where posting_id = ? order by id", (posting_id,))]
+
+
+def reverse(conn, posting_id: int, *, source: str) -> int:
+    """Storno: gespiegelte Zeilen, Datum, Umsatz und Eröffnungskonto des Originals (E4)."""
+    _check_source(source)
+    p = conn.execute("select id, booking_date, tx_id, opening_account_id, reversal_of"
+                     " from posting where id = ?", (posting_id,)).fetchone()
+    if p is None:
+        raise LedgerError("Die Buchung gibt es nicht.")
+    if p["reversal_of"] is not None:
+        raise LedgerError("Ein Storno kann nicht storniert werden.")
+    if conn.execute("select 1 from posting where reversal_of = ?", (posting_id,)).fetchone():
+        raise LedgerError("Die Buchung ist schon storniert.")
+    if not periods.is_open(conn, p["booking_date"]):
+        raise LedgerError("Die Periode der Buchung ist abgeschlossen; ein Storno ist nicht "
+                          "möglich.")
+    if p["opening_account_id"] is not None:
+        source = "opening"  # CHECK: Eröffnungsbestand und Herkunft gehören zusammen
+    elif source == "opening":
+        raise LedgerError("Unbekannte Herkunft der Buchung.")
+    mirrored = [(credit, debit, cents, cc) for debit, credit, cents, cc in _rows(conn, posting_id)]
+    return _insert(conn, p["booking_date"], mirrored, source=source, tx_id=p["tx_id"],
+                   opening_account_id=p["opening_account_id"], reversal_of=posting_id)
+
+
+# Feste SQL-Bausteine (nie aus Eingaben gebaut). Alias p für posting, t für "transaction".
+VALID = ("(p.reversal_of is null and not exists"
+         " (select 1 from posting r_ where r_.reversal_of = p.id))")
+
+
+def valid_posting_id(conn, tx_id: int) -> int | None:
+    row = conn.execute(f"select p.id from posting p where p.tx_id = ? and {VALID}",
+                       (tx_id,)).fetchone()
+    return row[0] if row else None
+
+
+def _tx(conn, tx_id: int) -> sqlite3.Row:
+    row = conn.execute('select id, account_id, booking_date, amount_cents from "transaction"'
+                       " where id = ?", (tx_id,)).fetchone()
+    if row is None:
+        raise LedgerError("Den Umsatz gibt es nicht.")
+    return row
+
+
+def book_tx(conn, tx_id: int, parts: list[Part], *, source: str) -> int:
+    """Bucht einen Bankumsatz. Gleiche gültige Buchung: nichts schreiben. Sonst Storno der
+    gültigen Buchung und neu buchen."""
+    _check_source(source)
+    if source == "opening":
+        raise LedgerError("Unbekannte Herkunft der Buchung.")
+    tx = _tx(conn, tx_id)
+    if tx["amount_cents"] == 0:
+        raise LedgerError("Umsätze über 0,00 € werden nicht gebucht.")
+    if not parts:
+        raise LedgerError("Es fehlt ein Gegenkonto.")
+    if any(not _is_int(p.cents) or p.cents == 0 for p in parts):
+        raise LedgerError("Jeder Teilbetrag muss eine ganze Zahl in Cent ungleich 0 sein.")
+    if sum(p.cents for p in parts) != tx["amount_cents"]:
+        raise LedgerError("Die Summe der Teilbeträge entspricht nicht dem Umsatz.")
+    if len({p.account_id for p in parts}) != len(parts):
+        raise LedgerError("Ein Konto kommt in der Aufteilung doppelt vor.")
+    with _atomic(conn):
+        bank = bank_ledger_account(conn, tx["account_id"])
+        if any(p.account_id == bank for p in parts):
+            raise LedgerError("Das eigene Bankkonto kann nicht Gegenkonto sein.")
+        rows = [(bank, p.account_id, p.cents, p.cost_center_id) if p.cents > 0
+                else (p.account_id, bank, -p.cents, p.cost_center_id) for p in parts]
+        current = valid_posting_id(conn, tx_id)
+        if current is not None and Counter(_rows(conn, current)) == Counter(rows):
+            return current  # schon genau so gebucht (auch auf inzwischen ausgeblendetem Konto)
+        _check_rows(conn, rows)
+        periods.ensure_period(conn, tx["booking_date"])
+        if current is not None:
+            reverse(conn, current, source=source)
+        return post(conn, tx["booking_date"], rows, source=source, tx_id=tx_id)
+
+
+def set_counter_account(conn, tx_id: int, account_id: int | None, *,
+                        cost_center_id: int | None = None, source: str) -> int | None:
+    """Ein Gegenkonto für den ganzen Umsatz; None heißt "Ohne Kategorie" (stornieren)."""
+    if account_id is None:
+        unbook_tx(conn, tx_id, source=source)
+        return None
+    amount = _tx(conn, tx_id)["amount_cents"]
+    return book_tx(conn, tx_id, [Part(account_id, amount, cost_center_id)], source=source)
+
+
+def unbook_tx(conn, tx_id: int, *, source: str) -> bool:
+    _tx(conn, tx_id)
+    current = valid_posting_id(conn, tx_id)
+    if current is None:
+        return False
+    reverse(conn, current, source=source)
+    return True
+
+
+def book_fees_if_unbooked(conn, tx_id: int) -> bool:
+    """Eingang ohne gültige Buchung auf "Beiträge" (source 'fee'). Abgeschlossene Periode:
+    False ohne Fehler."""
+    tx = _tx(conn, tx_id)
+    if tx["amount_cents"] <= 0 or valid_posting_id(conn, tx_id) is not None:
+        return False
+    period = periods.period_for(conn, tx["booking_date"])
+    if period is not None and period["status"] != "open":
+        return False
+    book_tx(conn, tx_id, [Part(fees_account_id(conn), tx["amount_cents"])], source="fee")
+    return True
+
+
+def balance(conn, account_id: int, until: str | None = None) -> int:
+    """Soll minus Haben über alle Zeilen bis einschließlich until (Storno hebt sich auf)."""
+    sql = ("select coalesce(sum(case when r.debit_account_id = ? then r.cents else -r.cents"
+           " end), 0) from posting_row r join posting p on p.id = r.posting_id"
+           " where (r.debit_account_id = ? or r.credit_account_id = ?)")
+    args: list = [account_id, account_id, account_id]
+    if until is not None:
+        sql += " and p.booking_date <= ?"
+        args.append(_check_day(until))
+    return conn.execute(sql, args).fetchone()[0]
