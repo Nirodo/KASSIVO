@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ member.name }}, {{ month }}{% endblock %}
+{% block content %}
+<p><a href="/dues?year={{ year }}">Zurück zur Beitragsübersicht {{ year }}</a></p>
+<h2>{{ member.name }}, {{ month }}</h2>
+<dl class="facts">
+  <dt>Status</dt><dd>{{ {"PAID": "Bezahlt", "PARTIAL": "Teilweise", "OPEN": "Offen", "OVERDUE": "Überfällig", "NONE": "kein Beitrag fällig"}[ms.status] }}</dd>
+  <dt>Bezahlt (bestätigt)</dt><dd>{{ ms.paid | eur }}</dd>
+  <dt>Erwartet</dt><dd>{{ ms.expected | eur }}</dd>
+</dl>
+{% for p in payments %}
+<section class="payment" aria-labelledby="pay-{{ p.tx_id }}">
+  <h3 id="pay-{{ p.tx_id }}">Zahlung vom {{ p.booking_date }} über {{ p.amount_cents | eur }}</h3>
+  {% if p.cp_name or p.purpose %}<p class="hint">{{ p.cp_name or "" }}{% if p.cp_name and p.purpose %} · {% endif %}{{ p.purpose or "" }}</p>{% endif %}
+  <p>Status:
+    {%- if p.state == "proposed" %} <strong>Vorschlag</strong>, wartet auf Ihre Prüfung.
+    {%- elif p.state == "auto" %} <strong>bestätigt</strong>, von KASSIVO automatisch verteilt.
+    {%- else %} <strong>bestätigt</strong> von Ihnen.{% endif %}</p>
+  {% if p.allocations | length > 1 %}<p>Diese Zahlung ist auf {{ p.allocations | length }} Monate verteilt.{% if p.signature %} „Bestätigen“ bestätigt alle {{ p.allocations | length }} Monate so, wie sie hier stehen.{% endif %}</p>{% endif %}
+  <ul>{% for m, cents, st, src in p.allocations %}<li>{% if m == month %}<strong>{{ m }}: {{ cents | eur }}</strong>{% else %}{{ m }}: {{ cents | eur }}{% endif %} ({{ "bestätigt" if st == "confirmed" else "vorgeschlagen" }})</li>{% endfor %}</ul>
+  {% if p.reason %}<p>Grund für die Prüfung: {{ p.reason }}</p>{% endif %}
+  {% for m in p.overpaid %}<p class="alert" role="status"><strong>Achtung:</strong> Monat {{ m }} wäre danach überzahlt. Prüfen Sie die Verteilung mit „Ändern“.</p>{% endfor %}
+  <div class="actions">
+    {% if p.signature %}<form method="post" action="/dues/{{ member.id }}/{{ month }}/confirm" class="inline">
+      <input type="hidden" name="pick" value="{{ p.signature }}">
+      <button type="submit">Bestätigen<span class="visually-hidden"> Zahlung vom {{ p.booking_date }}</span></button>
+    </form>{% endif %}
+    <a href="/transactions/{{ p.tx_id }}/allocate?next={{ here_q }}">Ändern<span class="visually-hidden"> Zahlung vom {{ p.booking_date }}</span></a>
+    {% if p.state == "auto" %}<form method="post" action="/dues/{{ member.id }}/{{ month }}/undo" class="inline">
+      <input type="hidden" name="tx_id" value="{{ p.tx_id }}">
+      <button type="submit">Rückgängig<span class="visually-hidden"> Zahlung vom {{ p.booking_date }}</span></button>
+    </form>{% endif %}
+  </div>
+</section>
+{% else %}
+<p>Keine Zahlung ist diesem Monat zugeordnet. <a href="/members/{{ member.id }}/history?year={{ year }}">Alle Zahlungen von {{ member.name }}</a></p>
+{% endfor %}
+{% endblock %}
