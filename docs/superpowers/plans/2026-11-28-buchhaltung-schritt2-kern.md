@@ -410,7 +410,7 @@ Hinweise:
 - `check(conn) -> list[str]`: Befunde, leer heißt in Ordnung. Prüft mengenbasiert: Buchung ohne Zeilen; Storno spiegelt das Original nicht genau; Bankseite einer gültigen Umsatz-Buchung ungleich `amount_cents`; mehr als eine gültige Buchung je Umsatz oder Eröffnungsbestand je Konto; gültige Buchung auf einem 0-Cent-Umsatz; Bankkonto ohne Aktivkonto; Buchung außerhalb jeder Periode. Texte nennen nur Buchungs- und Kontonummern (ohne Nummer "Konto-ID n").
 
 - [ ] Tests zuerst, `tests/test_ledger_db.py` (rohes SQL gegen die Trigger, ohne `ledger.py`):
-  - `test_row_amount_zero_negative_float_rejected`: `cents` 0, -1, 1.5, '100' ergeben `IntegrityError`.
+  - `test_row_amount_zero_negative_float_rejected`: `cents` 0, -1, 1.5, '1.5', '100x', NULL ergeben `IntegrityError`; '100' wird durch Integer-Affinität exakt die Zahl 100 (`test_row_amount_text_digits_become_integer`).
   - `test_same_account_both_sides_rejected`.
   - `test_update_and_delete_of_posting_and_row_rejected`: alle vier Trigger, Meldung enthält "Storno".
   - `test_row_for_older_posting_rejected`: Zeile zu Buchung 1, nachdem Buchung 2 existiert, ergibt "abgeschlossen".

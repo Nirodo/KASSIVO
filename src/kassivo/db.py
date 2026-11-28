@@ -136,6 +136,275 @@ def _migrate_to_3(conn: sqlite3.Connection) -> None:
                  " check (no_member in (0,1))")
 
 
+# --- Schema 4: Buchhaltung (Konten, Kostenstellen, Perioden, Buchungen) -----------------
+#
+# Eingefroren ab Freigabe wie SCHEMA. Migration 4 nutzt diese Texte und eigene
+# Hilfsfunktionen hier, nicht ledger.py (das Modul darf sich später ändern).
+# Entscheidungen E2 bis E15: docs/superpowers/plans/2026-11-28-buchhaltung-schritt2-kern.md
+
+_LEDGER_DDL_4 = """
+-- Kontogruppe wie bei Webling (E12): gehört zu einer Art, Name je Art eindeutig
+create table account_group(
+  id integer primary key,
+  kind text not null check(kind in ('asset','liability','income','expense')),
+  name text not null check(length(trim(name)) between 1 and 100));
+create unique index account_group_name on account_group(kind, name collate nocase);
+-- Nummer optional, wenn gesetzt eindeutig; Name je (Art, Gruppe) eindeutig (E13)
+create table ledger_account(
+  id integer primary key,
+  number integer unique
+    check(number is null or (typeof(number) = 'integer' and number between 1 and 99999)),
+  name text not null check(length(trim(name)) between 1 and 100),
+  kind text not null check(kind in ('asset','liability','income','expense')),
+  group_id integer references account_group(id),
+  hidden integer not null default 0 check(hidden in (0,1)),
+  role text unique check(role in ('bank_default','fees','equity')),
+  bank_account_id integer unique references account(id),
+  check(bank_account_id is null or kind = 'asset'),
+  check(role is null or hidden = 0));
+create table cost_center(
+  id integer primary key,
+  name text not null unique check(length(trim(name)) between 1 and 100),
+  hidden integer not null default 0 check(hidden in (0,1)));
+-- Buchungsperiode wie bei Webling: frei benennbar, Von-Bis, offen oder abgeschlossen
+create table period(
+  id integer primary key,
+  name text not null unique check(length(trim(name)) between 1 and 60),
+  start_date text not null check(start_date glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  end_date text not null check(end_date glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  status text not null default 'open' check(status in ('open','closed')),
+  closed_at text,
+  check(start_date <= end_date),
+  check((status = 'closed') = (closed_at is not null)));
+create table posting(
+  id integer primary key,
+  booking_date text not null
+    check(booking_date glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  text text check(text is null or length(text) <= 200),
+  voucher text check(voucher is null or length(voucher) <= 40),
+  tx_id integer references "transaction"(id),
+  -- Eröffnungsbestand eines Kontos (höchstens einer gültig je Konto)
+  opening_account_id integer references ledger_account(id),
+  reversal_of integer unique references posting(id),
+  source text not null check(source in
+    ('migration','import','rule','fee','manual','opening','closing','carryover')),
+  created_at text not null,
+  check(tx_id is null or opening_account_id is null),
+  check((source = 'opening') = (opening_account_id is not null)));
+create table posting_row(
+  id integer primary key,
+  posting_id integer not null references posting(id),
+  debit_account_id integer not null references ledger_account(id),
+  credit_account_id integer not null references ledger_account(id),
+  cents integer not null
+    check(typeof(cents) = 'integer' and cents between 1 and 100000000000),
+  cost_center_id integer references cost_center(id),
+  check(debit_account_id <> credit_account_id));
+create table posting_rule(
+  id integer primary key,
+  account_id integer not null references ledger_account(id),
+  field text not null check(field in ('purpose','cp_name','cp_iban')),
+  contains text not null check(length(contains) between 1 and 200),
+  priority integer not null default 100,
+  min_cents integer check(min_cents is null or (typeof(min_cents) = 'integer' and min_cents >= 0)),
+  max_cents integer check(max_cents is null or (typeof(max_cents) = 'integer' and max_cents >= 0)));
+create index posting_tx on posting(tx_id);
+create index posting_opening on posting(opening_account_id);
+create index posting_date on posting(booking_date);
+create index posting_row_posting on posting_row(posting_id);
+create index posting_row_debit on posting_row(debit_account_id);
+create index posting_row_credit on posting_row(credit_account_id);
+create index posting_rule_account on posting_rule(account_id);
+create index period_start on period(start_date);
+create unique index ledger_account_name
+  on ledger_account(kind, ifnull(group_id, 0), name collate nocase);
+create index ledger_account_group on ledger_account(group_id);
+
+create trigger ledger_account_group_kind before insert on ledger_account
+when new.group_id is not null
+ and (select kind from account_group where id = new.group_id) is not new.kind
+begin select raise(abort, 'Die Kontogruppe gehört zu einer anderen Kontoart.'); end;
+create trigger ledger_account_group_kind_upd before update of kind, group_id on ledger_account
+when new.group_id is not null
+ and (select kind from account_group where id = new.group_id) is not new.kind
+begin select raise(abort, 'Die Kontogruppe gehört zu einer anderen Kontoart.'); end;
+create trigger account_group_kind_fixed before update of kind on account_group
+when new.kind <> old.kind and exists (select 1 from ledger_account where group_id = old.id)
+begin select raise(abort, 'Die Art einer benutzten Kontogruppe lässt sich nicht ändern.'); end;
+create trigger posting_no_update before update on posting
+begin select raise(abort, 'Buchungen sind unveränderlich (Storno statt Ändern).'); end;
+create trigger posting_no_delete before delete on posting
+begin select raise(abort, 'Buchungen werden nicht gelöscht (Storno statt Löschen).'); end;
+create trigger posting_row_no_update before update on posting_row
+begin select raise(abort, 'Buchungen sind unveränderlich (Storno statt Ändern).'); end;
+create trigger posting_row_no_delete before delete on posting_row
+begin select raise(abort, 'Buchungen werden nicht gelöscht (Storno statt Löschen).'); end;
+-- Zeilen nur zur neuesten Buchung: ältere Buchungen sind geschlossen
+create trigger posting_row_sealed before insert on posting_row
+when new.posting_id is not (select max(id) from posting)
+begin select raise(abort, 'Die Buchung ist abgeschlossen.'); end;
+create trigger posting_row_cost_center before insert on posting_row
+when new.cost_center_id is not null and not exists (
+  select 1 from ledger_account a
+  where a.id in (new.debit_account_id, new.credit_account_id)
+    and a.kind in ('income','expense'))
+begin select raise(abort, 'Kostenstellen gibt es nur bei Ertrags- und Aufwandskonten.'); end;
+-- jede Buchung liegt in einer offenen Periode (auch Storno)
+create trigger posting_in_open_period before insert on posting
+when not exists (select 1 from period
+                 where new.booking_date between start_date and end_date and status = 'open')
+begin select raise(abort, 'Für dieses Datum gibt es keine offene Buchungsperiode.'); end;
+-- höchstens eine gültige Buchung je Bankumsatz
+create trigger posting_one_valid before insert on posting
+when new.tx_id is not null and new.reversal_of is null and exists (
+  select 1 from posting p
+  where p.tx_id = new.tx_id and p.reversal_of is null
+    and not exists (select 1 from posting r where r.reversal_of = p.id))
+begin select raise(abort, 'Der Umsatz hat schon eine gültige Buchung.'); end;
+-- höchstens ein gültiger Eröffnungsbestand je Konto
+create trigger posting_one_opening before insert on posting
+when new.opening_account_id is not null and new.reversal_of is null and exists (
+  select 1 from posting p
+  where p.opening_account_id = new.opening_account_id and p.reversal_of is null
+    and not exists (select 1 from posting r where r.reversal_of = p.id))
+begin select raise(abort, 'Das Konto hat schon einen Eröffnungsbestand.'); end;
+create trigger posting_reversal_ok before insert on posting
+when new.reversal_of is not null
+begin
+  select raise(abort, 'Storno ohne stornierte Buchung.')
+    where not exists (select 1 from posting where id = new.reversal_of);
+  select raise(abort, 'Ein Storno kann nicht storniert werden.')
+    where (select reversal_of from posting where id = new.reversal_of) is not null;
+  select raise(abort, 'Storno gehört zu einem anderen Umsatz oder Konto.')
+    where new.tx_id is not (select tx_id from posting where id = new.reversal_of)
+       or new.opening_account_id is not (select opening_account_id from posting
+                                          where id = new.reversal_of);
+end;
+create trigger period_no_overlap before insert on period
+when exists (select 1 from period
+             where new.start_date <= end_date and new.end_date >= start_date)
+begin select raise(abort, 'Buchungsperioden dürfen sich nicht überschneiden.'); end;
+create trigger period_no_overlap_upd before update of start_date, end_date on period
+when exists (select 1 from period where id <> new.id
+             and new.start_date <= end_date and new.end_date >= start_date)
+begin select raise(abort, 'Buchungsperioden dürfen sich nicht überschneiden.'); end;
+-- Grenzen nur ändern, wenn keine Buchung dadurch aus der Periode fällt
+create trigger period_keep_postings before update of start_date, end_date on period
+when exists (select 1 from posting
+             where booking_date between old.start_date and old.end_date
+               and booking_date not between new.start_date and new.end_date)
+begin select raise(abort, 'Die Periode enthält Buchungen außerhalb der neuen Grenzen.'); end;
+create trigger period_closed_fixed before update of start_date, end_date on period
+when old.status = 'closed'
+begin select raise(abort, 'Eine abgeschlossene Periode lässt sich nicht ändern.'); end;
+create trigger period_keep before delete on period
+when exists (select 1 from posting
+             where booking_date between old.start_date and old.end_date)
+begin select raise(abort, 'Die Periode enthält Buchungen.'); end;
+create trigger ledger_account_kind_fixed before update of kind on ledger_account
+when new.kind <> old.kind and (
+  exists (select 1 from posting_row
+          where debit_account_id = old.id or credit_account_id = old.id)
+  or exists (select 1 from posting_rule where account_id = old.id))
+begin select raise(abort, 'Die Art eines benutzten Kontos lässt sich nicht ändern.'); end;
+create trigger ledger_account_bank_fixed before update of bank_account_id on ledger_account
+when old.bank_account_id is not null and new.bank_account_id is not old.bank_account_id
+begin select raise(abort, 'Die Zuordnung zum Bankkonto lässt sich nicht ändern.'); end;
+create trigger ledger_account_keep before delete on ledger_account
+when old.role is not null or old.bank_account_id is not null
+begin select raise(abort, 'Dieses Konto braucht KASSIVO.'); end;
+create trigger posting_rule_target before insert on posting_rule
+when (select kind from ledger_account where id = new.account_id) not in ('income','expense')
+begin select raise(abort, 'Regeln buchen nur auf Ertrags- oder Aufwandskonten.'); end;
+create trigger posting_rule_target_upd before update of account_id on posting_rule
+when (select kind from ledger_account where id = new.account_id) not in ('income','expense')
+begin select raise(abort, 'Regeln buchen nur auf Ertrags- oder Aufwandskonten.'); end;
+"""
+
+# Startgruppen (E12) und generischer Startplan (Nummer, Name, Art, Rolle, Gruppe).
+# Keine vereinsspezifischen Namen. KASSIVO erkennt eigene Konten nur über die Rolle.
+START_GROUPS_4 = (
+    ("asset", "Umlaufvermögen"),
+    ("liability", "Eigenkapital"),
+    ("income", "Ertrag"),
+    ("expense", "Ausgaben"),
+)
+START_PLAN_4 = (
+    (1000, "Barkasse", "asset", None, "Umlaufvermögen"),
+    (1200, "Bank", "asset", "bank_default", "Umlaufvermögen"),
+    (2000, "Vereinsvermögen", "liability", "equity", "Eigenkapital"),
+    (3000, "Beiträge", "income", "fees", "Ertrag"),
+    (3100, "Spenden", "income", None, "Ertrag"),
+    (3200, "Zinsen", "income", None, "Ertrag"),
+    (3900, "Sonstige Einnahmen", "income", None, "Ertrag"),
+    (4000, "Hauptverein", "expense", None, "Ausgaben"),
+    (4100, "Bankgebühren", "expense", None, "Ausgaben"),
+    (4900, "Sonstige Ausgaben", "expense", None, "Ausgaben"),
+)
+MAX_ACCOUNT_NUMBER_4 = 99999
+
+
+def _next_free_number_4(conn: sqlite3.Connection, start: int) -> int:
+    """Kleinste freie Kontonummer ab start (eingefroren für Migration 4)."""
+    taken = {r[0] for r in conn.execute(
+        "select number from ledger_account where number >= ?", (start,)).fetchall()}
+    n = start
+    while n in taken:
+        n += 1
+    if n > MAX_ACCOUNT_NUMBER_4:
+        raise ValueError("Keine freie Kontonummer mehr.")
+    return n
+
+
+def _free_name_4(conn: sqlite3.Connection, name: str, kind: str, group_id) -> str:
+    """name, sonst "name (2)", "name (3)" ... frei in (Art, Gruppe), ohne Groß/Klein (E13)."""
+    taken = {r[0].casefold() for r in conn.execute(
+        "select name from ledger_account where kind = ? and ifnull(group_id, 0) = ifnull(?, 0)",
+        (kind, group_id)).fetchall()}
+    candidate, n = name, 1
+    while candidate.casefold() in taken:
+        n += 1
+        candidate = f"{name} ({n})"
+    return candidate
+
+
+def _seed_ledger_4(conn: sqlite3.Connection, today) -> None:
+    """Startgruppen, Startplan, Bankkonten verknüpfen, Kalenderjahre als Perioden (E15).
+
+    Kein commit(): läuft in der Transaktion des Aufrufers (Migration 4, Tests)."""
+    from kassivo.iban import mask_iban
+    groups = {}
+    for kind, name in START_GROUPS_4:
+        groups[(kind, name)] = conn.execute(
+            "insert into account_group(kind, name) values(?,?)", (kind, name)).lastrowid
+    for number, name, kind, role, group in START_PLAN_4:
+        conn.execute("insert into ledger_account(number, name, kind, role, group_id)"
+                     " values(?,?,?,?,?)", (number, name, kind, role, groups[(kind, group)]))
+    default = conn.execute("select id, group_id from ledger_account"
+                           " where role = 'bank_default'").fetchone()
+    for i, bank in enumerate(conn.execute("select id, iban from account order by id").fetchall()):
+        if i == 0:
+            conn.execute("update ledger_account set bank_account_id = ? where id = ?",
+                         (bank[0], default[0]))
+            continue
+        name = _free_name_4(conn, f"Bank {mask_iban(bank[1])}", "asset", default[1])
+        conn.execute("insert into ledger_account(number, name, kind, group_id, bank_account_id)"
+                     " values(?,?,?,?,?)",
+                     (_next_free_number_4(conn, 1201), name, "asset", default[1], bank[0]))
+    first = conn.execute('select min(substr(booking_date, 1, 4)) from "transaction"'
+                         ).fetchone()[0]
+    start_year = min(int(first), today.year) if first else today.year
+    active = None
+    for year in range(start_year, today.year + 1):
+        pid = conn.execute(
+            "insert into period(name, start_date, end_date) values(?,?,?)",
+            (f"Jahr {year}", f"{year}-01-01", f"{year}-12-31")).lastrowid
+        if year == today.year:
+            active = pid
+    conn.execute("insert into settings(key, value) values('active_period', ?)"
+                 " on conflict(key) do update set value = excluded.value", (str(active),))
+
+
 BASELINE_VERSION = 1
 SCHEMA_VERSION = 3
 MIGRATIONS: dict = {2: _migrate_to_2, 3: _migrate_to_3}
