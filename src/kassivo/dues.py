@@ -108,8 +108,12 @@ def month_status(conn, member_id: int, month: str, today: date) -> MonthStatus:
     start = get_check_start(conn)
     if start and month < start:
         return MonthStatus(month, 0, 0, "NONE")
-    expected = expected_cents(conn, member_id, month)
-    paid = _confirmed_paid(conn, member_id, month)
+    return _status(month, expected_cents(conn, member_id, month),
+                   _confirmed_paid(conn, member_id, month), today)
+
+
+def _status(month: str, expected: int, paid: int, today: date) -> MonthStatus:
+    """Status eines Monats ab dem Prüfungsstart (gemeinsam für month_status und dues_grid)."""
     if expected == 0:
         status = "NONE"
     elif paid >= expected:
@@ -168,6 +172,14 @@ class _Plan:
         return not self.outside and self.reason is None
 
 
+def _fee_table(conn) -> dict[int, list[tuple[str, int]]]:
+    """Beitragssätze je Art, aufsteigend nach valid_from."""
+    fees: dict[int, list[tuple[str, int]]] = {}
+    for r in conn.execute("select type_id, valid_from, cents from fee_rate order by valid_from"):
+        fees.setdefault(r["type_id"], []).append((r["valid_from"], r["cents"]))
+    return fees
+
+
 class _Member:
     """Zwischenspeicher eines Mitglieds: Soll je Monat und bestätigt Bezahltes je Monat.
 
@@ -179,22 +191,30 @@ class _Member:
     def __init__(self, conn, member_id: int):
         m = conn.execute("select fee_start, austritt from member where id=?",
                          (member_id,)).fetchone()
-        self.fee_start = m["fee_start"] if m else None
-        self.austritt = m["austritt"][:7] if m and m["austritt"] else None
-        self.exists = m is not None
-        self.types = [(r["valid_from"], r["type_id"]) for r in conn.execute(
+        types = [(r["valid_from"], r["type_id"]) for r in conn.execute(
             "select valid_from, type_id from member_type_history where member_id=?"
             " order by valid_from", (member_id,))]
-        self.fees: dict[int, list[tuple[str, int]]] = {}
-        for r in conn.execute("select type_id, valid_from, cents from fee_rate"
-                              " order by valid_from"):
-            self.fees.setdefault(r["type_id"], []).append((r["valid_from"], r["cents"]))
-        self._expected: dict[str, int] = {}
-        self.paid: dict[str, dict[int, int]] = {}
+        self._setup(m, types, _fee_table(conn))
         for r in conn.execute("select tx_id, month, cents from allocation"
                               " where member_id=? and status='confirmed'", (member_id,)):
             by_tx = self.paid.setdefault(r["month"], {})
             by_tx[r["tx_id"]] = by_tx.get(r["tx_id"], 0) + r["cents"]
+
+    @classmethod
+    def preloaded(cls, row, types, fees) -> "_Member":
+        """Ohne Abfragen, aus vorab geladenen Zeilen (dues_grid, #49). paid bleibt leer."""
+        self = cls.__new__(cls)
+        self._setup(row, types, fees)
+        return self
+
+    def _setup(self, m, types, fees) -> None:
+        self.fee_start = m["fee_start"] if m else None
+        self.austritt = m["austritt"][:7] if m and m["austritt"] else None
+        self.exists = m is not None
+        self.types = types
+        self.fees: dict[int, list[tuple[str, int]]] = fees
+        self._expected: dict[str, int] = {}
+        self.paid: dict[str, dict[int, int]] = {}
 
     def expected(self, month: str) -> int:
         """Wie members.expected_cents, ohne Abfragen."""
@@ -733,16 +753,35 @@ def clear_allocations(conn, tx_id: int) -> int:
 
 
 def dues_grid(conn, year: int, today: date) -> list[dict]:
+    """Raster eines Jahres, gleiches Ergebnis wie month_status je Zelle.
+
+    Soll und Bezahltes werden einmal geladen (#49), nicht je Mitglied und
+    Monat abgefragt: feste Zahl an Abfragen. Verworfen: ein Cache über
+    Anfragen hinweg (müsste bei jeder Buchung und Stammdatenänderung
+    ungültig werden).
+    """
     members = sorted(list_members(conn), key=lambda r: (r["name"].casefold(), r["id"]))
     months = [f"{year:04d}-{i:02d}" for i in range(1, 13)]
-    return [
-        {
-            "member_id": m["id"],
-            "name": m["name"],
-            "months": [month_status(conn, m["id"], mo, today) for mo in months],
-        }
-        for m in members
-    ]
+    start = get_check_start(conn)
+    types: dict[int, list[tuple[str, int]]] = {}
+    for r in conn.execute(  # join wie members.type_at
+            "select h.member_id, h.valid_from, h.type_id from member_type_history h"
+            " join membership_type t on t.id=h.type_id order by h.valid_from"):
+        types.setdefault(r["member_id"], []).append((r["valid_from"], r["type_id"]))
+    fees = _fee_table(conn)
+    paid: dict[tuple[int, str], int] = {
+        (r["member_id"], r["month"]): r["cents"] for r in conn.execute(
+            "select member_id, month, sum(cents) as cents from allocation"
+            " where status='confirmed' and month >= ? and month <= ?"
+            " group by member_id, month", (months[0], months[-1]))}
+    out = []
+    for m in members:
+        calc = _Member.preloaded(m, types.get(m["id"], []), fees)
+        out.append({"member_id": m["id"], "name": m["name"], "months": [
+            MonthStatus(mo, 0, 0, "NONE") if start and mo < start
+            else _status(mo, calc.expected(mo), paid.get((m["id"], mo), 0), today)
+            for mo in months]})
+    return out
 
 
 def proposed_months(conn, year: int) -> set[tuple[int, str]]:
