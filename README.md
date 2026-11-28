@@ -259,6 +259,7 @@ src/kassivo/
   forecast.py          Prognose
   iban.py              IBAN-Normalisierung und Maskierung
   ingest.py            Import und Duplikaterkennung
+  ledger.py            Buchungskern: Kontogruppen, Konten, Kostenstellen, Buchungen, Storno
   logconfig.py         Konsolenprotokoll ohne Suchtexte (Filter für das Uvicorn-Zugriffsprotokoll)
   matching.py          Zuordnung von Umsätzen zu Mitgliedern
   members.py           Mitglieder und Mitgliedsarten
