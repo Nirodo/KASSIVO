@@ -3,7 +3,7 @@ KASSIVO ist die moderne Lösung zur einfachen und übersichtlichen Verwaltung vo
 
 ## Überblick
 
-KASSIVO 1.5.0 ist ein lokales Kassenprogramm für eine Person an einem Rechner. Es verwaltet Mitglieder und ihre monatlichen Beiträge, liest Kontoumsätze aus Exportdateien der Bank ein, ordnet sie Mitgliedern und Kategorien zu und zeigt, wer seinen Beitrag bezahlt hat. Die Oberfläche läuft als Webseite im Browser, aber nur auf dem eigenen Rechner (`http://127.0.0.1:8000`). Die Daten liegen in einer SQLite-Datei auf dem eigenen Rechner.
+KASSIVO 1.6.0 ist ein lokales Kassenprogramm für eine Person an einem Rechner. Es verwaltet Mitglieder und ihre monatlichen Beiträge, liest Kontoumsätze aus Exportdateien der Bank ein, ordnet sie Mitgliedern und Kategorien zu und zeigt, wer seinen Beitrag bezahlt hat. Die Oberfläche läuft als Webseite im Browser, aber nur auf dem eigenen Rechner (`http://127.0.0.1:8000`). Die Daten liegen in einer SQLite-Datei auf dem eigenen Rechner.
 
 Eine ausführliche Anleitung steckt im Programm: das Fragezeichen oben rechts oder der Bereich "Einstellungen", Punkt "Wiki" (`/wiki`), erklärt jede Funktion mit Schritten und Beispielen. Das Wiki ist nur zum Lesen und braucht kein Internet.
 

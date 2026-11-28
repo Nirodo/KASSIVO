@@ -128,6 +128,8 @@ _NOTES = {
               " „Offene Vorschläge“ und kann auf der Seite „Verteilung“ geändert und"
               " bestätigt werden.",
     "recomputed": "{n} Zahlungen neu verteilt.",
+    "dues_confirmed": "Bestätigt.",
+    "dues_confirmed_r": "Bestätigt. {m} weitere Zahlungen neu verteilt.",
     "recomputed_other": "{n} weitere Zahlungen neu verteilt.",
     "learned_r": "Zugeordnet. {n} weitere Zahlungen mit derselben Absender-IBAN wurden"
                  " automatisch zugeordnet. {m} weitere Zahlungen neu verteilt.",
@@ -180,7 +182,7 @@ templates.env.globals["page_note"] = page_note
 
 MAX_ID = 2**63 - 1
 MAX_CENTS = 10_000_000
-_NEXT_RE = re.compile(r"/(transactions|unmatched)([/?][!-~]*)?", re.ASCII)
+_NEXT_RE = re.compile(r"/(transactions|unmatched|dues)([/?][!-~]*)?", re.ASCII)
 
 
 def check_id(value: int) -> int:
@@ -200,7 +202,7 @@ def parse_id(text: str) -> int | None:
 
 
 def safe_next(text: str | None, default: str = "/transactions") -> str:
-    """Nur lokale Pfade unter /transactions oder /unmatched, nie ein Schema oder //."""
+    """Nur lokale Pfade unter /transactions, /unmatched oder /dues, nie ein Schema oder //."""
     if text and _NEXT_RE.fullmatch(text) and "\\" not in text:
         return text
     return default

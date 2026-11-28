@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Vorschläge bestätigt{% endblock %}
+{% block content %}
+{% if res is none %}
+<p class="alert" role="status">Nichts ausgewählt. Es wurde nichts bestätigt.</p>
+{% else %}
+{% set n = res.confirmed | length %}
+<p class="notice" role="status">{{ n }} {{ "Vorschlag" if n == 1 else "Vorschläge" }} bestätigt{% if skipped %}, {{ skipped | length }} übersprungen{% endif %}.</p>
+{% if res.invalid %}<p class="alert" role="status">{{ res.invalid }} Einträge waren unlesbar und wurden ignoriert.</p>{% endif %}
+{% if skipped %}
+<div class="table-wrap">
+<table>
+  <caption>Übersprungen</caption>
+  <thead><tr><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col" class="num">Betrag</th><th scope="col">Grund</th></tr></thead>
+  <tbody>
+  {% for s in skipped %}
+  <tr>
+    {% if s.tx %}<td>{{ s.tx.booking_date }}</td><td>{{ s.tx.name or "–" }}</td><td class="num">{{ s.tx.amount_cents | eur }}</td>
+    {% else %}<td colspan="3">Buchung nicht gefunden</td>{% endif %}
+    <td>{% if s.why == "overpay" %}Würde einen Monat überzahlen. Bitte einzeln prüfen.{% else %}Der Vorschlag hat sich seit der Vorschau geändert oder wurde schon entschieden. Bitte neu prüfen.{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endif %}
+<p><a href="/dues/confirm-all">Zur Liste der Vorschläge</a> · <a href="/dues">Zur Beitragsübersicht</a></p>
+{% endblock %}
