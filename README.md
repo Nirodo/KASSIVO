@@ -3,7 +3,7 @@ KASSIVO ist die moderne Lösung zur einfachen und übersichtlichen Verwaltung vo
 
 ## Überblick
 
-KASSIVO 1.2.0 ist ein lokales Kassenprogramm für eine Person an einem Rechner. Es verwaltet Mitglieder und ihre monatlichen Beiträge, liest Kontoumsätze aus Exportdateien der Bank ein, ordnet sie Mitgliedern und Kategorien zu und zeigt, wer seinen Beitrag bezahlt hat. Die Oberfläche läuft als Webseite im Browser, aber nur auf dem eigenen Rechner (`http://127.0.0.1:8000`). Die Daten liegen in einer SQLite-Datei auf dem eigenen Rechner.
+KASSIVO 1.3.0 ist ein lokales Kassenprogramm für eine Person an einem Rechner. Es verwaltet Mitglieder und ihre monatlichen Beiträge, liest Kontoumsätze aus Exportdateien der Bank ein, ordnet sie Mitgliedern und Kategorien zu und zeigt, wer seinen Beitrag bezahlt hat. Die Oberfläche läuft als Webseite im Browser, aber nur auf dem eigenen Rechner (`http://127.0.0.1:8000`). Die Daten liegen in einer SQLite-Datei auf dem eigenen Rechner.
 
 Eine ausführliche Anleitung steckt im Programm: das Fragezeichen oben rechts oder der Bereich "Einstellungen", Punkt "Wiki" (`/wiki`), erklärt jede Funktion mit Schritten und Beispielen. Das Wiki ist nur zum Lesen und braucht kein Internet.
 
@@ -50,7 +50,15 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-`pip install -e ".[dev]"` installiert KASSIVO bearbeitbar zusammen mit den Entwicklungswerkzeugen (pytest, httpx). Wer nur anwenden will, nimmt `pip install .` (ohne Werkzeuge, nicht bearbeitbar).
+`pip install -e ".[dev]"` installiert KASSIVO bearbeitbar zusammen mit den Entwicklungswerkzeugen (pytest, httpx). Wer nur anwenden will, nimmt `pip install .` (ohne Werkzeuge, nicht bearbeitbar). Die Update-Funktion braucht allerdings die bearbeitbare Installation (`pip install -e .`).
+
+### Update
+
+Ab Version 1.3.0 kann KASSIVO selbst nach einer neuen Version suchen (Seite `/settings/update`, Link auf der Seite Einstellungen, Wiki-Thema „Update“). Die Update-Prüfung ist standardmäßig aus. Eingeschaltet fragt KASSIVO nur auf Knopfdruck die öffentliche Releases-API von GitHub ab, ohne Anmeldung, Token oder Daten aus KASSIVO, mit Zeitlimit und Zertifikatsprüfung. "Update herunterladen" lädt `kassivo-X.Y.Z.zip` und `SHA256SUMS` aus dem Release, prüft Prüfsumme und Inhalt (keine Pfade außerhalb des Versionsordners, keine Links, keine Datenbankdateien, Größengrenzen) und legt das Paket nach `<DB-Ordner>/updates`.
+
+Installiert wird nicht im laufenden Programm: KASSIVO beenden, `update.bat` im Projektordner starten und mit `j` bestätigen (Linux/macOS: `.venv/bin/python -I -m kassivo.update apply`). Das Skript sichert zuerst die Datenbank nach `<DB-Ordner>/backups`, tauscht dann die Programmdateien aus, ruft `pip install -e .` nur bei geänderten Abhängigkeiten auf und prüft, ob die neue Version startet. Bei einem Fehler setzt es den alten Stand zurück. Datenbank, `.venv`, `.git` und eigene Dateien bleiben unberührt; der alte Programmstand bleibt in `.update/` im Projektordner. KASSIVO startet danach nicht von selbst neu. Von 1.2.0 auf 1.3.0 wird noch von Hand aktualisiert. Wer den Projektordner mit Git verwaltet, kann weiterhin mit `git pull` aktualisieren.
+
+Die Pakete baut der Workflow `.github/workflows/release.yml` bei jedem Tag `vX.Y.Z`: Tests, dann Archiv (`git archive`), Wheel und `SHA256SUMS`, angehängt an das GitHub-Release.
 
 ## Start
 
@@ -211,7 +219,7 @@ Sicherungen enthalten personenbezogene Daten. Sie gehören nicht in einen Cloud-
 
 KASSIVO ist für den Betrieb durch eine Person auf dem eigenen Rechner gebaut.
 
-- Alles bleibt lokal. KASSIVO hat keine Verbindung zur Bank, kennt keine Zugangsdaten oder PINs und schickt nichts ins Internet. Es liest nur Dateien, die Sie selbst hochladen. Auch Chart.js liegt lokal im Programm.
+- Alles bleibt lokal. KASSIVO hat keine Verbindung zur Bank, kennt keine Zugangsdaten oder PINs und schickt nichts ins Internet. Einzige Ausnahme ist die Update-Prüfung: standardmäßig aus, eingeschaltet nur auf Knopfdruck und ohne Daten aus KASSIVO (siehe Update). Es liest nur Dateien, die Sie selbst hochladen. Auch Chart.js liegt lokal im Programm.
 - Der Server lauscht nur auf 127.0.0.1, andere Rechner im Netz erreichen ihn nicht.
 - **Host-Prüfung:** KASSIVO beantwortet nur Anfragen an `127.0.0.1` oder `localhost` und weist andere Host-Namen mit "Ungültiger Host." ab. Das schützt davor, dass eine fremde Webseite den Browser dazu bringt, KASSIVO unter einem anderen Namen anzusprechen.
 - **Origin-Prüfung:** Anfragen, die etwas ändern (POST und ähnliche), lehnt KASSIVO ab, wenn der Origin-Header auf eine andere Herkunft zeigt. Andere offene Webseiten können so nichts in KASSIVO ändern.
@@ -257,6 +265,8 @@ src/kassivo/
   overview.py          Zahlen der Startseite (nur lesend)
   reports.py           Jahresreport
   settings.py          Ort der Datenbank (Standardordner, KASSIVO_DB, Cloud-Warnung)
+  update.py            Update: Release prüfen, Paket laden und prüfen, installieren (update.bat)
+  update_recover.py    Journal und Wiederherstellung eines abgebrochenen Updates (nur Standardbibliothek)
   web/                 Weboberfläche
     app.py             App-Fabrik, Host-, Origin- und Sec-Fetch-Site-Prüfung, Sicherheits-Header, Fehlerseiten
     auto_routes.py     Automatisch verteilt, Rückgängig, offene Vorschläge neu verteilen
@@ -269,6 +279,7 @@ src/kassivo/
     overview_routes.py Startseite "Heute zu tun"
     reports_routes.py  Jahresreport und Diagrammdaten
     settings_routes.py Beiträge und Prüfungsstart
+    update_routes.py   Update-Seite: Opt-in, nach Updates suchen, Paket herunterladen
     transactions_routes.py  Buchungen, Unklar, Verteilung
     wiki_routes.py     Wiki im Programm (feste Themenliste, nur lesend)
     zuordnungen_routes.py  Gemerkte Zuordnungen: ansehen, ändern, vergessen

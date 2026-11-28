@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kassivo"
-version = "1.2.0"
+version = "1.3.0"
 requires-python = ">=3.10"
 dependencies = ["fastapi>=0.110", "jinja2>=3.1", "python-multipart>=0.0.9", "uvicorn>=0.27"]
 

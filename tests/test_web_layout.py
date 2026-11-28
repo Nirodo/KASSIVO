@@ -26,6 +26,7 @@ PAGES = {
     "/settings/fees": ("Einstellungen", "/settings/fees"),
     "/categories": ("Einstellungen", "/categories"),
     "/backup": ("Einstellungen", "/backup"),
+    "/settings/update": ("Einstellungen", "/settings/update"),
     "/wiki": ("Einstellungen", "/wiki"),
     "/wiki/start": ("Einstellungen", "/wiki"),
 }
