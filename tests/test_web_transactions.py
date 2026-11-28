@@ -732,8 +732,10 @@ def test_import_bad_amount_is_422_not_500(client, db, raw):
 
 # --- Fix-Runde 2 (N1): Mehrdeutigkeit auch über member.iban ---------------------
 
-AMBIG_NOTE = ("Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
-              " künftig nicht automatisch zugeordnet.")
+AMBIG_NOTE = ("Zugeordnet. Für diese Absender-IBAN gilt „zahlt für mehrere Mitglieder“,"
+              " deshalb ordnet KASSIVO ihre Zahlungen nicht automatisch zu. Falls das ein"
+              " Versehen war, ändern Sie es unter „Gemerkte Zuordnungen“ oder in den"
+              " Mitgliedsdaten.")
 
 
 def _kid(db, name, **kw):
