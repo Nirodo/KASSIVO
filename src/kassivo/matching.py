@@ -10,6 +10,9 @@ Nach jeder neuen Zuordnung berechnet dues die abgeleiteten Verteilungen
 Commit wie die Zuordnung (alles oder nichts). Entscheidungen des Nutzers
 (source='manual') bleiben unangetastet.
 """
+import hashlib
+import hmac
+
 from kassivo import dues
 from kassivo.iban import normalize_iban
 
@@ -132,32 +135,56 @@ def remembered(conn) -> list:
     ).fetchall()
 
 
-def _require_entry(conn, entry_id: int) -> None:
-    if not conn.execute(
-        "select 1 from member_iban where rowid=?", (entry_id,)
-    ).fetchone():
+def entry_check(iban: str) -> str:
+    """Prüfkennung eines Eintrags: SHA-256 der gespeicherten IBAN (hex).
+
+    Formulare schicken sie mit, weil die rowid allein nicht stabil ist
+    (Wiederverwendung nach Vergessen, Einspielen, _relax_member_iban).
+    Verworfen: IBAN selbst im Formular (Klartext) und eine eigene Spalte
+    mit fester ID (Schema-Wechsel, in diesem Schritt ausgeschlossen).
+    """
+    return hashlib.sha256(iban.encode("utf-8")).hexdigest()
+
+
+def _require_entry(conn, entry_id: int, check: str) -> str:
+    """IBAN des Eintrags, wenn rowid UND Prüfkennung passen, sonst ValueError."""
+    row = conn.execute(
+        "select iban from member_iban where rowid=?", (entry_id,)
+    ).fetchone()
+    if row is None or not hmac.compare_digest(
+        entry_check(row["iban"]), str(check or "")
+    ):
         raise ValueError(f"unbekannte gemerkte Zuordnung {entry_id}")
+    return row["iban"]
 
 
-def set_remembered(conn, entry_id: int, member_id: int | None) -> None:
+def set_remembered(conn, entry_id: int, member_id: int | None, check: str) -> None:
     """Ändert eine gemerkte Zuordnung; None = zahlt für mehrere.
 
     Ordnet keine Zahlungen um, auch keine schon zugeordneten.
     """
-    _require_entry(conn, entry_id)
+    iban = _require_entry(conn, entry_id, check)
     if member_id is not None and not conn.execute(
         "select 1 from member where id=?", (member_id,)
     ).fetchone():
         raise ValueError(f"unbekanntes Mitglied {member_id}")
-    conn.execute("update member_iban set member_id=? where rowid=?",
-                 (member_id, entry_id))
+    # rowid und IBAN in derselben Anweisung: dazwischen kann nichts umziehen
+    cur = conn.execute("update member_iban set member_id=? where rowid=? and iban=?",
+                       (member_id, entry_id, iban))
+    if cur.rowcount != 1:
+        conn.rollback()
+        raise ValueError(f"unbekannte gemerkte Zuordnung {entry_id}")
     conn.commit()
 
 
-def forget(conn, entry_id: int) -> None:
+def forget(conn, entry_id: int, check: str) -> None:
     """Löscht eine gemerkte Zuordnung; danach gelten wieder die Stammdaten."""
-    _require_entry(conn, entry_id)
-    conn.execute("delete from member_iban where rowid=?", (entry_id,))
+    iban = _require_entry(conn, entry_id, check)
+    cur = conn.execute("delete from member_iban where rowid=? and iban=?",
+                       (entry_id, iban))
+    if cur.rowcount != 1:
+        conn.rollback()
+        raise ValueError(f"unbekannte gemerkte Zuordnung {entry_id}")
     conn.commit()
 
 

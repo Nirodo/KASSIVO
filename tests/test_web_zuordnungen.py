@@ -5,11 +5,13 @@ from datetime import date
 import pytest
 
 from kassivo.db import connect
+from kassivo.matching import entry_check
 from kassivo.members import create_member
 from tests.helpers import make_client
 
 FULL = "XX00FAKEPAYER00000000001"
 OTHER = "XX00FAKEPAYER00000000002"
+CK = entry_check(FULL)
 
 
 @pytest.fixture
@@ -90,7 +92,7 @@ def test_save_member_does_not_move_payments(client, db):
     a, b = _member(db, "A"), _member(db, "B")
     eid = _entry(db, FULL, a)
     t = _tx(db, "Beitrag", member_id=a)
-    r = client.post(f"/zuordnungen/{eid}", data={"member_id": str(b)})
+    r = client.post(f"/zuordnungen/{eid}", data={"member_id": str(b), "check": CK})
     assert r.status_code == 303 and r.headers["location"].startswith("/zuordnungen?note=")
     assert _learned(db) == {FULL: b}
     assert db.execute('select member_id from "transaction" where id=?', (t,)).fetchone()[0] == a
@@ -100,7 +102,7 @@ def test_save_member_does_not_move_payments(client, db):
 def test_save_multiple(client, db):
     a = _member(db, "A")
     eid = _entry(db, FULL, a)
-    r = client.post(f"/zuordnungen/{eid}", data={"member_id": "multi"})
+    r = client.post(f"/zuordnungen/{eid}", data={"member_id": "multi", "check": CK})
     assert r.status_code == 303
     assert _learned(db) == {FULL: None}
 
@@ -108,7 +110,7 @@ def test_save_multiple(client, db):
 def test_fix_null_from_wrong_correction(client, db):
     a = _member(db, "A")
     eid = _entry(db, FULL, None)
-    assert client.post(f"/zuordnungen/{eid}", data={"member_id": str(a)}).status_code == 303
+    assert client.post(f"/zuordnungen/{eid}", data={"member_id": str(a), "check": CK}).status_code == 303
     assert _learned(db) == {FULL: a}
 
 
@@ -116,7 +118,7 @@ def test_fix_null_from_wrong_correction(client, db):
 def test_save_invalid_member(client, db, value):
     a = _member(db, "A")
     eid = _entry(db, FULL, a)
-    r = client.post(f"/zuordnungen/{eid}", data={"member_id": value})
+    r = client.post(f"/zuordnungen/{eid}", data={"member_id": value, "check": CK})
     assert r.status_code == 422
     assert "Mitglied" in _text(r.text) and FULL not in r.text
     assert _learned(db) == {FULL: a}
@@ -125,7 +127,7 @@ def test_save_invalid_member(client, db, value):
 def test_forget(client, db):
     a = _member(db, "A")
     eid = _entry(db, FULL, a)
-    r = client.post(f"/zuordnungen/{eid}/forget")
+    r = client.post(f"/zuordnungen/{eid}/forget", data={"check": CK})
     assert r.status_code == 303
     assert _learned(db) == {}
     assert "Vergessen" in _text(client.get(r.headers["location"]).text)
@@ -134,9 +136,9 @@ def test_forget(client, db):
 def test_stale_entry_is_4xx_with_german_text(client, db):
     a = _member(db, "A")
     eid = _entry(db, FULL, a)
-    assert client.post(f"/zuordnungen/{eid}/forget").status_code == 303
-    for r in (client.post(f"/zuordnungen/{eid}/forget"),  # doppelt gesendet
-              client.post(f"/zuordnungen/{eid}", data={"member_id": str(a)})):
+    assert client.post(f"/zuordnungen/{eid}/forget", data={"check": CK}).status_code == 303
+    for r in (client.post(f"/zuordnungen/{eid}/forget", data={"check": CK}),  # doppelt gesendet
+              client.post(f"/zuordnungen/{eid}", data={"member_id": str(a), "check": CK})):
         assert 400 <= r.status_code < 500
         assert "gibt es nicht mehr" in _text(r.text)
 
@@ -144,7 +146,7 @@ def test_stale_entry_is_4xx_with_german_text(client, db):
 @pytest.mark.parametrize("bad", ["0", "-1", "99999999999999999999"])
 def test_bad_ids_404(client, bad):
     assert client.post(f"/zuordnungen/{bad}/forget").status_code == 404
-    assert client.post(f"/zuordnungen/{bad}", data={"member_id": "multi"}).status_code == 404
+    assert client.post(f"/zuordnungen/{bad}", data={"member_id": "multi", "check": CK}).status_code == 404
 
 
 @pytest.mark.parametrize("path", ["/zuordnungen/1", "/zuordnungen/1/forget"])
@@ -162,7 +164,7 @@ def test_changed_note_links_page(client, db):
     t = _tx(db, "Beitrag")
     _tx(db, "Beitrag 2")
     r = client.post(f"/transactions/{t}/member",
-                    data={"member_id": str(b), "learn": "on", "next": "/unmatched"})
+                    data={"member_id": str(b), "learn": "on", "next": "/unmatched", "check": CK})
     assert r.headers["location"] == "/unmatched?note=changed&n=0"
     html = client.get(r.headers["location"]).text
     assert "Gemerkte Zuordnungen" in _text(html)
@@ -175,10 +177,29 @@ def test_ambiguous_note_points_to_page(client, db):
     _entry(db, FULL, None)
     t = _tx(db, "Beitrag")
     r = client.post(f"/transactions/{t}/member",
-                    data={"member_id": str(a), "learn": "on", "next": "/unmatched"})
+                    data={"member_id": str(a), "learn": "on", "next": "/unmatched", "check": CK})
     assert "Gemerkte Zuordnungen" in _text(client.get(r.headers["location"]).text)
 
 
 def test_sidebar_has_page(client):
     html = client.get("/zuordnungen").text
     assert 'href="/zuordnungen" aria-current="page"' in html
+
+
+def test_form_carries_check_not_iban(client, db):
+    eid = _entry(db, FULL, _member(db, "A"))
+    html = client.get("/zuordnungen").text
+    assert f'<input type="hidden" name="check" value="{CK}">' in html
+    assert FULL not in html
+    actions = re.findall(r'action="([^"]*)"', html)
+    assert f"/zuordnungen/{eid}" in actions and all(CK not in a for a in actions)
+
+
+@pytest.mark.parametrize("bad", ["", "0" * 64, entry_check(OTHER)])
+def test_wrong_check_is_stale(client, db, bad):
+    a, b = _member(db, "A"), _member(db, "B")
+    eid = _entry(db, FULL, a)
+    for r in (client.post(f"/zuordnungen/{eid}", data={"member_id": str(b), "check": bad}),
+              client.post(f"/zuordnungen/{eid}/forget", data={"check": bad})):
+        assert r.status_code == 404 and "gibt es nicht mehr" in _text(r.text)
+    assert _learned(db) == {FULL: a}

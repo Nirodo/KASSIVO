@@ -189,7 +189,7 @@ def test_learn_false_does_not_make_ambiguous(conn):
 def test_siblings_one_parent_two_children_end_to_end(conn):
     """Ein Elternteil zahlt für zwei Kinder: nach "zahlt für mehrere" bleibt
     alles in Unklar (#55: bewusste Auswahl auf "Gemerkte Zuordnungen")."""
-    from kassivo.matching import remembered, set_remembered
+    from kassivo.matching import entry_check, remembered, set_remembered
     dues.set_check_start(conn, "2026-01")
     a, b = _member(conn, "Kind A"), _member(conn, "Kind B")
     t1 = _tx(conn, 1700, "XX00FAKEPARENT", day="2026-01-03")
@@ -197,7 +197,8 @@ def test_siblings_one_parent_two_children_end_to_end(conn):
     conn.commit()
     assign_member(conn, t1, a)
     assert assign_member(conn, t2, b) == "changed"
-    set_remembered(conn, remembered(conn)[0]["id"], None)
+    r0 = remembered(conn)[0]
+    set_remembered(conn, r0["id"], None, entry_check(r0["iban"]))
     feb = [_tx(conn, 1700, "XX00FAKEPARENT", day="2026-02-03"),
            _tx(conn, 1700, "XX00FAKEPARENT", day="2026-02-04")]
     conn.commit()

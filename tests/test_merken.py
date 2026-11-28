@@ -4,11 +4,12 @@ from datetime import date
 import pytest
 
 from kassivo.matching import (
-    assign_member, auto_assign, forget, remembered, set_remembered,
+    assign_member, auto_assign, entry_check, forget, remembered, set_remembered,
 )
 from kassivo.members import create_member
 
 PARENT = "XX00FAKEPARENT0000000001"
+CK = entry_check(PARENT)
 
 
 def _tx(conn, amount=1700, cp_iban=PARENT, day="2026-01-05", n=[0]):
@@ -154,10 +155,10 @@ def test_set_remembered_member_and_multiple(conn):
     t = _tx(conn)
     assign_member(conn, t, a)
     eid = _entry_id(conn)
-    set_remembered(conn, eid, b)
+    set_remembered(conn, eid, b, CK)
     assert _learned(conn) == {PARENT: b}
     assert _member_of(conn, t) == a  # ordnet keine Zahlungen um
-    set_remembered(conn, eid, None)
+    set_remembered(conn, eid, None, CK)
     assert _learned(conn) == {PARENT: None}
     t2 = _tx(conn)
     assert auto_assign(conn, [t2]) == 0  # zahlt für mehrere: nicht selbst zuordnen
@@ -168,7 +169,7 @@ def test_null_from_wrong_correction_can_be_fixed(conn):
     a = _member(conn, "A")
     conn.execute("insert into member_iban(iban, member_id) values(?, null)", (PARENT,))
     conn.commit()
-    set_remembered(conn, _entry_id(conn), a)
+    set_remembered(conn, _entry_id(conn), a, CK)
     t = _tx(conn)
     assert auto_assign(conn, [t]) == 1 and _member_of(conn, t) == a
 
@@ -177,7 +178,7 @@ def test_forget(conn):
     a = _member(conn, "A")
     t = _tx(conn)
     assign_member(conn, t, a)
-    forget(conn, _entry_id(conn))
+    forget(conn, _entry_id(conn), CK)
     assert _learned(conn) == {}
     assert _member_of(conn, t) == a
     t2 = _tx(conn)
@@ -187,7 +188,7 @@ def test_forget(conn):
 def test_forget_falls_back_to_master_data(conn):
     a, b = _member(conn, "A", iban=PARENT), _member(conn, "B")
     assign_member(conn, _tx(conn), b)
-    forget(conn, _entry_id(conn))
+    forget(conn, _entry_id(conn), CK)
     t = _tx(conn)
     assert auto_assign(conn, [t]) == 1 and _member_of(conn, t) == a
 
@@ -197,16 +198,16 @@ def test_unknown_entry_or_member_raises(conn):
     assign_member(conn, _tx(conn), a)
     eid = _entry_id(conn)
     with pytest.raises(ValueError):
-        set_remembered(conn, eid + 100, a)
+        set_remembered(conn, eid + 100, a, CK)
     with pytest.raises(ValueError):
-        set_remembered(conn, eid, 9999)
+        set_remembered(conn, eid, 9999, CK)
     with pytest.raises(ValueError):
-        forget(conn, eid + 100)
-    forget(conn, eid)
+        forget(conn, eid + 100, CK)
+    forget(conn, eid, CK)
     with pytest.raises(ValueError):
-        forget(conn, eid)  # doppelt gesendet
+        forget(conn, eid, CK)  # doppelt gesendet
     with pytest.raises(ValueError):
-        set_remembered(conn, eid, a)
+        set_remembered(conn, eid, a, CK)
 
 
 def test_error_texts_hide_iban(conn):
@@ -214,5 +215,43 @@ def test_error_texts_hide_iban(conn):
     assign_member(conn, _tx(conn), a)
     eid = _entry_id(conn)
     with pytest.raises(ValueError) as e:
-        set_remembered(conn, eid, 9999)
+        set_remembered(conn, eid, 9999, CK)
     assert PARENT not in str(e.value)
+
+
+# --- Prüfkennung (Fix-Runde I1): rowid allein reicht nicht -----------------------
+
+def test_entry_check_is_sha256_hex_not_iban():
+    import hashlib
+    assert CK == hashlib.sha256(PARENT.encode("ascii")).hexdigest()
+    assert PARENT not in CK
+
+
+def test_wrong_check_changes_nothing(conn):
+    a, b = _member(conn, "A"), _member(conn, "B")
+    assign_member(conn, _tx(conn), a)
+    eid = _entry_id(conn)
+    other = entry_check("XX00FAKEOTHER")
+    with pytest.raises(ValueError):
+        set_remembered(conn, eid, b, other)
+    with pytest.raises(ValueError):
+        set_remembered(conn, eid, b, "")
+    with pytest.raises(ValueError):
+        forget(conn, eid, other)
+    assert _learned(conn) == {PARENT: a}
+
+
+def test_reused_rowid_is_rejected(conn):
+    """Eintrag vergessen, neuer Absender bekommt dieselbe rowid: altes Formular trifft nicht."""
+    a = _member(conn, "A")
+    assign_member(conn, _tx(conn), a)
+    eid = _entry_id(conn)
+    forget(conn, eid, CK)
+    conn.execute("insert into member_iban(rowid, iban, member_id) values(?, 'XX00FAKEOTHER', ?)",
+                 (eid, a))
+    conn.commit()
+    with pytest.raises(ValueError):
+        set_remembered(conn, eid, None, CK)
+    with pytest.raises(ValueError):
+        forget(conn, eid, CK)
+    assert _learned(conn) == {"XX00FAKEOTHER": a}

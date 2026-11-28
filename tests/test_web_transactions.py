@@ -528,8 +528,9 @@ def test_siblings_web_second_child_learn_leaves_feb_unmatched(client, db):
     t1, t2 = _tx_id(db, "Beitrag"), _tx_id(db, "Beitrag 2")
     _assign(client, t1, a)
     _assign(client, t2, b)  # die letzte Entscheidung gilt (#55) ...
-    from kassivo.matching import remembered, set_remembered
-    set_remembered(db, remembered(db)[0]["id"], None)  # ... bis "zahlt für mehrere"
+    from kassivo.matching import entry_check, remembered, set_remembered
+    r0 = remembered(db)[0]  # ... bis "zahlt für mehrere"
+    set_remembered(db, r0["id"], None, entry_check(r0["iban"]))
     feb = [dict(E_ERIKA, ref="F1", purpose="Feb 1"), dict(E_ERIKA, ref="F2", purpose="Feb 2")]
     r = _upload(client, feb, day="2026-02-05")
     assert "Automatisch zugeordnet: 0" in r.text

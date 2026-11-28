@@ -1,8 +1,12 @@
 """Gemerkte Zuordnungen (#55): ansehen, ändern, vergessen.
 
 Ändern und Vergessen ordnen keine Zahlungen um. IBANs erscheinen nur
-maskiert, nie in URLs oder Fehlertexten; die Einträge laufen über die rowid.
+maskiert, nie in URLs oder Fehlertexten. Ein Eintrag wird über rowid UND
+Prüfkennung (SHA-256 der IBAN, verstecktes Feld) angesprochen, weil die
+rowid allein nicht stabil ist.
 """
+import hmac
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
@@ -23,15 +27,16 @@ def _error(request, message: str, status: int):
                   back_label="Zu den gemerkten Zuordnungen")
 
 
-def _exists(conn, entry_id: int) -> bool:
-    return conn.execute("select 1 from member_iban where rowid=?",
-                        (entry_id,)).fetchone() is not None
+def _exists(conn, entry_id: int, check: str) -> bool:
+    row = conn.execute("select iban from member_iban where rowid=?", (entry_id,)).fetchone()
+    return row is not None and hmac.compare_digest(matching.entry_check(row["iban"]), check)
 
 
 @router.get("/zuordnungen")
 async def zuordnungen(request: Request, conn=Depends(get_conn)):
     rows = [{"id": r["id"], "member_id": r["member_id"], "member_name": r["member_name"],
-             "iban": mask_iban(normalize_iban(r["iban"]) or r["iban"])}
+             "iban": mask_iban(normalize_iban(r["iban"]) or r["iban"]),
+             "check": matching.entry_check(r["iban"])}
             for r in matching.remembered(conn)]
     return render(request, "zuordnungen.html", rows=rows, members=list_members(conn),
                   multi=MULTI)
@@ -39,9 +44,9 @@ async def zuordnungen(request: Request, conn=Depends(get_conn)):
 
 @router.post("/zuordnungen/{entry_id:int}")
 async def zuordnung_save(request: Request, entry_id: int, member_id: str = Form(""),
-                         conn=Depends(get_conn)):
+                         check: str = Form(""), conn=Depends(get_conn)):
     check_id(entry_id)
-    if not _exists(conn, entry_id):
+    if not _exists(conn, entry_id, check):
         return _error(request, STALE, 404)
     if member_id == MULTI:
         member = None
@@ -50,19 +55,20 @@ async def zuordnung_save(request: Request, entry_id: int, member_id: str = Form(
         if member is None:
             return _error(request, "Bitte ein Mitglied oder „zahlt für mehrere“ wählen.", 422)
     try:
-        matching.set_remembered(conn, entry_id, member)
+        matching.set_remembered(conn, entry_id, member, check)
     except ValueError:
-        if not _exists(conn, entry_id):
+        if not _exists(conn, entry_id, check):
             return _error(request, STALE, 404)
         return _error(request, "Unbekanntes Mitglied.", 422)
     return RedirectResponse(with_note("/zuordnungen", "remembered_saved", 0), status_code=303)
 
 
 @router.post("/zuordnungen/{entry_id:int}/forget")
-async def zuordnung_forget(request: Request, entry_id: int, conn=Depends(get_conn)):
+async def zuordnung_forget(request: Request, entry_id: int, check: str = Form(""),
+                           conn=Depends(get_conn)):
     check_id(entry_id)
     try:
-        matching.forget(conn, entry_id)
+        matching.forget(conn, entry_id, check)
     except ValueError:
         return _error(request, STALE, 404)
     return RedirectResponse(with_note("/zuordnungen", "remembered_forgotten", 0),
