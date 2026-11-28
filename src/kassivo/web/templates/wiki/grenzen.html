@@ -18,7 +18,7 @@
 </ul>
 <h3>Zuordnung und Daten</h3>
 <ul>
-  <li><strong>Gelernte IBANs</strong> lassen sich nicht wieder vergessen. Eine IBAN wird nur mehrdeutig, wenn sie einem zweiten Mitglied zugeordnet wird. Eine einmal mehrdeutig gewordene IBAN bleibt es: Sie wird nie für das richtige Mitglied neu gelernt und lässt sich nicht „vergessen“.</li>
+  <li><strong>Gemerkt wird nur das Mitglied</strong>, mit der IBAN als Schlüssel. Absender ohne IBAN merkt KASSIVO sich nicht. Eine mehrdeutige IBAN („zahlt für mehrere“) ändern Sie nur unter <a href="/zuordnungen">Gemerkte Zuordnungen</a>, nicht beim Zuordnen. Steht dieselbe IBAN bei zwei Mitgliedern im Datensatz, merkt KASSIVO sich nichts; dann hilft nur, die IBAN bei einem der beiden zu entfernen.</li>
   <li><strong>„— keins —“ ist nicht als solches zu sehen.</strong> Eine Zahlung, die Sie auf „— keins —“ gesetzt haben, ordnet KASSIVO nie mehr automatisch zu. In „Unklar“ und „Buchungen“ sieht sie aber aus wie eine noch nicht zugeordnete Zahlung. „— keins —“, die Sie vor der Umstellung auf Datenbank-Schema 3 gewählt haben, kennt KASSIVO nicht. Wählen Sie sie bei Bedarf erneut.</li>
   <li><strong>Zwei offene Vorschläge desselben Mitglieds können denselben Monat treffen.</strong> KASSIVO weist nur mit dem Hinweis „Monat bereits bezahlt“ darauf hin, sobald ein Monat durch bestätigte Zahlungen voll bezahlt ist.</li>
   <li><strong>Buchungsmonat zuerst:</strong> Die automatische Verteilung kennt den gemeinten Monat nicht. Kommt eine Zahlung für einen ganz versäumten Monat ohne Mehrbetrag (zum Beispiel 17,00 € im März für den Februar), zählt KASSIVO sie für den Buchungsmonat. Nur den Rest eines angefangenen Monats ordnet es dem älteren Monat zu. Korrigieren Sie das unter „Automatisch verteilt“ mit „Rückgängig“.</li>
