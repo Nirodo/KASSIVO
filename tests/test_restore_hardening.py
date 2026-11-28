@@ -314,3 +314,181 @@ def test_restore_validation_failure_removes_staged(tmp_path, target):
     c = connect(target)
     assert schema_version(c) == dbmod.SCHEMA_VERSION
     c.close()
+
+
+# --- #57: Prüfung je Schema-Version, Trigger nur wie in der Referenz ---
+
+T_DEMO = ("create trigger t_demo before delete on demo "
+          "begin select raise(abort, 'nein'); end")
+
+
+def _m4(conn):
+    """Testmigration 4 (die echte kommt erst mit dem Journal): Tabelle und Trigger."""
+    conn.execute("create table demo(id integer primary key, x integer not null)")
+    conn.execute(T_DEMO)
+
+
+@pytest.fixture
+def v4(monkeypatch):
+    """db.MIGRATIONS und db.SCHEMA_VERSION um die Testmigration 4 erweitert."""
+    migs = {**dbmod.MIGRATIONS, 4: _m4}
+    monkeypatch.setattr(dbmod, "MIGRATIONS", migs)
+    monkeypatch.setattr(dbmod, "SCHEMA_VERSION", 4)
+    return migs
+
+
+def _versioned_db(tmp_path, version, migrations=None, extra=()):
+    """Mit db.connect und den Migrationen bis version angelegte Datei, danach extra (roh)."""
+    migrations = dbmod.MIGRATIONS if migrations is None else migrations
+    p = tmp_path / "roh" / f"v{version}-{len(list(tmp_path.glob('roh/*')))}.db"
+    p.parent.mkdir(exist_ok=True)
+    connect(p, migrations={k: migrations[k] for k in range(2, version + 1)}).close()
+    c = sqlite3.connect(p)
+    for stmt in extra:
+        c.execute(stmt)
+    c.commit()
+    c.close()
+    return p.read_bytes()
+
+
+def _columns(details, table):
+    for kind, name, rows in details:
+        if kind == "xinfo" and name == table:
+            return [r[1] for r in rows]
+    raise AssertionError(table)
+
+
+def test_reference_per_version_differs():
+    _, d1 = restore._reference(1)
+    _, d3 = restore._reference(3)
+    assert "source" not in _columns(d1, "allocation")
+    assert "no_member" not in _columns(d1, "transaction")
+    assert "source" in _columns(d3, "allocation")
+    assert "no_member" in _columns(d3, "transaction")
+    assert restore._reference(0) == restore._reference(1)
+    assert restore._reference() == restore._reference(dbmod.SCHEMA_VERSION)
+
+
+@pytest.mark.parametrize("version", [1, 2, 3])
+def test_v1_v2_v3_backups_still_accepted(tmp_path, version):
+    data = _versioned_db(tmp_path, version)
+    st = _stage_bytes(tmp_path, data, schema=version)
+    assert st.schema == version
+    assert st.summary["schema"] == dbmod.SCHEMA_VERSION
+    assert st.summary["members"] == 0
+
+
+def test_trigger_from_reference_accepted(tmp_path, v4):
+    data = _versioned_db(tmp_path, 4)
+    st = _stage_bytes(tmp_path, data, schema=4)
+    assert st.schema == 4 and st.summary["schema"] == 4
+
+
+def test_v3_backup_migrated_to_test_v4_gets_trigger(tmp_path, v4):
+    data = _versioned_db(tmp_path, 3)
+    st = _stage_bytes(tmp_path, data, schema=3)
+    assert st.schema == 3
+    c = sqlite3.connect(st.path)
+    assert [r[0] for r in c.execute("select name from sqlite_master where type='trigger'")] == [
+        "t_demo"]
+    c.close()
+
+
+@pytest.mark.parametrize("extra", [
+    # anderer Rumpf
+    ["drop trigger t_demo",
+     "create trigger t_demo before delete on demo begin select raise(ignore); end"],
+    # gleicher Rumpf, andere Tabelle
+    ["drop trigger t_demo",
+     "create trigger t_demo before delete on member begin select raise(abort, 'nein'); end"],
+    # gleicher Text, anderer Name
+    ["drop trigger t_demo",
+     "create trigger t_demo2 before delete on demo begin select raise(abort, 'nein'); end"],
+])
+def test_trigger_changed_text_rejected(tmp_path, v4, extra):
+    _reject_v(tmp_path, _versioned_db(tmp_path, 4, extra=extra), 4)
+
+
+def test_extra_trigger_rejected(tmp_path, v4):
+    extra = ["create trigger t_extra after insert on member begin delete from member; end"]
+    _reject_v(tmp_path, _versioned_db(tmp_path, 4, extra=extra), 4)
+
+
+def test_missing_trigger_rejected(tmp_path, v4):
+    _reject_v(tmp_path, _versioned_db(tmp_path, 4, extra=["drop trigger t_demo"]), 4)
+
+
+def test_trigger_in_old_version_rejected(tmp_path, v4, monkeypatch):
+    """Version 3 mit t_demo: abgelehnt, bevor die Umstellung die Datei öffnet."""
+    extra = ["create table demo(id integer primary key, x integer not null)", T_DEMO]
+    data = _versioned_db(tmp_path, 3, extra=extra)
+    opened = []
+    real = dbmod.connect
+
+    def spy(path, *a, **k):
+        if str(path) != ":memory:":
+            opened.append(path)
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(dbmod, "connect", spy)
+    _reject_v(tmp_path, data, 3)
+    assert opened == []
+
+
+def test_view_in_v4_rejected(tmp_path, v4):
+    _reject_v(tmp_path, _versioned_db(tmp_path, 4, extra=["create view v as select 1"]), 4)
+
+
+def test_negative_schema_version_rejected(tmp_path):
+    """Das Manifest erlaubt nur >= 0; eine Datei aus backups/ hat keins."""
+    data = _versioned_db(tmp_path, 1, extra=["pragma user_version = -1"])
+    p = tmp_path / "backups" / "kassivo-20250101-000000.db"
+    p.parent.mkdir()
+    p.write_bytes(data)
+    with pytest.raises(RestoreError) as e:
+        restore.stage_local(p, _staging(tmp_path))
+    assert str(e.value) == restore.E_SCHEMA
+    assert _staged_files(tmp_path) == []
+
+
+def test_reference_follows_migrations(v4):
+    objects, details = restore._reference(4)
+    assert ("table", "demo", "demo") in [o[:3] for o in objects]
+    assert ("trigger", "t_demo", "demo") in [o[:3] for o in objects]
+    assert _columns(details, "demo") == ["id", "x"]
+    objects3, _ = restore._reference(3)
+    assert "demo" not in [o[1] for o in objects3]
+
+
+def _reject_v(tmp_path, data, version):
+    p = _write(tmp_path, _zip({"manifest.json": _manifest_for(data, schema_version=version),
+                               "kassivo.db": data}))
+    with pytest.raises(RestoreError) as e:
+        restore.stage_upload(p, _staging(tmp_path))
+    assert str(e.value) == restore.E_SCHEMA
+    assert _staged_files(tmp_path) == []
+
+
+def test_changed_trigger_rejected_before_migration(tmp_path, monkeypatch):
+    """Version 4 mit verändertem t_demo, Ziel 5: abgelehnt, bevor Migration 5 läuft
+    (sie löscht aus demo und würde den Trigger auslösen)."""
+    def m5(conn):
+        conn.execute("delete from demo")
+
+    migs = {**dbmod.MIGRATIONS, 4: _m4, 5: m5}
+    monkeypatch.setattr(dbmod, "MIGRATIONS", migs)
+    monkeypatch.setattr(dbmod, "SCHEMA_VERSION", 5)
+    extra = ["drop trigger t_demo",
+             "create trigger t_demo before delete on demo begin select raise(ignore); end"]
+    data = _versioned_db(tmp_path, 4, extra=extra)
+    opened = []
+    real = dbmod.connect
+
+    def spy(path, *a, **k):
+        if str(path) != ":memory:":
+            opened.append(path)
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(dbmod, "connect", spy)
+    _reject_v(tmp_path, data, 4)
+    assert opened == []

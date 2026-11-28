@@ -6,7 +6,8 @@ Kopie über die SQLite-Backup-API). Nicht verschlüsselt: sie enthält Klarnamen
 
 Einspielen in zwei Schritten:
   1. stage_upload / stage_local: Datei als Kopie in den Bereitstellungsordner neben der
-     Datenbank legen, prüfen (Kopf, integrity_check, keine Trigger/Views/virtuellen Tabellen),
+     Datenbank legen, prüfen (Kopf, integrity_check, Tabellen und Trigger genau wie in der
+     Referenz der Schema-Version der Datei, keine Views/virtuellen Tabellen),
      ältere Schema-Version mit der bestehenden Migration umstellen (ohne Sicherung: das
      Original bleibt ja erhalten), dann streng gegen eine Referenz-Datenbank derselben
      Schema-Version vergleichen und Geldspalten auf ganze Zahlen prüfen. Die aktuelle
@@ -24,6 +25,10 @@ Verworfen:
   - Struktur nur über Tabellennamen prüfen: lässt fehlende UNIQUE-Bedingungen, REAL-Beträge
     oder virtuelle Tabellen durch. Verglichen wird deshalb mit einer frisch angelegten und
     migrierten Referenz (normalisierter CREATE-Text, table_xinfo, Fremdschlüssel, Indizes).
+  - Alle Trigger ablehnen: Ab Schema 4 sichern Trigger das Journal ab; Sicherungen wären
+    unbrauchbar. Erlaubt sind nur genau die Trigger der Referenz dieser Schema-Version.
+  - Trigger vor der Umstellung löschen und neu anlegen: Eine Datei mit fehlenden oder
+    veränderten Triggern sähe danach richtig aus, die Ursache bliebe unbemerkt.
   - Rechnername im Manifest: wird nicht gebraucht und gibt unnötig etwas über den PC preis.
   - Verschlüsselung mit Passwort: nicht in v1 (offener Punkt im Issue).
 """
@@ -63,10 +68,6 @@ LEFTOVER_MAX_AGE = 3600  # Sekunden; jüngere Ordner können zu einer laufenden 
 _VERSION_RE = re.compile(r"[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}", re.ASCII)
 _SHA_RE = re.compile(r"[0-9a-f]{64}", re.ASCII)
 _DATE_RE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})", re.ASCII)
-# Tabellen der Ausgangsfassung (Schema 1); jede KASSIVO-Datenbank hat sie.
-REQUIRED_TABLES = frozenset({
-    "account", "membership_type", "fee_rate", "member", "member_type_history", "member_iban",
-    "category", "category_rule", "import_batch", "transaction", "allocation", "settings"})
 # Geldspalten: (Tabelle, Spalte, NULL erlaubt). Beträge sind immer ganze Cent.
 MONEY_COLUMNS = (("transaction", "amount_cents", False), ("allocation", "cents", False),
                  ("fee_rate", "cents", False), ("category_rule", "min_cents", True),
@@ -271,9 +272,15 @@ def _signature(conn):
     return objects, tables
 
 
-def _reference():
-    """Frisch angelegte und migrierte Datenbank im Speicher: Sollzustand dieser Version."""
-    ref = db.connect(":memory:", on_open=harden)
+def _reference(version: int | None = None):
+    """Frisch angelegte und migrierte Datenbank im Speicher: Sollzustand einer Schema-Version.
+
+    None = aktuelle Version. Version 0 (Altbestand vor 1.2) wie 1. Kein Zwischenspeicher:
+    eine Speicher-Datenbank ist in Millisekunden angelegt, und Tests mit ausgetauschten
+    db.MIGRATIONS sehen so nie einen alten Stand."""
+    migrations = db.MIGRATIONS if version is None else {
+        k: db.MIGRATIONS[k] for k in range(db.BASELINE_VERSION + 1, version + 1)}
+    ref = db.connect(":memory:", migrations=migrations, on_open=harden)
     try:
         objects, tables = _signature(ref)
         return objects, _details(ref, tables)
@@ -281,20 +288,32 @@ def _reference():
         ref.close()
 
 
+def _triggers(objects) -> set:
+    return {(n, tb, s) for t, n, tb, s in objects if t == "trigger"}
+
+
 def _quick_check(c) -> int:
-    """Vor jeder Umstellung: Version, Unversehrtheit, keine Trigger/Views/virtuellen Tabellen."""
+    """Vor jeder Umstellung: Version, Unversehrtheit, Tabellen und Trigger der Referenz
+    dieser Schema-Version, keine Views und keine virtuellen Tabellen.
+
+    Trigger würden bei der Umstellung oder später beim Schreiben laufen. Erlaubt sind
+    deshalb nur genau die Trigger (Name, Tabelle, normalisierter Text) der Referenz."""
     version = db.schema_version(c)
     target = db.current_schema_version(db.MIGRATIONS)
     if version > target:
         raise db._too_new(version, target)
+    if version < 0:
+        raise RestoreError(E_SCHEMA)
     if c.execute("pragma integrity_check").fetchall() != [("ok",)]:
         raise RestoreError(E_CORRUPT)
-    rows = c.execute("select type, name, sql from sqlite_master").fetchall()
-    tables = {n for t, n, _ in rows if t == "table"}
-    # Trigger würden bei der Umstellung oder später beim Schreiben laufen.
-    if (not REQUIRED_TABLES <= tables
-            or any(t in ("trigger", "view") for t, _, _ in rows)
-            or any(_norm(s).startswith("createvirtualtable") for _, _, s in rows)):
+    ref_objects, _ = _reference(version)
+    objects = _objects(c)
+    ref_tables = {n for t, n, _, _ in ref_objects if t == "table"}
+    tables = {n for t, n, _, _ in objects if t == "table"}
+    if (not ref_tables <= tables
+            or any(t == "view" for t, _, _, _ in objects)
+            or any(s.startswith("createvirtualtable") for _, _, _, s in objects)
+            or _triggers(objects) != _triggers(ref_objects)):
         raise RestoreError(E_SCHEMA)
     return version
 
