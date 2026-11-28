@@ -21,6 +21,15 @@ def _kein_netz(monkeypatch):
 
 
 @pytest.fixture
+def conn4():
+    """Datenbank im Speicher auf Schema 4 (Migration 4 ausdrücklich, bis sie eingetragen ist)."""
+    from kassivo import db
+    c = connect(":memory:", migrations={**db.MIGRATIONS, 4: db._migrate_to_4})
+    yield c
+    c.close()
+
+
+@pytest.fixture
 def ledger_conn():
     """Schema-3-Datenbank im Speicher plus Buchungstabellen von Schema 4 (Task 3, vor der
     Migration). Startplan, Perioden ab dem frühesten Umsatzjahr bis 2026."""

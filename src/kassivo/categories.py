@@ -80,6 +80,67 @@ def _matches(rule, tx) -> bool:
     return _norm(field, rule["contains"]) in _norm(field, value)
 
 
+def _add_rule_4(conn, account_id: int, field: str, contains: str, *, priority: int = 100,
+                min_cents: int | None = None, max_cents: int | None = None) -> int:
+    """Regel auf ein sichtbares Ertrags- oder Aufwandskonto (Schema 4)."""
+    if field not in FIELD_COLUMNS:
+        raise ValueError("Unbekanntes Feld für die Regel.")
+    if not contains:
+        raise ValueError("Der Suchtext darf nicht leer sein.")
+    row = conn.execute("select kind, hidden from ledger_account where id=?",
+                       (account_id,)).fetchone()
+    if row is None:
+        raise ValueError("Das Konto gibt es nicht (mehr).")
+    if row["kind"] not in ("income", "expense"):
+        raise ValueError("Regeln buchen nur auf Ertrags- oder Aufwandskonten.")
+    if row["hidden"]:
+        raise ValueError("Auf ein ausgeblendetes Konto wird keine Regel gelegt.")
+    return conn.execute(
+        "insert into posting_rule(account_id, field, contains, priority, min_cents, max_cents)"
+        " values(?,?,?,?,?,?)",
+        (account_id, field, contains, priority, min_cents, max_cents)).lastrowid
+
+
+def _apply_rules_4(conn, tx_ids: list[int] | None = None, overwrite: bool = False) -> int:
+    """Erste passende Regel (priority, id) bucht über ledger.set_counter_account (Schema 4).
+
+    Ertragskonto nur bei Eingang, Aufwandskonto nur bei Ausgang. Regeln auf ausgeblendeten
+    Konten ruhen. Ohne overwrite nur ungebuchte Umsätze. Umsätze in einer abgeschlossenen
+    Periode bleiben unberührt. Rückgabe: Zahl neuer Buchungen (gleiches Konto zählt nicht).
+    Ohne commit (Aufrufer)."""
+    from kassivo import ledger  # spät: ledger importiert periods, periods importiert db
+    rules = [
+        dict(r, kind={"income": "in", "expense": "out"}[r["kind"]]) for r in conn.execute(
+            "select r.*, a.kind from posting_rule r join ledger_account a on a.id = r.account_id"
+            " where a.hidden = 0 and a.kind in ('income', 'expense')"
+            " order by r.priority, r.id")
+        if r["field"] in FIELD_COLUMNS]
+    if not rules:
+        return 0
+    closed = conn.execute("select start_date, end_date from period"
+                          " where status = 'closed'").fetchall()
+    txs = conn.execute(
+        "select t.id, t.booking_date, t.amount_cents, t.purpose, t.cp_name, t.cp_iban,"
+        f' {ledger.BOOKED} as booked from "transaction" t').fetchall()
+    wanted = None if tx_ids is None else set(tx_ids)
+    changed = 0
+    for tx in txs:
+        if wanted is not None and tx["id"] not in wanted:
+            continue
+        if tx["booked"] and not overwrite:
+            continue
+        if any(s <= tx["booking_date"] <= e for s, e in closed):
+            continue
+        for rule in rules:
+            if _matches(rule, tx):
+                before = ledger.valid_posting_id(conn, tx["id"])
+                after = ledger.set_counter_account(conn, tx["id"], rule["account_id"],
+                                                   source="rule")
+                changed += after != before
+                break
+    return changed
+
+
 def apply_rules(conn, tx_ids: list[int] | None = None, overwrite: bool = False) -> int:
     rules = conn.execute(
         "select r.*, c.kind from category_rule r join category c on c.id=r.category_id"
