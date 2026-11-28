@@ -55,6 +55,38 @@ def _cp(row) -> dict:
     return {"tx": row, "iban": mask_iban(iban) if iban else ""}
 
 
+def _remember_change(request, conn) -> dict | None:
+    """Hinweis nach einem Wechsel des gemerkten Mitglieds (#55, Fix-Runde I2).
+
+    Nur aus geprüften IDs: die Zahlung gibt es, ihr Mitglied ist das jetzt
+    gemerkte, das vorherige Mitglied gibt es und ist ein anderes. Sonst None,
+    dann bleibt der allgemeine Hinweis. Namen und IBAN stehen nie in der URL.
+    """
+    q = request.query_params
+    if q.get("note") not in ("changed", "changed_r"):
+        return None
+    tx_id, prev = parse_id(q.get("tx", "")), parse_id(q.get("prev", ""))
+    if tx_id is None or prev is None:
+        return None
+    tx = conn.execute('select member_id, cp_iban from "transaction" where id=?',
+                      (tx_id,)).fetchone()
+    iban = normalize_iban(tx["cp_iban"]) if tx and tx["cp_iban"] else None
+    if not iban or tx["member_id"] is None or tx["member_id"] == prev:
+        return None
+    entry = conn.execute("select rowid as id, iban, member_id from member_iban where iban=?",
+                         (iban,)).fetchone()
+    if entry is None or entry["member_id"] != tx["member_id"]:
+        return None
+    names = dict(conn.execute("select id, name from member where id in (?, ?)",
+                              (prev, tx["member_id"])).fetchall())
+    if prev not in names:
+        return None
+    raw = q.get("n", "")
+    moved = int(raw) if q.get("note") == "changed_r" and re.fullmatch(r"[0-9]{1,7}", raw) else 0
+    return {"entry_id": entry["id"], "check": matching.entry_check(entry["iban"]),
+            "new_name": names[tx["member_id"]], "prev_name": names[prev], "moved": moved}
+
+
 # --- Liste -------------------------------------------------------------------
 
 def _parse_filters(params) -> tuple[dict, str | None]:
@@ -138,14 +170,14 @@ async def transactions(request: Request, conn=Depends(get_conn)):
     query = request.url.query
     if "note" in request.query_params:
         query = urlencode([(k, v) for k, v in request.query_params.multi_items()
-                           if k not in ("note", "n", "a", "r", "o")])
+                           if k not in ("note", "n", "a", "r", "o", "tx", "prev")])
     here = request.url.path + (f"?{query}" if query else "")
     reasons = ({r["id"]: dues.review_reason(conn, r["id"]) for r in rows}
                if f["proposed"] == "1" else {})
     return render(
         request, "transactions.html", f=f, rows=[_cp(r) for r in rows], count=count,
         income=income, expense=expense, cats=_cats(conn), members=list_members(conn),
-        reasons=reasons,
+        reasons=reasons, remember_change=_remember_change(request, conn),
         next_url=safe_next(here), pages=pages,
         prev_url=page_url(f["page"] - 1) if f["page"] > 1 else None,
         next_page_url=page_url(f["page"] + 1) if f["page"] < pages else None,
@@ -156,6 +188,7 @@ async def transactions(request: Request, conn=Depends(get_conn)):
 async def unmatched(request: Request, conn=Depends(get_conn)):
     return render(request, "unmatched.html", rows=[_cp(r) for r in matching.unmatched(conn)],
                   members=list_members(conn), next_url="/unmatched",
+                  remember_change=_remember_change(request, conn),
                   cats=conn.execute("select id, name from category where kind in ('in', 'both')"
                                     " order by name, id").fetchall())
 
@@ -196,22 +229,30 @@ async def set_member(request: Request, tx_id: int, member_id: str = Form(""),
         if member is None:
             return _error(request, "Unbekanntes Mitglied.", back=safe_next(next))
     learning = learn == "on"
+    prev = matching.effective_member(conn, _tx(conn, tx_id)["cp_iban"])
     before = dues.auto_snapshot(conn)
     try:
-        matching.assign_member(conn, tx_id, member, learn=learning)
+        learned = matching.assign_member(conn, tx_id, member, learn=learning)
     except ValueError as e:
         return _error(request, str(e), back=safe_next(next))
     moved = dues.count_changed(before, dues.auto_snapshot(conn), exclude=tx_id)
-    if not (learning and member is not None):
+    if learned is None:
         target = safe_next(next)
         return _see_other(with_note(target, "recomputed_other", moved) if moved else target)
-    # Gelernte IBAN gleich auf die übrigen unklaren Zahlungen dieses Absenders
-    # anwenden; ist sie mehrdeutig geworden, wird nichts weiter zugeordnet und
-    # der Hinweis sagt das.
-    iban = normalize_iban(_tx(conn, tx_id)["cp_iban"])
-    if matching.iban_is_ambiguous(conn, iban):
+    if learned == "multiple":
         return _see_other(with_note(safe_next(next), "ambiguous_r", moved) if moved
                           else with_note(safe_next(next), "ambiguous", 0))
+    if learned == "changed":
+        # Gemerkt, aber keine weiteren Zahlungen zuordnen (#55): zahlt die
+        # Eltern-IBAN für zwei Kinder, würde sonst still alles auf das zuletzt
+        # gewählte Kind gebucht. Der Hinweis nennt beide Mitglieder (Namen nur
+        # serverseitig aus den IDs, nie in der URL) und bietet "zahlt für mehrere".
+        url = (with_note(safe_next(next), "changed_r", moved) if moved
+               else with_note(safe_next(next), "changed", 0))
+        return _see_other(f"{url}&tx={int(tx_id)}&prev={int(prev)}" if prev else url)
+    # Neu oder unverändert gemerkte IBAN gleich auf die übrigen unklaren
+    # Zahlungen dieses Absenders anwenden.
+    iban = normalize_iban(_tx(conn, tx_id)["cp_iban"])
     others = [r["id"] for r in matching.unmatched(conn)
               if iban and normalize_iban(r["cp_iban"]) == iban]
     n = matching.auto_assign(conn, others)

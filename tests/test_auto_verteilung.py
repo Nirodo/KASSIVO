@@ -515,13 +515,13 @@ def test_reassign_manual_confirmation_still_blocked(conn, anna):
 
 
 def test_siblings_second_payment_can_be_moved_to_other_child(conn, anna):
-    from kassivo.matching import iban_is_ambiguous
     bert = _anna(conn, "Bert")
     t1 = _tx(conn, 1700, day="2026-01-05", cp_iban=FAKE)
     t2 = _tx(conn, 1700, day="2026-01-05", cp_iban=FAKE)
     assign_member(conn, t1, anna)            # lernt die Eltern-IBAN für Anna
     assert auto_assign(conn, [t2]) == 1      # zweite Zahlung: Anna, Vorauszahlung Februar
     assert _rows(conn, t2) == [("2026-02", 1700, "confirmed", "auto")]
-    assign_member(conn, t2, bert)            # Korrektur: gehört zu Bert
+    # Korrektur: gehört zu Bert; die letzte Entscheidung gilt (#55)
+    assert assign_member(conn, t2, bert) == "changed"
     assert _rows(conn, t2) == [("2026-01", 1700, "confirmed", "auto")]
-    assert iban_is_ambiguous(conn, FAKE)
+    assert _rows(conn, t1) == [("2026-01", 1700, "confirmed", "auto")]  # Anna bleibt

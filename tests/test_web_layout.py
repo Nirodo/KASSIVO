@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from tests.helpers import make_app
 
-AREAS = ["Übersicht", "Mitglieder", "Zahlungen", "Auswertung", "Einstellungen"]
+AREAS = ["Übersicht", "Mitglieder", "Buchhaltung", "Auswertung", "Einstellungen"]
 CSS = Path(__file__).resolve().parents[1] / "src/kassivo/web/static/style.css"
 
 # Seite -> (aktiver Bereich, Unterseite in der Seitenleiste)
@@ -18,10 +18,11 @@ PAGES = {
     "/reports": ("Auswertung", "/reports"),
     "/members": ("Mitglieder", "/members"),
     "/members/new": ("Mitglieder", "/members"),
-    "/transactions": ("Zahlungen", "/transactions"),
-    "/unmatched": ("Zahlungen", "/unmatched"),
-    "/auto": ("Zahlungen", "/auto"),
-    "/import": ("Zahlungen", "/import"),
+    "/transactions": ("Buchhaltung", "/transactions"),
+    "/unmatched": ("Buchhaltung", "/unmatched"),
+    "/auto": ("Buchhaltung", "/auto"),
+    "/import": ("Buchhaltung", "/import"),
+    "/zuordnungen": ("Buchhaltung", "/zuordnungen"),
     "/settings/fees": ("Einstellungen", "/settings/fees"),
     "/categories": ("Einstellungen", "/categories"),
     "/backup": ("Einstellungen", "/backup"),
@@ -74,7 +75,7 @@ def test_sidebar_marks_current_subpage(client, path):
 
 def test_sidebar_groups_per_area(client):
     zahl = client.get("/transactions").text
-    for href in ("/transactions", "/unmatched", "/auto", "/import"):
+    for href in ("/transactions", "/unmatched", "/auto", "/zuordnungen", "/import"):
         assert f'href="{href}"' in zahl
     ausw = client.get("/dues").text
     for href in ("/dues", "/forecast", "/reports"):
@@ -125,7 +126,7 @@ def test_unknown_page_renders_without_area(client):
 
 
 def test_uebersicht_sidebar_has_no_import_link(client):
-    # /import gehört nur zu "Zahlungen"; die Seitenleiste der Übersicht hat keinen Behelfslink.
+    # /import gehört nur zu "Buchhaltung"; die Seitenleiste der Übersicht hat keinen Behelfslink.
     nav_src = (Path(__file__).resolve().parents[1] / "src/kassivo/web/templates/_nav.html").read_text("utf-8")
     start = nav_src.index('("Übersicht"')
     block = nav_src[start:nav_src.index('("Mitglieder"')]

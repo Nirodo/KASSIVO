@@ -503,7 +503,7 @@ def test_foreign_origin_403(client, path):
     assert r.status_code == 403
 
 
-# --- I1: "Absender merken" nur auf /unmatched vorbelegt ------------------------
+# --- "Absender merken" ist überall vorbelegt (#55; bis 1.2.0 nur /unmatched) ---
 
 _LEARN = re.compile(r'<input type="checkbox" name="learn" value="on"( checked)?>')
 
@@ -514,10 +514,10 @@ def test_learn_checkbox_checked_on_unmatched(client):
     assert boxes and all(b == " checked" for b in boxes)
 
 
-def test_learn_checkbox_not_checked_on_transactions(client):
+def test_learn_checkbox_checked_on_transactions(client):
     _upload(client, [E_ERIKA])
     boxes = _LEARN.findall(client.get("/transactions?year=all").text)
-    assert boxes and all(b == "" for b in boxes)
+    assert boxes and all(b == " checked" for b in boxes)
 
 
 def test_siblings_web_second_child_learn_leaves_feb_unmatched(client, db):
@@ -527,7 +527,10 @@ def test_siblings_web_second_child_learn_leaves_feb_unmatched(client, db):
     _upload(client, jan, day="2026-01-05")
     t1, t2 = _tx_id(db, "Beitrag"), _tx_id(db, "Beitrag 2")
     _assign(client, t1, a)
-    _assign(client, t2, b)
+    _assign(client, t2, b)  # die letzte Entscheidung gilt (#55) ...
+    from kassivo.matching import entry_check, remembered, set_remembered
+    r0 = remembered(db)[0]  # ... bis "zahlt für mehrere"
+    set_remembered(db, r0["id"], None, entry_check(r0["iban"]))
     feb = [dict(E_ERIKA, ref="F1", purpose="Feb 1"), dict(E_ERIKA, ref="F2", purpose="Feb 2")]
     r = _upload(client, feb, day="2026-02-05")
     assert "Automatisch zugeordnet: 0" in r.text
@@ -676,12 +679,33 @@ def test_learn_off_no_cascade(client, db):
 
 def test_learn_cascade_skipped_when_ambiguous(client, db):
     _three_months(client)
+    a = _member(db, "Kind A")
+    db.execute("insert into member_iban(iban, member_id) values(?, null)", (OTHER_IBAN,))
+    db.commit()
+    r = _assign(client, _tx_id(db, "M 1"), a, next="/unmatched")  # zahlt für mehrere
+    # Hinweis auf die Mehrdeutigkeit, nichts weiter zugeordnet
+    assert r.headers["location"] == "/unmatched?note=ambiguous&n=0"
+    assert _col(db, _tx_id(db, "M 2"), "member_id") is None
+    assert _col(db, _tx_id(db, "M 3"), "member_id") is None
+
+
+CHANGED_NOTE = ("Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu"
+                " einem anderen).")
+
+
+def test_learn_cascade_skipped_when_changed(client, db):
+    """Eltern-IBAN: nach dem Wechsel von A zu B nicht still alles auf B buchen."""
+    _three_months(client)
     a, b = _member(db, "Kind A"), _member(db, "Kind B")
     db.execute("insert into member_iban(iban, member_id) values(?,?)", (OTHER_IBAN, a))
     db.commit()
-    r = _assign(client, _tx_id(db, "M 1"), b, next="/unmatched")  # IBAN wird mehrdeutig
-    # Hinweis auf die Mehrdeutigkeit, nichts weiter zugeordnet
-    assert r.headers["location"] == "/unmatched?note=ambiguous&n=0"
+    r = _assign(client, _tx_id(db, "M 1"), b, next="/unmatched")
+    assert r.headers["location"] == (
+        f"/unmatched?note=changed&n=0&tx={_tx_id(db, 'M 1')}&prev={a}")
+    page = _text(client.get(r.headers["location"]).text)
+    assert "Gemerkt: Dieser Absender gehört jetzt zu Kind B (vorher zu Kind A)." in page
+    assert CHANGED_NOTE in _text(client.get("/unmatched?note=changed&n=0").text)  # Rückfall
+    assert db.execute("select member_id from member_iban").fetchone()[0] == b
     assert _col(db, _tx_id(db, "M 2"), "member_id") is None
     assert _col(db, _tx_id(db, "M 3"), "member_id") is None
 
@@ -711,8 +735,10 @@ def test_import_bad_amount_is_422_not_500(client, db, raw):
 
 # --- Fix-Runde 2 (N1): Mehrdeutigkeit auch über member.iban ---------------------
 
-AMBIG_NOTE = ("Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
-              " künftig nicht automatisch zugeordnet.")
+AMBIG_NOTE = ("Zugeordnet. Für diese Absender-IBAN gilt „zahlt für mehrere Mitglieder“,"
+              " deshalb ordnet KASSIVO ihre Zahlungen nicht automatisch zu. Falls das ein"
+              " Versehen war, ändern Sie es unter „Gemerkte Zuordnungen“ oder in den"
+              " Mitgliedsdaten.")
 
 
 def _kid(db, name, **kw):
@@ -735,7 +761,7 @@ def test_siblings_member_iban_learn_on_unmatched_stays_ambiguous(client, db):
     assert r.headers["location"] == "/unmatched?note=ambiguous&n=0"
     assert AMBIG_NOTE in _text(client.get(r.headers["location"]).text)
     assert db.execute("select member_id from member_iban where iban=?",
-                      (OTHER_IBAN,)).fetchone()[0] is None
+                      (OTHER_IBAN,)).fetchone() is None  # nichts gespeichert (#55)
     assert all(_col(db, t, "member_id") is None for t in ids[1:])
     assert db.execute("select count(*) from allocation where tx_id<>?",
                       (ids[0],)).fetchone()[0] == 0

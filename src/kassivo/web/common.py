@@ -105,8 +105,21 @@ _NOTES = {
     "auto": "{n} unklare Zahlungen automatisch zugeordnet.",
     "learned": "Zugeordnet. {n} weitere Zahlungen mit derselben Absender-IBAN wurden"
                " automatisch zugeordnet.",
-    "ambiguous": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
-                 " künftig nicht automatisch zugeordnet.",
+    # auch für Altbestand verständlich: NULL konnte bis 1.2.0 durch eine Korrektur entstehen
+    "ambiguous": "Zugeordnet. Für diese Absender-IBAN gilt „zahlt für mehrere Mitglieder“,"
+                 " deshalb ordnet KASSIVO ihre Zahlungen nicht automatisch zu. Falls das ein"
+                 " Versehen war, ändern Sie es unter „Gemerkte Zuordnungen“ oder in den"
+                 " Mitgliedsdaten.",
+    "remembered_saved": "Gespeichert. Bereits zugeordnete Zahlungen bleiben, wie sie sind.",
+    "remembered_forgotten": "Vergessen. Bereits zugeordnete Zahlungen bleiben, wie sie sind.",
+    # Ausführlich mit Namen und Knopf zeigt den Hinweis base.html (remember_change);
+    # dieser Text ist der Rückfall, wenn die Parameter nicht mehr passen.
+    "changed": "Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu"
+               " einem anderen). Zahlt er für mehrere Mitglieder, legen Sie das unter"
+               " „Gemerkte Zuordnungen“ fest.",
+    "changed_r": "Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu"
+                 " einem anderen). Zahlt er für mehrere Mitglieder, legen Sie das unter"
+                 " „Gemerkte Zuordnungen“ fest. {n} weitere Zahlungen neu verteilt.",
     "cleaned": "Gelöschte Sicherungen: {n}.",
     "restored": "Sicherung eingespielt: {n} Mitglieder, {m} Buchungen.",
     "cleaned_partial": "Gelöschte Sicherungen: {n}. {m} konnten nicht gelöscht werden.",
@@ -118,8 +131,10 @@ _NOTES = {
     "recomputed_other": "{n} weitere Zahlungen neu verteilt.",
     "learned_r": "Zugeordnet. {n} weitere Zahlungen mit derselben Absender-IBAN wurden"
                  " automatisch zugeordnet. {m} weitere Zahlungen neu verteilt.",
-    "ambiguous_r": "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird"
-                   " künftig nicht automatisch zugeordnet. {n} weitere Zahlungen neu verteilt.",
+    "ambiguous_r": "Zugeordnet. Für diese Absender-IBAN gilt „zahlt für mehrere Mitglieder“,"
+                   " deshalb ordnet KASSIVO ihre Zahlungen nicht automatisch zu. Falls das ein"
+                   " Versehen war, ändern Sie es unter „Gemerkte Zuordnungen“ oder in den"
+                   " Mitgliedsdaten. {n} weitere Zahlungen neu verteilt.",
     "undone_r": "Automatische Verteilung rückgängig gemacht. Die Zahlung steht jetzt unter"
                 " „Offene Vorschläge“ und kann auf der Seite „Verteilung“ geändert und"
                 " bestätigt werden. {m} weitere Zahlungen neu verteilt.",

@@ -7,7 +7,7 @@ KASSIVO 1.3.0 ist ein lokales Kassenprogramm für eine Person an einem Rechner. 
 
 Eine ausführliche Anleitung steckt im Programm: das Fragezeichen oben rechts oder der Bereich "Einstellungen", Punkt "Wiki" (`/wiki`), erklärt jede Funktion mit Schritten und Beispielen. Das Wiki ist nur zum Lesen und braucht kein Internet.
 
-Die Oberfläche hat fünf Bereiche (Übersicht, Mitglieder, Zahlungen, Auswertung, Einstellungen) in der blauen Leiste oben; links steht die Seitenleiste des gewählten Bereichs. Auf dem Handy öffnet der Knopf "Menü" die Bereiche und den Hilfe-Link. Die Seiten nutzen die volle Fensterbreite.
+Die Oberfläche hat fünf Bereiche (Übersicht, Mitglieder, Buchhaltung, Auswertung, Einstellungen) in der blauen Leiste oben; links steht die Seitenleiste des gewählten Bereichs. Auf dem Handy öffnet der Knopf "Menü" die Bereiche und den Hilfe-Link. Die Seiten nutzen die volle Fensterbreite.
 
 Kontoumsätze kommen per Datei-Import (CAMT V8, Sparkasse). Eine direkte Bankabfrage (FinTS, finAPI) und ein C24-Adapter sind nicht gebaut.
 
@@ -152,7 +152,7 @@ Grenzen: Eine Datei darf höchstens 100 MB groß sein. In einer ZIP-Datei liest 
 
 **Zuordnung**
 
-KASSIVO ordnet einen neuen Zahlungseingang automatisch zu, wenn die Absender-IBAN genau einem Mitglied gehört, entweder gelernt ("Absender merken") oder im Mitgliedsdatensatz. Mehrdeutige IBANs (mehrere Mitglieder) und Zahlungen nach dem Austrittsdatum des Mitglieds bleiben in "Unklar". Eine gelernte IBAN lässt sich in dieser Version nicht vergessen. Beim Umhängen auf ein anderes Mitglied sperren Verteilungen, die Sie selbst bestätigt haben, die Änderung, bis Sie die Verteilung aufheben. Automatische Verteilungen rechnet KASSIVO für das neue Mitglied neu.
+KASSIVO ordnet einen neuen Zahlungseingang automatisch zu, wenn die Absender-IBAN genau einem Mitglied gehört, entweder gelernt ("Absender merken") oder im Mitgliedsdatensatz. Mehrdeutige IBANs (mehrere Mitglieder) und Zahlungen nach dem Austrittsdatum des Mitglieds bleiben in "Unklar". "Absender merken" ist überall vorausgewählt, und die letzte Entscheidung gilt: Eine Korrektur überschreibt das Gemerkte. Gehörte der Absender vorher zu einem anderen Mitglied, ordnet KASSIVO danach keine weiteren offenen Zahlungen selbst zu. Der Hinweis nennt das vorherige und das neue Mitglied und bietet den Knopf "Zahlt für mehrere Mitglieder". Die Seite "Gemerkte Zuordnungen" (`/zuordnungen`, Bereich Buchhaltung) zeigt alle gemerkten Absender mit gekürzter IBAN. Dort ändern Sie das Mitglied, wählen "zahlt für mehrere" oder vergessen einen Eintrag; bereits zugeordnete Zahlungen bleiben dabei unverändert. Beim Umhängen auf ein anderes Mitglied sperren Verteilungen, die Sie selbst bestätigt haben, die Änderung, bis Sie die Verteilung aufheben. Automatische Verteilungen rechnet KASSIVO für das neue Mitglied neu.
 
 **Verteilung**
 
@@ -282,6 +282,7 @@ src/kassivo/
     update_routes.py   Update-Seite: Opt-in, nach Updates suchen, Paket herunterladen
     transactions_routes.py  Buchungen, Unklar, Verteilung
     wiki_routes.py     Wiki im Programm (feste Themenliste, nur lesend)
+    zuordnungen_routes.py  Gemerkte Zuordnungen: ansehen, ändern, vergessen
     templates/         HTML-Vorlagen (Jinja2)
       wiki/            Vorlagen der Wiki-Themen
     static/            style.css, reports.js, reports-lib.js
@@ -318,7 +319,7 @@ Der Entwurf des Programms steht in `docs/superpowers/specs/2026-11-24-kassivo-de
 - Nur Datei-Import im Format camt.052.001.08. Keine Direktabfrage der Bank (FinTS, finAPI), kein C24-Adapter.
 - Ein Nutzer, ein Rechner, keine Anmeldung.
 - Einträge mit 0,00 € werden beim Import übersprungen und als Warnung gemeldet, nicht gespeichert. Mehr als ein Bericht pro Datei geht nicht.
-- Eine gelernte IBAN lässt sich nicht vergessen. Eine einmal mehrdeutig gewordene IBAN bleibt es, und eine falsch gemerkte IBAN wird nie für das richtige Mitglied neu gelernt. "— keins —" ist eine Entscheidung: KASSIVO ordnet die Zahlung danach nie mehr automatisch zu (auch nicht über "Unklare automatisch zuordnen" oder "Absender merken"). Sie bleibt in "Unklar", bis Sie ein Mitglied oder eine Kategorie wählen.
+- Gemerkt wird nur das Mitglied, mit der IBAN als Schlüssel; Absender ohne IBAN merkt KASSIVO sich nicht. "Zahlt für mehrere" setzen Sie nur auf der Seite "Gemerkte Zuordnungen" oder mit dem Knopf im Hinweis nach einem Wechsel, nicht beim Zuordnen. Steht dieselbe IBAN bei zwei Mitgliedern im Datensatz, merkt KASSIVO sich nichts. "— keins —" ist eine Entscheidung: KASSIVO ordnet die Zahlung danach nie mehr automatisch zu (auch nicht über "Unklare automatisch zuordnen" oder "Absender merken"). Sie bleibt in "Unklar", bis Sie ein Mitglied oder eine Kategorie wählen.
 - Duplikaterkennung: Eine Buchung mit derselben Bankreferenz, aber anderem Betrag oder Datum, wird als Duplikat gezählt und mit einer Warnung gemeldet. Eine zweite gleiche Zahlung ohne Bankreferenz am selben Tag wird verworfen, wenn sie in einer späteren Datei kommt (die laufende Nummer beginnt je Datei neu, gewollt; betrifft nur Zwischenstände desselben Tages, Sparkasse-Tagesdateien tragen Bankreferenzen).
 - Import, Regeln, automatische Zuordnung und Neuverteilung laufen in einer Transaktion: Scheitert ein Schritt, speichert KASSIVO nichts und meldet "Es wurde nichts importiert". Ein erneuter Import derselben Datei legt dann alles vollständig an.
 - Barzahlungen und eigene Ausgaben lassen sich nicht von Hand buchen. Der Monat bleibt überfällig, es gibt in 1.0.0 keine Abhilfe.

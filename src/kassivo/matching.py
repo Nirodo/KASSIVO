@@ -10,6 +10,10 @@ Nach jeder neuen Zuordnung berechnet dues die abgeleiteten Verteilungen
 Commit wie die Zuordnung (alles oder nichts). Entscheidungen des Nutzers
 (source='manual') bleiben unangetastet.
 """
+import hashlib
+import hmac
+from datetime import date
+
 from kassivo import dues
 from kassivo.iban import normalize_iban
 
@@ -25,7 +29,11 @@ def _set_fee_category_if_empty(conn, tx_id: int) -> None:
     )
 
 
-def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -> None:
+def assign_member(conn, tx_id: int, member_id: int | None,
+                  learn: bool = True) -> str | None:
+    """Ordnet zu. Rückgabe: Ergebnis des Merkens ("new", "same", "changed",
+    "multiple") oder None, wenn nichts gelernt wurde (siehe _learn)."""
+    result = None
     tx = conn.execute(
         'select amount_cents, cp_iban, member_id, booking_date from "transaction" where id=?',
         (tx_id,),
@@ -72,23 +80,8 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
         if member_id is not None:
             _set_fee_category_if_empty(conn, tx_id)
             iban = normalize_iban(tx["cp_iban"])
-            if learn and iban:
-                # Maßgeblich ist, was auto_assign heute für die IBAN nähme
-                # (gelernt, mehrdeutig oder member.iban): gehört sie schon
-                # einem anderen Mitglied oder ist mehrdeutig, wird sie
-                # mehrdeutig (NULL), auto_assign überspringt sie.
-                # Verworfen: "letzte Zuordnung gewinnt" (Geschwister-Fall
-                # ordnete still alle Zahlungen dem zuletzt gewählten Kind zu)
-                # und nur gelernte Einträge vergleichen (übersah Geschwister
-                # mit derselben Eltern-IBAN in member.iban).
-                lookup = _iban_lookup(conn)
-                learned = (member_id if iban not in lookup
-                           or lookup[iban] == member_id else None)
-                conn.execute(
-                    "insert into member_iban(iban, member_id) values(?,?)"
-                    " on conflict(iban) do update set member_id=excluded.member_id",
-                    (iban, learned),
-                )
+            if learn and iban and not _left_before(conn, member_id, tx["booking_date"]):
+                result = _learn(conn, iban, member_id)
             if changed:
                 if had_manual:
                     dues.rebuild_member(conn, member_id, exclude=tx_id)
@@ -99,6 +92,119 @@ def assign_member(conn, tx_id: int, member_id: int | None, learn: bool = True) -
     except Exception:
         conn.rollback()
         raise
+    conn.commit()
+    return result
+
+
+def _left_before(conn, member_id: int, booking_date: str) -> bool:
+    """True, wenn das Mitglied vor dem Buchungstag oder vor heute ausgetreten ist.
+
+    Dann wird nichts gemerkt: auto_assign nähme den Eintrag für spätere
+    Zahlungen ohnehin nicht, er würde nur das Gemerkte eines aktiven
+    Mitglieds überschreiben. Austritt heute zählt noch als aktiv
+    (wie in auto_assign: Zahlungen bis einschließlich Austrittstag).
+    """
+    row = conn.execute("select austritt from member where id=?", (member_id,)).fetchone()
+    left = row["austritt"] if row else None
+    return bool(left) and (left < booking_date or left < date.today().isoformat())
+
+
+def _learn(conn, iban: str, member_id: int) -> str:
+    """Merkt die Entscheidung des Nutzers für die IBAN (#55).
+
+    Die letzte Entscheidung gilt. Ausnahmen: "zahlt für mehrere" (NULL) ist
+    eine bewusste Auswahl und bleibt; tragen ohne Eintrag zwei Mitglieder die
+    IBAN in den Stammdaten, wird nichts gespeichert. Die Rückgabe sagt der
+    Oberfläche, ob weitere Zahlungen derselben IBAN zugeordnet werden dürfen:
+    nach "changed" nicht (Eltern-IBAN für zwei Kinder: sonst würden Zahlungen
+    still auf das zuletzt gewählte Kind umgebucht).
+    Verworfen: Wechsel macht die IBAN mehrdeutig (alte Regel bis 1.2.0); eine
+    Fehlkorrektur ließ sich dann nie mehr beheben.
+    """
+    entry = conn.execute(
+        "select member_id from member_iban where iban=?", (iban,)
+    ).fetchone()
+    if entry is not None and entry["member_id"] is None:
+        return "multiple"
+    before = _iban_lookup(conn)
+    if entry is None and iban in before and before[iban] is None:
+        return "multiple"  # Stammdaten mehrdeutig
+    conn.execute(
+        "insert into member_iban(iban, member_id) values(?,?)"
+        " on conflict(iban) do update set member_id=excluded.member_id",
+        (iban, member_id),
+    )
+    prev = before.get(iban)
+    if prev is None:
+        return "new"
+    return "same" if prev == member_id else "changed"
+
+
+def effective_member(conn, iban: str | None) -> int | None:
+    """Mitglied, dem auto_assign die IBAN heute zuordnen würde (None: keins/mehrere)."""
+    iban = normalize_iban(iban)
+    return _iban_lookup(conn).get(iban) if iban else None
+
+
+def remembered(conn) -> list:
+    """Gemerkte Zuordnungen; member_id NULL heißt "zahlt für mehrere"."""
+    return conn.execute(
+        "select mi.rowid as id, mi.iban, mi.member_id, m.name as member_name"
+        " from member_iban mi left join member m on m.id = mi.member_id"
+        " order by mi.member_id is not null, m.name, mi.iban"
+    ).fetchall()
+
+
+def entry_check(iban: str) -> str:
+    """Prüfkennung eines Eintrags: SHA-256 der gespeicherten IBAN (hex).
+
+    Formulare schicken sie mit, weil die rowid allein nicht stabil ist
+    (Wiederverwendung nach Vergessen, Einspielen, _relax_member_iban).
+    Verworfen: IBAN selbst im Formular (Klartext) und eine eigene Spalte
+    mit fester ID (Schema-Wechsel, in diesem Schritt ausgeschlossen).
+    """
+    return hashlib.sha256(iban.encode("utf-8")).hexdigest()
+
+
+def _require_entry(conn, entry_id: int, check: str) -> str:
+    """IBAN des Eintrags, wenn rowid UND Prüfkennung passen, sonst ValueError."""
+    row = conn.execute(
+        "select iban from member_iban where rowid=?", (entry_id,)
+    ).fetchone()
+    if row is None or not hmac.compare_digest(
+        entry_check(row["iban"]).encode(), str(check or "").encode()
+    ):
+        raise ValueError(f"unbekannte gemerkte Zuordnung {entry_id}")
+    return row["iban"]
+
+
+def set_remembered(conn, entry_id: int, member_id: int | None, check: str) -> None:
+    """Ändert eine gemerkte Zuordnung; None = zahlt für mehrere.
+
+    Ordnet keine Zahlungen um, auch keine schon zugeordneten.
+    """
+    iban = _require_entry(conn, entry_id, check)
+    if member_id is not None and not conn.execute(
+        "select 1 from member where id=?", (member_id,)
+    ).fetchone():
+        raise ValueError(f"unbekanntes Mitglied {member_id}")
+    # rowid und IBAN in derselben Anweisung: dazwischen kann nichts umziehen
+    cur = conn.execute("update member_iban set member_id=? where rowid=? and iban=?",
+                       (member_id, entry_id, iban))
+    if cur.rowcount != 1:
+        conn.rollback()
+        raise ValueError(f"unbekannte gemerkte Zuordnung {entry_id}")
+    conn.commit()
+
+
+def forget(conn, entry_id: int, check: str) -> None:
+    """Löscht eine gemerkte Zuordnung; danach gelten wieder die Stammdaten."""
+    iban = _require_entry(conn, entry_id, check)
+    cur = conn.execute("delete from member_iban where rowid=? and iban=?",
+                       (entry_id, iban))
+    if cur.rowcount != 1:
+        conn.rollback()
+        raise ValueError(f"unbekannte gemerkte Zuordnung {entry_id}")
     conn.commit()
 
 

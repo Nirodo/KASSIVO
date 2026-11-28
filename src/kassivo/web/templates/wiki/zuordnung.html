@@ -19,11 +19,13 @@
   <li>Öffnen Sie <a href="/unmatched">Unklar</a>. Dort stehen Datum, Gegenpartei, Zweck und Betrag jeder offenen Zahlung.</li>
   <li>Wählen Sie rechts in „Mitglied zuordnen“ das Mitglied.</li>
   <li>Lassen Sie „Absender merken“ angehakt, wenn dieser Absender künftig automatisch zu diesem Mitglied gehören soll.</li>
-  <li>Wählen Sie „Zuordnen“. KASSIVO zeigt einen Hinweis und ordnet gleich alle weiteren Zahlungen derselben IBAN in „Unklar“ mit zu.</li>
+  <li>Wählen Sie „Zuordnen“. KASSIVO zeigt einen Hinweis und ordnet gleich alle weiteren Zahlungen derselben IBAN in „Unklar“ mit zu. Gehörte der Absender bisher zu einem anderen Mitglied, merkt KASSIVO das neue Mitglied, ordnet aber keine weiteren Zahlungen zu. Der Hinweis nennt das vorherige und das neue Mitglied. Zahlt der Absender für mehrere Mitglieder, wählen Sie direkt im Hinweis „Zahlt für mehrere Mitglieder“; die Zuordnung der gerade gewählten Zahlung bleibt.</li>
   <li>Prüfen Sie danach die <a href="/transactions?year=all&amp;proposed=1">Offene Vorschläge</a>. Dort stehen nur die Ausnahmen. Was KASSIVO automatisch verteilt hat, sehen Sie unter <a href="/auto">Automatisch verteilt</a> und können es dort mit „Rückgängig“ zurücknehmen.</li>
 </ol>
 <h3>Unklare automatisch zuordnen</h3>
 <p>Der Knopf „Unklare automatisch zuordnen“ oben in „Unklar“ wendet gemerkte IBANs und die IBANs der Mitglieder noch einmal auf die ganze Liste an. Das hilft, nachdem Sie eine IBAN im Mitgliedsdatensatz ergänzt haben. KASSIVO meldet, wie viele Zahlungen zugeordnet wurden.</p>
+<h3>Gemerkte Zuordnungen ansehen und ändern</h3>
+<p>Unter <a href="/zuordnungen">Gemerkte Zuordnungen</a> (/zuordnungen) steht jeder gemerkte Absender mit gekürzter IBAN und dem Mitglied, zu dem er gehört. Wählen Sie ein anderes Mitglied oder „zahlt für mehrere“ und dann „Speichern“. „Vergessen“ löscht den Eintrag; danach gilt wieder die IBAN aus den Mitgliedsdaten, falls eine eingetragen ist. Ändern und Vergessen ordnen keine Zahlungen um. Sie gelten für neue Zahlungen und für „Unklare automatisch zuordnen“.</p>
 <h3>Zuordnung ändern oder entfernen</h3>
 <ol class="steps">
   <li>Öffnen Sie <a href="/transactions">Buchungen</a> und suchen Sie die Zahlung (Filter oder Suche helfen).</li>
@@ -47,7 +49,7 @@
 <div class="callout callout-example">
   <p><strong>Beispiel:</strong> Geschwister. Dieselbe Mutter zahlt später auch für Hans Musterfrau, von derselben IBAN, die bei Erika gemerkt ist. KASSIVO ordnet die Zahlung vom 05.02.2026 über 17,00 € deshalb Erika zu und verteilt sie automatisch auf Erikas Februar. So hängen Sie sie auf Hans um:</p>
   <ol class="steps">
-    <li>Wählen Sie in „Buchungen“ in der Spalte „Mitglied“ Hans Musterfrau und dann „Zuordnen“. Beachten Sie „Absender merken“: Die IBAN ist schon für Erika gemerkt. Ist das Häkchen gesetzt, gehört sie danach zwei Mitgliedern, und KASSIVO meldet: „Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird künftig nicht automatisch zugeordnet.“ Jede weitere Zahlung dieser IBAN bleibt in „Unklar“, bis Sie sie von Hand zuordnen.</li>
+    <li>Wählen Sie in „Buchungen“ in der Spalte „Mitglied“ Hans Musterfrau und dann „Zuordnen“. Beachten Sie „Absender merken“: Die IBAN ist schon für Erika gemerkt. Ist das Häkchen gesetzt, gilt die letzte Entscheidung: Der Absender gehört danach zu Hans. KASSIVO meldet: „Gemerkt: Dieser Absender gehört jetzt zu Hans Musterfrau (vorher zu Erika Musterfrau).“ und ordnet keine weiteren Zahlungen zu. Zahlt die Mutter für beide Kinder, wählen Sie direkt im Hinweis „Zahlt für mehrere Mitglieder“ (oder später unter <a href="/zuordnungen">Gemerkte Zuordnungen</a> „zahlt für mehrere“). Ist der Hinweis nicht mehr aktuell, zeigt KASSIVO die kurze Form „Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu einem anderen).“ Dann bleibt jede weitere Zahlung dieser IBAN in „Unklar“, bis Sie sie von Hand zuordnen.</li>
     <li>KASSIVO verwirft die automatische Verteilung für Erika und verteilt die Zahlung für Hans neu, nach denselben Regeln: Buchungsmonat zuerst. Ist Hans' Februar offen, geht sie automatisch auf den Februar. Erikas spätere automatisch verteilte Zahlungen rechnet KASSIVO ebenfalls neu, Erikas Februar ist danach wieder offen. War die Zahlung ein manueller Vorschlag (nach „Rückgängig“ oder „Verteilung aufheben“), wird sie bei Hans wieder ein Vorschlag, den Sie bestätigen.</li>
     <li>Haben Sie Erikas Verteilung vorher selbst bestätigt, heben Sie sie zuerst auf („Verteilung“, „Verteilung aufheben“). Ohne diesen Schritt meldet KASSIVO beim Umhängen: „… hat bestätigte Verteilung: Verteilung zuerst aufheben“.</li>
   </ol>
@@ -55,10 +57,9 @@
 
 <h2>Gut zu wissen</h2>
 <ul>
-  <li><strong>Absender merken</strong> ist in „Unklar“ vorangehakt, in „Buchungen“ nicht.</li>
-  <li><strong>Zahlt jemand für mehrere Mitglieder,</strong> nehmen Sie bei den Zahlungen das Häkchen „Absender merken“ heraus und ordnen jede Zahlung von Hand zu. Dann gibt es keinen falschen automatischen Treffer. Trägt dieselbe IBAN bei zwei Mitgliedern im Datensatz, ist sie ebenfalls mehrdeutig.</li>
-  <li>Eine gemerkte IBAN lässt sich in dieser Version <strong>nicht wieder vergessen</strong>. Eine falsche Zuordnung korrigieren Sie bei der Zahlung (siehe oben). Die Zahlungen derselben IBAN danach ordnet KASSIVO weiter dem gemerkten Mitglied zu, bis die IBAN durch eine zweite Zuordnung mit „Absender merken“ mehrdeutig wird.</li>
-  <li><strong>Eine falsch gemerkte IBAN wird nie für das richtige Mitglied neu gelernt.</strong> Ordnen Sie die Zahlung dem richtigen Mitglied mit „Absender merken“ zu, gehört die IBAN danach zwei Mitgliedern und ist mehrdeutig. Sie wird dann nie mehr automatisch zugeordnet. Auch ein weiteres Zuordnen ändert das nicht. Nehmen Sie in dem Fall „Absender merken“ heraus und ordnen Sie jede Zahlung von Hand zu.</li>
+  <li><strong>Absender merken</strong> ist überall vorangehakt, in „Unklar“ und in „Buchungen“. Nehmen Sie das Häkchen heraus, ändert die Zuordnung nichts am Gemerkten.</li>
+  <li><strong>Die letzte Entscheidung gilt.</strong> Eine Korrektur mit „Absender merken“ überschreibt das Gemerkte. Eine falsch gemerkte IBAN korrigieren Sie also bei der nächsten Zahlung oder unter <a href="/zuordnungen">Gemerkte Zuordnungen</a>.</li>
+  <li><strong>Zahlt jemand für mehrere Mitglieder,</strong> wählen Sie unter „Gemerkte Zuordnungen“ „zahlt für mehrere“. Diese IBAN ist dann <strong>mehrdeutig</strong>: KASSIVO ordnet ihre Zahlungen nie selbst zu, auch „Absender merken“ ändert das nicht. Trägt dieselbe IBAN bei zwei Mitgliedern im Datensatz, ist sie ebenfalls mehrdeutig; KASSIVO merkt sich dann nichts.</li>
   <li><strong>Ausgetretene Mitglieder</strong> werden für Zahlungen nach dem Austrittsdatum nicht automatisch zugeordnet. Von Hand geht es weiterhin. Im Auswahlfeld steht „(ausgetreten)“ beim Namen.</li>
   <li>Die Liste „Buchungen“ zeigt 100 Buchungen je Seite. Mit „Weiter“ und „Zurück“ blättern Sie.</li>
   <li>Eine Zuordnung ändert nie die Buchung selbst, nur ihr Mitglied und ihre Verteilung.</li>
