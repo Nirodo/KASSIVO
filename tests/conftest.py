@@ -18,3 +18,19 @@ def _kein_netz(monkeypatch):
     def blocked():
         raise RuntimeError("Netzaufruf in Tests gesperrt")
     monkeypatch.setattr(update, "_build_opener", blocked)
+
+
+@pytest.fixture
+def ledger_conn():
+    """Schema-3-Datenbank im Speicher plus Buchungstabellen von Schema 4 (Task 3, vor der
+    Migration). Startplan, Perioden ab dem frühesten Umsatzjahr bis 2026."""
+    from datetime import date
+
+    from kassivo import db
+    c = connect(":memory:")
+    for stmt in db._statements(db._LEDGER_DDL_4):
+        c.execute(stmt)
+    db._seed_ledger_4(c, date(2026, 11, 28))
+    c.commit()
+    yield c
+    c.close()

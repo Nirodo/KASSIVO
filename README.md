@@ -257,7 +257,7 @@ src/kassivo/
   dues.py              Beitragsprüfung, automatische Verteilung und Vorschläge
   fees.py              Beiträge mit Gültigkeitsmonat
   forecast.py          Prognose
-  iban.py              IBAN-Normalisierung
+  iban.py              IBAN-Normalisierung und Maskierung
   ingest.py            Import und Duplikaterkennung
   logconfig.py         Konsolenprotokoll ohne Suchtexte (Filter für das Uvicorn-Zugriffsprotokoll)
   matching.py          Zuordnung von Umsätzen zu Mitgliedern
@@ -265,6 +265,7 @@ src/kassivo/
   money.py             Geldbeträge (ganze Cent)
   months.py            Monatsrechnung
   overview.py          Zahlen der Startseite (nur lesend)
+  periods.py           Buchungsperioden (Standard Kalenderjahr), aktive Periode
   reports.py           Jahresreport
   settings.py          Ort der Datenbank (Standardordner, KASSIVO_DB, Cloud-Warnung)
   update.py            Update: Release prüfen, Paket laden und prüfen, installieren (update.bat)
