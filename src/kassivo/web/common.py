@@ -112,14 +112,14 @@ _NOTES = {
                  " Mitgliedsdaten.",
     "remembered_saved": "Gespeichert. Bereits zugeordnete Zahlungen bleiben, wie sie sind.",
     "remembered_forgotten": "Vergessen. Bereits zugeordnete Zahlungen bleiben, wie sie sind.",
+    # Ausführlich mit Namen und Knopf zeigt den Hinweis base.html (remember_change);
+    # dieser Text ist der Rückfall, wenn die Parameter nicht mehr passen.
     "changed": "Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu"
                " einem anderen). Zahlt er für mehrere Mitglieder, legen Sie das unter"
-               " „Gemerkte Zuordnungen“ fest. Weitere offene Zahlungen ordnet „Unklare"
-               " automatisch zuordnen“ zu.",
+               " „Gemerkte Zuordnungen“ fest.",
     "changed_r": "Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu"
                  " einem anderen). Zahlt er für mehrere Mitglieder, legen Sie das unter"
-                 " „Gemerkte Zuordnungen“ fest. Weitere offene Zahlungen ordnet „Unklare"
-                 " automatisch zuordnen“ zu. {n} weitere Zahlungen neu verteilt.",
+                 " „Gemerkte Zuordnungen“ fest. {n} weitere Zahlungen neu verteilt.",
     "cleaned": "Gelöschte Sicherungen: {n}.",
     "restored": "Sicherung eingespielt: {n} Mitglieder, {m} Buchungen.",
     "cleaned_partial": "Gelöschte Sicherungen: {n}. {m} konnten nicht gelöscht werden.",

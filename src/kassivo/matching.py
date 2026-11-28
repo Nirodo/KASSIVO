@@ -140,6 +140,12 @@ def _learn(conn, iban: str, member_id: int) -> str:
     return "same" if prev == member_id else "changed"
 
 
+def effective_member(conn, iban: str | None) -> int | None:
+    """Mitglied, dem auto_assign die IBAN heute zuordnen würde (None: keins/mehrere)."""
+    iban = normalize_iban(iban)
+    return _iban_lookup(conn).get(iban) if iban else None
+
+
 def remembered(conn) -> list:
     """Gemerkte Zuordnungen; member_id NULL heißt "zahlt für mehrere"."""
     return conn.execute(

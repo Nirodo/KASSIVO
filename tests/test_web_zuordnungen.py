@@ -165,7 +165,7 @@ def test_changed_note_links_page(client, db):
     _tx(db, "Beitrag 2")
     r = client.post(f"/transactions/{t}/member",
                     data={"member_id": str(b), "learn": "on", "next": "/unmatched", "check": CK})
-    assert r.headers["location"] == "/unmatched?note=changed&n=0"
+    assert r.headers["location"] == f"/unmatched?note=changed&n=0&tx={t}&prev={a}"
     html = client.get(r.headers["location"]).text
     assert "Gemerkte Zuordnungen" in _text(html)
     assert db.execute("select count(*) from \"transaction\" where member_id is null"
@@ -215,3 +215,65 @@ def test_same_mask_gets_short_distinguishing_code(client, db):
     assert f"Kennung {CK[:6]}" in t and f"Kennung {entry_check(twin)[:6]}" in t
     assert f"Kennung {entry_check(OTHER)[:6]}" not in t
     assert twin not in t and FULL not in t
+
+
+# --- Fix-Runde I2: Hinweis nach dem Wechsel nennt beide Mitglieder -------------
+
+def _notice(html):
+    m = re.search(r'<(p|div) class="notice"[^>]*>.*?</\1>', html, re.S)
+    assert m, "kein Hinweis"
+    return m[0]
+
+
+def _change(client, db, nxt="/unmatched"):
+    a, b = _member(db, "Kind Anna"), _member(db, "Kind Bert")
+    _entry(db, FULL, a)
+    t = _tx(db, "Beitrag")
+    _tx(db, "Beitrag 2")
+    r = client.post(f"/transactions/{t}/member",
+                    data={"member_id": str(b), "learn": "on", "next": nxt})
+    return a, b, t, r
+
+
+@pytest.mark.parametrize("nxt", ["/unmatched", "/transactions?year=all"])
+def test_changed_notice_names_both_members(client, db, nxt):
+    a, b, t, r = _change(client, db, nxt)
+    loc = r.headers["location"]
+    assert "Anna" not in loc and "Bert" not in loc and FULL not in loc and CK not in loc
+    box = _notice(client.get(loc).text)
+    t_box = _text(box)
+    assert "Kind Bert" in t_box and "Kind Anna" in t_box
+    assert "Unklare automatisch zuordnen" not in t_box
+    assert 'action="/zuordnungen/1"' in box
+    assert f'<input type="hidden" name="check" value="{CK}">' in box
+    assert '<input type="hidden" name="member_id" value="multi">' in box
+    assert "Zahlt für mehrere Mitglieder" in t_box
+
+
+def test_changed_notice_button_sets_multiple_keeps_payment(client, db):
+    a, b, t, r = _change(client, db)
+    box = _notice(client.get(r.headers["location"]).text)
+    eid = re.search(r'action="/zuordnungen/([0-9]+)"', box)[1]
+    r2 = client.post(f"/zuordnungen/{eid}", data={"member_id": "multi", "check": CK})
+    assert r2.status_code == 303
+    assert _learned(db) == {FULL: None}
+    assert db.execute('select member_id from "transaction" where id=?', (t,)).fetchone()[0] == b
+
+
+@pytest.mark.parametrize("tail", ["&tx=99999&prev=1", "&tx={t}&prev=99999", "&tx={t}&prev={b}",
+                                  "&tx=abc&prev=1", "&tx={t}&prev=-1", ""])
+def test_changed_notice_with_bad_params_falls_back(client, db, tail):
+    a, b, t, r = _change(client, db)
+    url = "/unmatched?note=changed&n=0" + tail.format(t=t, b=b)
+    html = client.get(url).text
+    t_box = _text(_notice(html))
+    assert "Gemerkt" in t_box and "Kind Anna" not in t_box
+    assert 'name="member_id" value="multi"' not in html
+
+
+def test_changed_notice_gone_when_entry_changed_meanwhile(client, db):
+    a, b, t, r = _change(client, db)
+    db.execute("update member_iban set member_id=null")
+    db.commit()
+    html = client.get(r.headers["location"]).text
+    assert 'name="member_id" value="multi"' not in html

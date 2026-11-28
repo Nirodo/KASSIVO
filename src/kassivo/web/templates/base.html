@@ -24,7 +24,17 @@
     {% if nav.ns.area %}<details class="subnav"><summary>{{ nav.ns.area[0] }}: Bereichsmenü</summary>{{ nav.groups() }}</details>{% endif %}
     <main id="main" class="page">
       <h1>{% block heading %}{{ self.title() }}{% endblock %}</h1>
-      {% set note = page_note(request) %}{% if note %}<p class="notice" role="status">{{ note }}</p>{% endif %}
+      {% if remember_change %}{% set rc = remember_change %}
+      <div class="notice" role="status">
+        <p>Gemerkt: Dieser Absender gehört jetzt zu {{ rc.new_name }} (vorher zu {{ rc.prev_name }}). Die Zuordnung dieser Zahlung bleibt.{% if rc.moved %} {{ rc.moved }} weitere Zahlungen neu verteilt.{% endif %}</p>
+        <p>Zahlt der Absender für mehrere Mitglieder, legen Sie das hier fest. Dann ordnet KASSIVO seine Zahlungen nicht mehr selbst zu. Ändern lässt es sich später unter „Gemerkte Zuordnungen“.</p>
+        <form method="post" action="/zuordnungen/{{ rc.entry_id }}" class="inline">
+          <input type="hidden" name="check" value="{{ rc.check }}">
+          <input type="hidden" name="member_id" value="multi">
+          <button type="submit">Zahlt für mehrere Mitglieder</button>
+        </form>
+      </div>
+      {% else %}{% set note = page_note(request) %}{% if note %}<p class="notice" role="status">{{ note }}</p>{% endif %}{% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>

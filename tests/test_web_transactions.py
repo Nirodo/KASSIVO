@@ -700,8 +700,11 @@ def test_learn_cascade_skipped_when_changed(client, db):
     db.execute("insert into member_iban(iban, member_id) values(?,?)", (OTHER_IBAN, a))
     db.commit()
     r = _assign(client, _tx_id(db, "M 1"), b, next="/unmatched")
-    assert r.headers["location"] == "/unmatched?note=changed&n=0"
-    assert CHANGED_NOTE in _text(client.get(r.headers["location"]).text)
+    assert r.headers["location"] == (
+        f"/unmatched?note=changed&n=0&tx={_tx_id(db, 'M 1')}&prev={a}")
+    page = _text(client.get(r.headers["location"]).text)
+    assert "Gemerkt: Dieser Absender gehört jetzt zu Kind B (vorher zu Kind A)." in page
+    assert CHANGED_NOTE in _text(client.get("/unmatched?note=changed&n=0").text)  # Rückfall
     assert db.execute("select member_id from member_iban").fetchone()[0] == b
     assert _col(db, _tx_id(db, "M 2"), "member_id") is None
     assert _col(db, _tx_id(db, "M 3"), "member_id") is None
