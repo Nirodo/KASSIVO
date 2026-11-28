@@ -255,3 +255,40 @@ def test_reused_rowid_is_rejected(conn):
     with pytest.raises(ValueError):
         forget(conn, eid, CK)
     assert _learned(conn) == {"XX00FAKEOTHER": a}
+
+
+# --- Ausgetretene Mitglieder (Fix-Runde Minor 4) --------------------------------
+
+def _left(conn, member_id, day):
+    conn.execute("update member set austritt=? where id=?", (day, member_id))
+    conn.commit()
+
+
+def test_assign_to_member_left_in_past_learns_nothing(conn):
+    a, b = _member(conn, "A"), _member(conn, "B")
+    assign_member(conn, _tx(conn), a)
+    _left(conn, b, "2026-01-31")
+    t = _tx(conn, day="2026-03-05")
+    assert assign_member(conn, t, b) is None  # Zuordnung ja, Merken nein
+    assert _member_of(conn, t) == b
+    assert _learned(conn) == {PARENT: a}
+
+
+def test_assign_to_left_member_does_not_create_entry(conn):
+    b = _member(conn, "B")
+    _left(conn, b, "2025-12-31")
+    assert assign_member(conn, _tx(conn), b) is None
+    assert _learned(conn) == {}
+
+
+def test_member_leaving_today_still_learns(conn):
+    a = _member(conn, "A")
+    _left(conn, a, date.today().isoformat())
+    assert assign_member(conn, _tx(conn), a) == "new"
+    assert _learned(conn) == {PARENT: a}
+
+
+def test_member_leaving_in_future_learns(conn):
+    a = _member(conn, "A")
+    _left(conn, a, "2099-12-31")
+    assert assign_member(conn, _tx(conn), a) == "new"

@@ -12,6 +12,7 @@ Commit wie die Zuordnung (alles oder nichts). Entscheidungen des Nutzers
 """
 import hashlib
 import hmac
+from datetime import date
 
 from kassivo import dues
 from kassivo.iban import normalize_iban
@@ -79,7 +80,7 @@ def assign_member(conn, tx_id: int, member_id: int | None,
         if member_id is not None:
             _set_fee_category_if_empty(conn, tx_id)
             iban = normalize_iban(tx["cp_iban"])
-            if learn and iban:
+            if learn and iban and not _left_before(conn, member_id, tx["booking_date"]):
                 result = _learn(conn, iban, member_id)
             if changed:
                 if had_manual:
@@ -93,6 +94,19 @@ def assign_member(conn, tx_id: int, member_id: int | None,
         raise
     conn.commit()
     return result
+
+
+def _left_before(conn, member_id: int, booking_date: str) -> bool:
+    """True, wenn das Mitglied vor dem Buchungstag oder vor heute ausgetreten ist.
+
+    Dann wird nichts gemerkt: auto_assign nähme den Eintrag für spätere
+    Zahlungen ohnehin nicht, er würde nur das Gemerkte eines aktiven
+    Mitglieds überschreiben. Austritt heute zählt noch als aktiv
+    (wie in auto_assign: Zahlungen bis einschließlich Austrittstag).
+    """
+    row = conn.execute("select austritt from member where id=?", (member_id,)).fetchone()
+    left = row["austritt"] if row else None
+    return bool(left) and (left < booking_date or left < date.today().isoformat())
 
 
 def _learn(conn, iban: str, member_id: int) -> str:
