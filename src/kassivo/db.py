@@ -99,6 +99,10 @@ def _relax_member_iban(conn: sqlite3.Connection) -> None:
 #   3. SCHEMA_VERSION auf N erhöhen.
 #   4. Test in tests/test_schema_version.py: Datenbank mit Version N-1 und Beispieldaten
 #      wird korrekt umgestellt.
+#   5. Tabellen neu aufbauen nur in einem Schritt mit `fk_off = True`.
+#      (_migrate_to_N.fk_off = True). PRAGMA foreign_keys wirkt nicht in einer
+#      Transaktion; _migrate schaltet die Prüfung deshalb vor begin immediate aus,
+#      prüft danach mit PRAGMA foreign_key_check und schaltet sie immer wieder ein.
 #
 # Jeder Schritt läuft in einer eigenen Transaktion (begin immediate ... commit), die
 # auch user_version setzt. Unter der Sperre wird die Version neu gelesen: hat eine
@@ -248,6 +252,28 @@ def _pre_migration_backup(conn, path, backup_dir) -> str:
             f"Das Datenformat wurde nicht umgestellt. {_cause(exc)}") from exc
 
 
+class _FkViolation(Exception):
+    """Ein fk_off-Schritt hat verwaiste Verweise hinterlassen (Meldung nur mit Tabellennamen)."""
+
+
+def _fk_check(conn: sqlite3.Connection) -> list[str]:
+    """Tabellen mit verletzten Fremdschlüsseln (PRAGMA foreign_key_check), ohne Werte."""
+    return sorted({r[0] for r in conn.execute("pragma foreign_key_check").fetchall()})
+
+
+def _fk_disable(conn: sqlite3.Connection) -> None:
+    """Fremdschlüsselprüfung für einen fk_off-Schritt ausschalten (nur außerhalb einer
+    Transaktion wirksam). Eine offene Transaktion (Sicherung unter Sperre) hat nichts
+    geschrieben und wird beendet; _lock liest die Version danach unter Sperre neu."""
+    if conn.in_transaction:
+        conn.rollback()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    if conn.execute("PRAGMA foreign_keys").fetchall()[0][0] != 0:
+        raise MigrationError(
+            "Die Fremdschlüsselprüfung ließ sich für die Umstellung nicht ausschalten. "
+            "Das Datenformat wurde nicht umgestellt.")
+
+
 def _migrate(conn, path, migrations, target: int, backup_dir, do_backup: bool) -> None:
     """Führt ausstehende Schritte aus. Jeder Schritt liest die Version unter der Sperre neu,
     damit eine zweite Instanz keinen Schritt doppelt ausführt."""
@@ -265,22 +291,37 @@ def _migrate(conn, path, migrations, target: int, backup_dir, do_backup: bool) -
             raise
     step = version + 1
     while step <= target:
-        if not conn.in_transaction:
-            version = _lock(conn, target)
-            if version >= step:
-                conn.rollback()
-                step = version + 1
-                continue
+        func = migrations[step]
+        fk_off = getattr(func, "fk_off", False) is True
         try:
-            migrations[step](conn)
-            _set_version(conn, step)
-            conn.commit()
-        except Exception as exc:
-            conn.rollback()
-            hint = f" Vorher angelegte Sicherung: {name}." if name else ""
-            raise MigrationError(
-                f"Die Umstellung des Datenbankformats auf Schema {step} ist fehlgeschlagen. "
-                f"Die Datenbank bleibt auf Schema {step - 1}.{hint} {_cause(exc)}") from exc
+            if fk_off:
+                _fk_disable(conn)
+            if not conn.in_transaction:
+                version = _lock(conn, target)
+                if version >= step:
+                    conn.rollback()
+                    step = version + 1
+                    continue
+            try:
+                func(conn)
+                if fk_off:
+                    bad = _fk_check(conn)
+                    if bad:
+                        raise _FkViolation(
+                            "Fremdschlüssel verletzt in: " + ", ".join(bad) + ".")
+                _set_version(conn, step)
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                hint = f" Vorher angelegte Sicherung: {name}." if name else ""
+                raise MigrationError(
+                    f"Die Umstellung des Datenbankformats auf Schema {step} ist fehlgeschlagen. "
+                    f"Die Datenbank bleibt auf Schema {step - 1}.{hint} {_cause(exc)}") from exc
+        finally:
+            if fk_off:
+                if conn.in_transaction:
+                    conn.rollback()
+                conn.execute("PRAGMA foreign_keys = ON")
         step += 1
 
 

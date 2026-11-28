@@ -788,3 +788,190 @@ def test_migration_3_idempotent_on_second_start(tmp_path):
     after = _dump(p)
     connect(p).close()
     assert _dump(p) == after and len(_backups(p)) == 1
+
+
+# --- Schritte mit ausgeschalteten Fremdschlüsseln (fk_off, #57) ---
+
+def _fk_pragma(c):
+    return c.execute("pragma foreign_keys").fetchone()[0]
+
+
+def _rebuild_account(conn):
+    """Baut account neu (mit Spalte note), auf die "transaction" verweist."""
+    conn.execute("create table account_new(id integer primary key, iban text not null unique,"
+                 " label text, note text)")
+    conn.execute("insert into account_new(id, iban, label) select id, iban, label from account")
+    conn.execute("drop table account")
+    conn.execute("alter table account_new rename to account")
+
+
+_rebuild_account.fk_off = True
+
+
+def _spy_fk_on_close(monkeypatch, path):
+    """Merkt pragma foreign_keys der Hauptverbindung von connect(path) vor dem Schließen.
+
+    Hauptverbindung ist die erste Verbindung zu path; Sicherungen öffnen eigene."""
+    seen = []
+    made = []
+    orig_close = sqlite3.Connection.close
+    target = str(path)
+
+    class Spy(sqlite3.Connection):
+        def close(self):
+            if made and self is made[0]:
+                seen.append(self.execute("pragma foreign_keys").fetchone()[0])
+            orig_close(self)
+
+    real = sqlite3.connect
+
+    def spy_connect(*a, **k):
+        if a and str(a[0]) == target:
+            c = real(*a, factory=Spy, **k)
+            made.append(c)
+            return c
+        return real(*a, **k)
+
+    monkeypatch.setattr(dbmod.sqlite3, "connect", spy_connect)
+    return seen
+
+
+def test_fk_off_step_can_rebuild_referenced_table(tmp_path):
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    before = _rows(p)
+    c = connect(p, migrations={2: _rebuild_account})
+    assert schema_version(c) == 2
+    assert _fk_pragma(c) == 1
+    c.close()
+    after = _rows(p)
+    assert after["account"] == [tuple(r) + (None,) for r in before["account"]]
+    after.pop("account")
+    before.pop("account")
+    assert after == before
+
+
+def test_fk_off_step_with_violation_rolls_back(tmp_path):
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    before = _dump(p)
+
+    def orphan(conn):
+        conn.execute("insert into allocation(tx_id, member_id, month, cents, status)"
+                     " values(999, 1, '2026-05', 100, 'confirmed')")
+
+    orphan.fk_off = True
+    with pytest.raises(MigrationError) as ei:
+        connect(p, migrations={2: orphan})
+    msg = str(ei.value)
+    assert "Schema 2" in msg and "Fremdschlüssel" in msg
+    assert "999" not in msg
+    assert _raw_version(p) == 1
+    assert _dump(p) == before
+
+
+def test_fk_off_step_restores_pragma_after_violation(tmp_path, monkeypatch):
+    """Nach dem Fehler ist foreign_keys auf der Verbindung wieder an (vor dem Schließen)."""
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    seen = _spy_fk_on_close(monkeypatch, p)
+
+    def orphan(conn):
+        conn.execute("insert into allocation(tx_id, member_id, month, cents, status)"
+                     " values(999, 1, '2026-05', 100, 'confirmed')")
+
+    orphan.fk_off = True
+    with pytest.raises(MigrationError):
+        connect(p, migrations={2: orphan})
+    assert seen == [1]
+
+
+def test_fk_off_step_exception_restores_fk_pragma(tmp_path, monkeypatch):
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    seen = _spy_fk_on_close(monkeypatch, p)
+    inside = []
+
+    def boom(conn):
+        inside.append(_fk_pragma(conn))
+        raise RuntimeError("kaputt")
+
+    boom.fk_off = True
+    with pytest.raises(MigrationError):
+        connect(p, migrations={2: boom})
+    assert inside == [0]
+    assert seen == [1]
+    assert _raw_version(p) == 1
+
+
+def test_fk_off_step_after_backup_takes_one_backup(tmp_path):
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    c = connect(p, migrations={2: _rebuild_account})
+    c.close()
+    assert len(_backups(p)) == 1
+    assert _raw_version(p.parent / "backups" / _backups(p)[0]) == 1
+
+
+def test_fk_off_step_mixed_with_normal_steps(tmp_path):
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    seen = []
+
+    def m3(conn):
+        seen.append(_fk_pragma(conn))
+        _add_note(conn)
+
+    c = connect(p, migrations={2: _rebuild_account, 3: m3})
+    assert schema_version(c) == 3 and seen == [1] and _fk_pragma(c) == 1
+    c.close()
+    assert len(_backups(p)) == 1
+
+
+def test_fk_off_parallel_instance_skips(tmp_path, monkeypatch):
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    runs = []
+
+    def times100(conn):
+        runs.append(1)
+        conn.execute("update allocation set cents = cents * 100")
+
+    times100.fk_off = True
+    migs = {2: times100}
+    _race(monkeypatch, lambda: connect(p, migrations=migs).close())
+    c = connect(p, migrations=migs)
+    assert schema_version(c) == 2 and _fk_pragma(c) == 1
+    assert [r[0] for r in c.execute("select cents from allocation order by id")] == [170000, 0]
+    c.close()
+    assert runs == [1]
+    assert len(_backups(p)) == 1
+
+
+def test_normal_step_keeps_fk_on(tmp_path):
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    seen = []
+
+    def m2(conn):
+        seen.append(_fk_pragma(conn))
+
+    connect(p, migrations={2: m2}).close()
+    assert seen == [1]
+
+
+def test_migration_comment_mentions_fk_off():
+    src = importlib.import_module("kassivo.db").__file__
+    text = open(src, encoding="utf-8").read()
+    assert "Tabellen neu aufbauen nur in einem Schritt mit `fk_off = True`." in text
+
+
+def test_fk_check_lists_tables_only(tmp_path):
+    c = connect(tmp_path / "k.db")
+    assert dbmod._fk_check(c) == []
+    c.execute("pragma foreign_keys = OFF")
+    c.execute("insert into allocation(tx_id, member_id, month, cents, status)"
+              " values(77, 88, '2026-05', 100, 'confirmed')")
+    assert dbmod._fk_check(c) == ["allocation"]
+    c.rollback()
+    c.close()
