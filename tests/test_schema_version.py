@@ -975,3 +975,16 @@ def test_fk_check_lists_tables_only(tmp_path):
     assert dbmod._fk_check(c) == ["allocation"]
     c.rollback()
     c.close()
+
+
+def test_negative_user_version_rejected_untouched(tmp_path):
+    """KASSIVO schreibt nie eine negative Version; solche Dateien sind fremd."""
+    p = tmp_path / "k.db"
+    _v1_db(p)
+    c = sqlite3.connect(p)
+    c.execute("pragma user_version = -1")
+    c.close()
+    before = _hash(p)
+    with pytest.raises(InvalidDatabaseError):
+        connect(p)
+    assert _hash(p) == before and _backups(p) == []

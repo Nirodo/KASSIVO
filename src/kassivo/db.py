@@ -351,6 +351,8 @@ def connect(path, *, migrations=None, backup_dir=None, timeout: float = 5.0,
         version = schema_version(conn)
         if version > target:
             raise _too_new(version, target)
+        if version < 0:  # KASSIVO schreibt nie eine negative Version
+            raise InvalidDatabaseError(E_INVALID)
         if version >= BASELINE_VERSION and not _has_user_tables(conn):
             raise InvalidDatabaseError(E_INVALID)
         fresh = False
