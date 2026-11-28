@@ -4,7 +4,7 @@ Verwaltung von Gruppenkassen (Verein, Mannschaft, Freundeskreis): Einzahlungen, 
 
 ## Stand
 
-Version 1.4.0 ist umgesetzt: lokale Web-App (Python, FastAPI, SQLite, Chart.js) für eine Gruppenkasse. Design: `docs/superpowers/specs/2026-11-24-kassivo-design.md`, Plan: `docs/superpowers/plans/2026-11-24-kassivo-v1.md`. Kontoumsätze kommen per Datei-Import (CAMT V8, Sparkasse); eine direkte Bankabfrage (FinTS, finAPI) und ein C24-Adapter sind noch nicht gebaut. Neue Arbeit läuft nach dem Git-Workflow unten.
+Version 1.5.0 ist umgesetzt: lokale Web-App (Python, FastAPI, SQLite, Chart.js) für eine Gruppenkasse. Design: `docs/superpowers/specs/2026-11-24-kassivo-design.md`, Plan: `docs/superpowers/plans/2026-11-24-kassivo-v1.md`. Kontoumsätze kommen per Datei-Import (CAMT V8, Sparkasse); eine direkte Bankabfrage (FinTS, finAPI) und ein C24-Adapter sind noch nicht gebaut. Neue Arbeit läuft nach dem Git-Workflow unten.
 
 ## Arbeitsweise
 
