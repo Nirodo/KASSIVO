@@ -322,3 +322,15 @@ def test_memory_db_422(tmp_path, monkeypatch):
     r = c.post("/settings/reset", data={"confirm": WORD, "token": "0" * 32})
     assert r.status_code == 422
     assert list(tmp_path.iterdir()) == []
+
+
+# --- Doku ---
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_docs_mention_reset():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "/settings/reset" in readme and "LÖSCHEN" in readme
+    limits = (ROOT / "src/kassivo/web/templates/wiki/grenzen.html").read_text(encoding="utf-8")
+    assert "nicht einzeln löschen" in limits and 'href="/settings/reset"' in limits
