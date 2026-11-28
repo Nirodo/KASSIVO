@@ -205,8 +205,8 @@ def test_quoted_labels_exist_in_templates(pages, slug):
 # Meldungen, die das Wiki wörtlich zitiert: auf der Seite und im Code (oder in Vorlagen).
 MESSAGES = [
     ("zuordnung", "hat bestätigte Verteilung: Verteilung zuerst aufheben"),
-    ("zuordnung", "Zugeordnet. Die Absender-IBAN gehört mehreren Mitgliedern und wird künftig "
-                  "nicht automatisch zugeordnet."),
+    ("zuordnung", "Gemerkt: Dieser Absender gehört jetzt zum gewählten Mitglied (vorher zu "
+                  "einem anderen)."),
     ("beitraege", "Prüfungsstart gespeichert."),
     ("verteilung", "Betrag passt nicht zu ganzen Monatsbeiträgen"),
     ("verteilung", "Kein offener Monat (Mitglied ausgetreten oder Zahlung ohne fälligen Monat)"),
