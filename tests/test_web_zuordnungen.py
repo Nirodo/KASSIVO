@@ -203,3 +203,15 @@ def test_wrong_check_is_stale(client, db, bad):
               client.post(f"/zuordnungen/{eid}/forget", data={"check": bad})):
         assert r.status_code == 404 and "gibt es nicht mehr" in _text(r.text)
     assert _learned(db) == {FULL: a}
+
+
+def test_same_mask_gets_short_distinguishing_code(client, db):
+    twin = "XX00FAKEOTHERPAYER990001"  # gleiche Maske wie FULL: XX00…0001
+    a = _member(db, "A")
+    _entry(db, FULL, a)
+    _entry(db, twin, a)
+    _entry(db, OTHER, a)  # eigene Maske, keine Kennung
+    t = _text(client.get("/zuordnungen").text)
+    assert f"Kennung {CK[:6]}" in t and f"Kennung {entry_check(twin)[:6]}" in t
+    assert f"Kennung {entry_check(OTHER)[:6]}" not in t
+    assert twin not in t and FULL not in t

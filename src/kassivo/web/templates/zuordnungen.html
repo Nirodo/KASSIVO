@@ -13,7 +13,7 @@
   <tbody>
   {% for r in rows %}
   <tr>
-    <td>{{ r.iban }}</td>
+    <td>{{ r.iban }}{% if r.code %} <span class="hint">(Kennung {{ r.code }})</span>{% endif %}</td>
     <td>{% if r.member_id is none %}zahlt für mehrere{% else %}{{ r.member_name }}{% endif %}</td>
     <td><form method="post" action="/zuordnungen/{{ r.id }}" class="inline">
       <input type="hidden" name="check" value="{{ r.check }}">

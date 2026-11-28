@@ -6,6 +6,7 @@ Prüfkennung (SHA-256 der IBAN, verstecktes Feld) angesprochen, weil die
 rowid allein nicht stabil ist.
 """
 import hmac
+from collections import Counter
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -38,6 +39,11 @@ async def zuordnungen(request: Request, conn=Depends(get_conn)):
              "iban": mask_iban(normalize_iban(r["iban"]) or r["iban"]),
              "check": matching.entry_check(r["iban"])}
             for r in matching.remembered(conn)]
+    # Gleiche Maske bei verschiedenen IBANs: kurze Kennung (Anfang der
+    # Prüfkennung) unterscheidet sie, ohne mehr von der IBAN zu zeigen.
+    masks = Counter(r["iban"] for r in rows)
+    for r in rows:
+        r["code"] = r["check"][:6] if masks[r["iban"]] > 1 else ""
     return render(request, "zuordnungen.html", rows=rows, members=list_members(conn),
                   multi=MULTI)
 
