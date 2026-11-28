@@ -292,14 +292,14 @@ begin select raise(abort, 'Für dieses Datum gibt es keine offene Buchungsperiod
 create trigger posting_one_valid before insert on posting
 when new.tx_id is not null and new.reversal_of is null and exists (
   select 1 from posting p
-  where p.tx_id = new.tx_id and p.reversal_of is null
+  where p.tx_id = new.tx_id and +p.reversal_of is null
     and not exists (select 1 from posting r where r.reversal_of = p.id))
 begin select raise(abort, 'Der Umsatz hat schon eine gültige Buchung.'); end;
 -- höchstens ein gültiger Eröffnungsbestand je Konto
 create trigger posting_one_opening before insert on posting
 when new.opening_account_id is not null and new.reversal_of is null and exists (
   select 1 from posting p
-  where p.opening_account_id = new.opening_account_id and p.reversal_of is null
+  where p.opening_account_id = new.opening_account_id and +p.reversal_of is null
     and not exists (select 1 from posting r where r.reversal_of = p.id))
 begin select raise(abort, 'Das Konto hat schon einen Eröffnungsbestand.'); end;
 create trigger posting_reversal_ok before insert on posting
@@ -356,6 +356,7 @@ begin select raise(abort, 'Regeln buchen nur auf Ertrags- oder Aufwandskonten.')
 ```
 
 Hinweise:
+- `+p.reversal_of is null` (unäres Plus) in `posting_one_valid`, `posting_one_opening` und `ledger.VALID`: Ohne das wählt SQLite für `is null` den Index auf `reversal_of` und durchsucht alle Buchungen; jede Einfügung würde linear langsamer (gemessen: 20 000 Umsätze 8,7 s statt unter 1 s). Test `test_many_postings_stay_fast`.
 - Ausgeblendete Konten prüft nur der Code (ein Storno muss auch auf ein inzwischen ausgeblendetes Konto möglich sein).
 - Alle Funktionen in Triggern und `CHECK` (`typeof`, `length`, `trim`, `glob`, `raise`) laufen auch unter `trusted_schema=OFF`. Ein Test sichert das ab.
 - Abschluss mit Übertrag (spätere Task oder Schritt 5) braucht kein neues Schema. `period.status`/`closed_at`, die Quellen `closing` und `carryover` sowie die Sperre `posting_in_open_period` sind schon da. Ablauf dann: Sicherung, Ergebnis per `closing`-Buchung ins Vereinsvermögen, Periode schließen, `carryover`-Buchungen der Bestandskonten zum Start der Folgeperiode.
@@ -444,7 +445,8 @@ Hinweise:
 **Interfaces:**
 - `_migrate_to_4(conn) -> None`, Attribut `_migrate_to_4.fk_off = True` (Task 1). `today` kommt aus `date.today()`; für Tests über das Modulattribut `db._today` austauschbar (Standard `date.today`).
 - `class LedgerMigrationError(Exception)`: Meldung "Summenvergleich: Konto {number}, Jahr {jahr}: vorher {a} Cent, nachher {b} Cent." (keine Namen, keine IBAN; ohne Nummer "Konto-ID {id}"). `_migrate` macht daraus wie bei jedem Fehler `MigrationError` mit Rollback und Hinweis auf die Sicherung.
-- `_category_map(conn) -> dict[int, tuple[int, int]]`: Kategorie-ID auf (Konto für Eingänge, Konto für Ausgänge).
+- `_category_map(conn, categories) -> dict[int, tuple[int, int]]`: Kategorie-ID auf (Konto für Eingänge, Konto für Ausgänge); `categories` sind die in Schritt 1 gelesenen Zeilen `(id, name, kind)`, weil `category` in Schritt 3 schon gelöscht ist.
+- `_book_migrated_4`, `_migrate_rules_4`, `_sum_check_4`: eingefrorene Hilfsfunktionen. Regeln, die nie greifen konnten (unbekanntes Feld, leerer Text, Obergrenze < 0), entfallen; eine negative Untergrenze wird NULL (gleiches Verhalten, `CHECK` verlangt >= 0).
 
 **Ablauf in einer Transaktion (Fremdschlüssel aus):**
 1. Altbestand lesen (Python): Kategorien, Regeln, je Umsatz `id, account_id, booking_date, amount_cents, category_id, member_id`.

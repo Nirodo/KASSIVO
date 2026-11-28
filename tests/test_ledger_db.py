@@ -457,6 +457,15 @@ def test_seed_periods_from_first_tx_year():
     c.close()
 
 
+def test_seed_periods_reach_latest_tx_year():
+    c = db.connect(":memory:")
+    bank_tx(c, day="2027-01-03")
+    _install(c)
+    assert [r[0] for r in c.execute("select name from period order by start_date")] == \
+        ["Jahr 2026", "Jahr 2027"]
+    c.close()
+
+
 def test_seed_without_tx_only_current_year(lc):
     assert [r[0] for r in lc.execute("select name from period")] == ["Jahr 2026"]
 
@@ -471,6 +480,28 @@ def test_seed_does_not_commit():
     c.rollback()
     assert c.execute("select count(*) from ledger_account").fetchone()[0] == 0
     c.close()
+
+
+def test_one_valid_triggers_use_tx_and_opening_index():
+    """Der Planer darf für "reversal_of is null" nicht den Index auf reversal_of nehmen
+    (sonst wird jede Einfügung linear langsamer)."""
+    for name, col in (("posting_one_valid", "tx_id"), ("posting_one_opening",
+                                                       "opening_account_id")):
+        sql = next(s for s in db._statements(db._LEDGER_DDL_4) if f"trigger {name} " in s)
+        assert f"p.{col} = new.{col} and +p.reversal_of is null" in sql
+
+
+def test_many_postings_stay_fast(lc):
+    import time
+    lc.execute("insert into account(iban) values(?)", (IBAN1,))
+    lc.executemany('insert into "transaction"(account_id, booking_date, amount_cents,'
+                   " dedupe_key) values(1, '2026-03-01', 100, ?)",
+                   [(f"k{i}",) for i in range(8000)])
+    start = time.perf_counter()
+    for i in range(1, 8001):
+        pid = posting(lc, tx=i)
+        row(lc, pid, acc(lc, 1200), acc(lc, 3000), 100)
+    assert time.perf_counter() - start < 1.0
 
 
 def test_ledger_ddl_not_in_migrations_yet():

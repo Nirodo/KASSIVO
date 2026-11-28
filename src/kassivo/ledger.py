@@ -465,7 +465,7 @@ def reverse(conn, posting_id: int, *, source: str) -> int:
 
 
 # Feste SQL-Bausteine (nie aus Eingaben gebaut). Alias p für posting, t für "transaction".
-VALID = ("(p.reversal_of is null and not exists"
+VALID = ("(+p.reversal_of is null and not exists"
          " (select 1 from posting r_ where r_.reversal_of = p.id))")
 
 
@@ -614,7 +614,7 @@ def set_opening(conn, account_id: int, cents: int, day: str) -> int | None:
 # --- Abfragen ----------------------------------------------------------------------
 
 # Feste SQL-Bausteine für Abfragen mit Alias t für "transaction" (nie aus Eingaben gebaut).
-_VALID_P = ("(p_.reversal_of is null and not exists"
+_VALID_P = ("(+p_.reversal_of is null and not exists"
             " (select 1 from posting r_ where r_.reversal_of = p_.id))")
 BOOKED = f"exists (select 1 from posting p_ where p_.tx_id = t.id and {_VALID_P})"
 _OTHER_SIDE = ("case when w_.debit_account_id = b_.id then w_.credit_account_id"

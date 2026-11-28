@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import date, datetime
 from pathlib import Path
 
 from kassivo import backup, settings
@@ -258,14 +259,14 @@ begin select raise(abort, 'Für dieses Datum gibt es keine offene Buchungsperiod
 create trigger posting_one_valid before insert on posting
 when new.tx_id is not null and new.reversal_of is null and exists (
   select 1 from posting p
-  where p.tx_id = new.tx_id and p.reversal_of is null
+  where p.tx_id = new.tx_id and +p.reversal_of is null
     and not exists (select 1 from posting r where r.reversal_of = p.id))
 begin select raise(abort, 'Der Umsatz hat schon eine gültige Buchung.'); end;
 -- höchstens ein gültiger Eröffnungsbestand je Konto
 create trigger posting_one_opening before insert on posting
 when new.opening_account_id is not null and new.reversal_of is null and exists (
   select 1 from posting p
-  where p.opening_account_id = new.opening_account_id and p.reversal_of is null
+  where p.opening_account_id = new.opening_account_id and +p.reversal_of is null
     and not exists (select 1 from posting r where r.reversal_of = p.id))
 begin select raise(abort, 'Das Konto hat schon einen Eröffnungsbestand.'); end;
 create trigger posting_reversal_ok before insert on posting
@@ -391,11 +392,12 @@ def _seed_ledger_4(conn: sqlite3.Connection, today) -> None:
         conn.execute("insert into ledger_account(number, name, kind, group_id, bank_account_id)"
                      " values(?,?,?,?,?)",
                      (_next_free_number_4(conn, 1201), name, "asset", default[1], bank[0]))
-    first = conn.execute('select min(substr(booking_date, 1, 4)) from "transaction"'
-                         ).fetchone()[0]
+    first, last = conn.execute('select min(substr(booking_date, 1, 4)),'
+                               ' max(substr(booking_date, 1, 4)) from "transaction"').fetchone()
     start_year = min(int(first), today.year) if first else today.year
+    end_year = max(int(last), today.year) if last else today.year
     active = None
-    for year in range(start_year, today.year + 1):
+    for year in range(start_year, end_year + 1):
         pid = conn.execute(
             "insert into period(name, start_date, end_date) values(?,?,?)",
             (f"Jahr {year}", f"{year}-01-01", f"{year}-12-31")).lastrowid
@@ -403,6 +405,244 @@ def _seed_ledger_4(conn: sqlite3.Connection, today) -> None:
             active = pid
     conn.execute("insert into settings(key, value) values('active_period', ?)"
                  " on conflict(key) do update set value = excluded.value", (str(active),))
+
+
+# --- Migration 4 ------------------------------------------------------------------------
+#
+# Eingefroren wie _LEDGER_DDL_4: eigene Hilfsfunktionen, nicht ledger.py (einzige Ausnahme
+# ledger.check als reine Prüfung am Ende). Ablauf und Entscheidungen im Plan, Task 4.
+
+# "transaction" ohne category_id; übrige Spalten, Reihenfolge, unique und Fremdschlüssel wie
+# vorher (no_member aus Schema 3 steht am Ende).
+_TX_DDL_4 = """create table transaction_new(
+  id integer primary key,
+  account_id integer not null references account(id),
+  booking_date text not null, value_date text,
+  amount_cents integer not null, bank_ref text,
+  cp_name text, cp_iban text, purpose text,
+  dedupe_key text not null,
+  member_id integer references member(id),
+  batch_id integer references import_batch(id),
+  no_member integer not null default 0 check (no_member in (0,1)),
+  unique(account_id, dedupe_key))"""
+_TX_COLUMNS_4 = ("id, account_id, booking_date, value_date, amount_cents, bank_ref, cp_name,"
+                 " cp_iban, purpose, dedupe_key, member_id, batch_id, no_member")
+_RULE_FIELDS_4 = ("purpose", "cp_name", "cp_iban")
+# Nummernbereiche für neue Konten aus Kategorien; danach weiter ab 5000
+_NUMBER_RANGES_4 = {"income": (3500, 3999), "expense": (4500, 4999)}
+_OVERFLOW_START_4 = 5000
+# fest zugeordnete Kategorien des alten Startplans (Name casefold, Art) -> Kontonummern
+_FIXED_CATEGORIES_4 = {("sonstiges", "both"): (3900, 4900)}
+
+_today = date.today  # Tests tauschen das Modulattribut aus
+
+
+class LedgerMigrationError(Exception):
+    """Summenvergleich oder Prüfung nach Migration 4 fehlgeschlagen (ohne Personendaten)."""
+
+
+def _ref_4(conn, account_id: int) -> str:
+    number = conn.execute("select number from ledger_account where id = ?",
+                          (account_id,)).fetchone()[0]
+    return f"Konto {number}" if number is not None else f"Konto-ID {account_id}"
+
+
+def _new_account_4(conn, name: str, kind: str, groups: dict) -> int:
+    lo, hi = _NUMBER_RANGES_4[kind]
+    number = _next_free_number_4(conn, lo)
+    if number > hi:
+        number = _next_free_number_4(conn, _OVERFLOW_START_4)
+    group_id = groups[kind]
+    clean = _free_name_4(conn, name.strip()[:90] or "Kategorie", kind, group_id)
+    return conn.execute("insert into ledger_account(number, name, kind, group_id)"
+                        " values(?,?,?,?)", (number, clean, kind, group_id)).lastrowid
+
+
+def _category_map(conn, categories) -> dict[int, tuple[int, int]]:
+    """Kategorie-ID -> (Konto für Eingänge, Konto für Ausgänge), in der Reihenfolge id."""
+    groups = {kind: conn.execute("select id from account_group where kind = ? and name = ?",
+                                 (kind, name)).fetchone()[0] for kind, name in START_GROUPS_4}
+    start = {(name.casefold(), kind): conn.execute(
+        "select id from ledger_account where number = ?", (number,)).fetchone()[0]
+        for number, name, kind, _role, _group in START_PLAN_4}
+    by_number = {number: start[(name.casefold(), kind)]
+                 for number, name, kind, _role, _group in START_PLAN_4}
+
+    def account(name: str, kind: str) -> int:
+        found = start.get((name.strip().casefold(), kind))
+        return found if found is not None else _new_account_4(conn, name, kind, groups)
+
+    out = {}
+    for cat_id, name, kind in categories:
+        fixed = _FIXED_CATEGORIES_4.get((name.strip().casefold(), kind))
+        if fixed is not None:
+            out[cat_id] = (by_number[fixed[0]], by_number[fixed[1]])
+        elif kind == "in":
+            a = account(name, "income")
+            out[cat_id] = (a, a)
+        elif kind == "out":
+            a = account(name, "expense")
+            out[cat_id] = (a, a)
+        else:
+            out[cat_id] = (account(f"{name.strip()} (Einnahmen)", "income"),
+                           account(f"{name.strip()} (Ausgaben)", "expense"))
+    return out
+
+
+def _migrate_rules_4(conn, rules, cat_map, cat_kind) -> None:
+    """category_rule -> posting_rule in alter Reihenfolge (priority, id). Regeln, die nie
+    greifen konnten (unbekanntes Feld, leerer Text, Obergrenze < 0), entfallen; eine
+    negative Untergrenze heißt wie bisher keine Untergrenze."""
+    for _rid, cat_id, field, contains, priority, lo, hi in rules:
+        if cat_id not in cat_map or field not in _RULE_FIELDS_4 or not contains \
+                or len(contains) > 200 or (hi is not None and hi < 0):
+            continue
+        lo = None if lo is not None and lo < 0 else lo
+        income, expense = cat_map[cat_id]
+        kind = cat_kind[cat_id]
+        targets = [income] if kind == "in" else [expense] if kind == "out" else [income, expense]
+        for target in targets:
+            conn.execute("insert into posting_rule(account_id, field, contains, priority,"
+                         " min_cents, max_cents) values(?,?,?,?,?,?)",
+                         (target, field, contains, priority, lo, hi))
+
+
+def _book_migrated_4(conn, tx: int, bank: int, counter: int, amount: int) -> None:
+    """Eine Buchung mit einer Zeile; erst posting, dann Zeile (Siegel posting_row_sealed)."""
+    pid = conn.execute("insert into posting(booking_date, tx_id, source, created_at)"
+                       " select booking_date, id, 'migration', ? from \"transaction\""
+                       " where id = ?", (_now_4(), tx)).lastrowid
+    if amount > 0:
+        row = (pid, bank, counter, amount)
+    else:
+        row = (pid, counter, bank, -amount)
+    conn.execute("insert into posting_row(posting_id, debit_account_id, credit_account_id,"
+                 " cents) values(?,?,?,?)", row)
+
+
+def _now_4() -> str:
+    return datetime.now().replace(microsecond=0).isoformat()
+
+
+def _sum_check_4(conn, booked, cat_of, cat_map) -> None:
+    """Summenvergleich: erwartet aus den Altdaten (Python), tatsächlich per SQL."""
+    expected: dict = {}
+    expected_count = 0
+    for _tx, bank, counter, amount, year in booked:
+        expected_count += 1
+        expected[(counter, year)] = expected.get((counter, year), 0) + amount
+        expected[(bank, year)] = expected.get((bank, year), 0) - amount
+    actual: dict = {}
+    for acc_id, year, cents in conn.execute(
+            "select x.acc, x.year, sum(x.cents) from ("
+            " select r.credit_account_id as acc, substr(p.booking_date, 1, 4) as year,"
+            "  r.cents as cents from posting p join posting_row r on r.posting_id = p.id"
+            " union all"
+            " select r.debit_account_id, substr(p.booking_date, 1, 4), -r.cents"
+            "  from posting p join posting_row r on r.posting_id = p.id) x"
+            " group by x.acc, x.year"):
+        actual[(acc_id, year)] = cents  # Haben minus Soll
+    keys = sorted(k for k in set(expected) | set(actual)
+                  if expected.get(k, 0) != actual.get(k, 0))
+    if keys:
+        acc_id, year = keys[0]
+        raise LedgerMigrationError(
+            f"Summenvergleich: {_ref_4(conn, acc_id)}, Jahr {year}: vorher "
+            f"{expected.get(keys[0], 0)} Cent, nachher {actual.get(keys[0], 0)} Cent.")
+    count = conn.execute("select count(*) from posting where tx_id is not null").fetchone()[0]
+    if count != expected_count:
+        raise LedgerMigrationError(
+            f"Summenvergleich: {expected_count} Umsätze zu verbuchen, {count} gebucht.")
+    # je Kategorie und Jahr: Summe über ihre Konten gleich der früheren Kategoriesumme.
+    # Kategorien, die sich Konten teilen (z. B. Beiträge und Mitglied ohne Kategorie),
+    # werden gemeinsam verglichen.
+    bucket: dict = {}
+    for key, accounts in cat_map.items():
+        ids = {bucket[a] for a in accounts if a in bucket} | {key}
+        target = min(ids, key=str)
+        for a, b in list(bucket.items()):
+            if b in ids:
+                bucket[a] = target
+        for a in accounts:
+            bucket[a] = target
+    before: dict = {}
+    for tx_id, _bank, _counter, amount, year in booked:
+        k = (bucket[cat_map[cat_of[tx_id]][0]], year)
+        before[k] = before.get(k, 0) + amount
+    after: dict = {}
+    for (acc_id, year), cents in actual.items():
+        if acc_id in bucket:
+            k = (bucket[acc_id], year)
+            after[k] = after.get(k, 0) + cents
+    for k in sorted(set(before) | set(after), key=str):
+        if before.get(k, 0) != after.get(k, 0):
+            raise LedgerMigrationError(
+                f"Summenvergleich: Kategorie {k[0]}, Jahr {k[1]}: vorher {before.get(k, 0)}"
+                f" Cent, nachher {after.get(k, 0)} Cent.")
+
+
+def _migrate_to_4(conn: sqlite3.Connection) -> None:
+    """Schema 4 (#57): Journal mit doppelter Buchführung ersetzt die Kategorien.
+
+    Läuft mit ausgeschalteten Fremdschlüsseln (Neuaufbau von "transaction"); _migrate prüft
+    danach PRAGMA foreign_key_check. Scheitert der Summenvergleich, rollt _migrate zurück."""
+    # 1. Altbestand lesen
+    categories = [tuple(r) for r in conn.execute(
+        "select id, name, kind from category order by id")]
+    rules = [tuple(r) for r in conn.execute(
+        "select id, category_id, field, contains, priority, min_cents, max_cents"
+        " from category_rule order by priority, id")]
+    txs = [tuple(r) for r in conn.execute(
+        'select id, account_id, booking_date, amount_cents, category_id, member_id'
+        ' from "transaction" order by booking_date, id')]
+    # 2. "transaction" ohne category_id neu aufbauen (IDs bleiben)
+    conn.execute(_TX_DDL_4)
+    conn.execute(f"insert into transaction_new({_TX_COLUMNS_4})"
+                 f' select {_TX_COLUMNS_4} from "transaction"')
+    conn.execute('drop table "transaction"')
+    conn.execute('alter table transaction_new rename to "transaction"')
+    # 3. Kategorien entfernen
+    conn.execute("drop table category_rule")
+    conn.execute("drop table category")
+    # 4. Buchungstabellen und Startplan
+    for stmt in _statements(_LEDGER_DDL_4):
+        conn.execute(stmt)
+    _seed_ledger_4(conn, _today())
+    # 5. Kategorien zu Konten, 6. Regeln
+    cat_map = _category_map(conn, categories)
+    cat_kind = {cat_id: kind for cat_id, _name, kind in categories}
+    _migrate_rules_4(conn, rules, cat_map, cat_kind)
+    # 7. Verbuchen
+    fees = conn.execute("select id from ledger_account where role = 'fees'").fetchone()[0]
+    bank_of = {r[0]: r[1] for r in conn.execute(
+        "select bank_account_id, id from ledger_account where bank_account_id is not null")}
+    fee_key = "fees"  # Mitglied ohne Kategorie zählt im Vergleich bei "Beiträge"
+    cat_map_sum = {**cat_map, fee_key: (fees, fees)}
+    booked, cat_of = [], {}
+    for tx_id, account_id, day, amount, cat_id, member_id in txs:
+        if amount == 0:
+            continue
+        if cat_id is not None and cat_id in cat_map:
+            income, expense = cat_map[cat_id]
+            counter = income if amount > 0 else expense
+            cat_of[tx_id] = cat_id
+        elif cat_id is None and member_id is not None:
+            counter = fees
+            cat_of[tx_id] = fee_key
+        else:
+            continue
+        bank = bank_of[account_id]
+        _book_migrated_4(conn, tx_id, bank, counter, amount)
+        booked.append((tx_id, bank, counter, amount, day[:4]))
+    # 8. Summenvergleich, 9. Prüfung
+    _sum_check_4(conn, booked, cat_of, cat_map_sum)
+    from kassivo import ledger  # spät: ledger importiert periods, periods importiert db
+    findings = ledger.check(conn)
+    if findings:
+        raise LedgerMigrationError("Prüfung: " + " ".join(findings[:3]))
+
+
+_migrate_to_4.fk_off = True
 
 
 BASELINE_VERSION = 1
