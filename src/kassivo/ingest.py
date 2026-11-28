@@ -14,6 +14,7 @@ from pathlib import Path
 
 from kassivo import categories, dues, matching
 from kassivo.camt import CamtError, ParsedStatement, parse_camt052
+from kassivo.iban import mask_iban  # bleibt als ingest.mask_iban importierbar
 
 MAX_XML_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_BYTES = 200 * 1024 * 1024
@@ -30,10 +31,6 @@ class ImportResult:
     duplicates: int
     warnings: list[str]
     new_tx_ids: list[int]
-
-
-def mask_iban(iban: str) -> str:
-    return f"{iban[:4]}…{iban[-4:]}" if len(iban) > 8 else "…"
 
 
 def _is_xml(name: str) -> bool:

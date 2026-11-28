@@ -83,6 +83,28 @@ Verworfen: Spalte `opening_cents` am Konto (ein zweiter, nicht gebuchter Geldwer
 
 Migration 4 ist ein einziger Schritt in einer Transaktion. Scheitert sie (auch am Summenvergleich), bleibt die Datenbank auf Schema 3, und die Sicherung vor der Umstellung liegt in `backups/`. Ein Zurück auf 1.4.0 nach erfolgreicher Umstellung geht nur über die Sicherung vor der Umstellung (1.4.0 lehnt Schema 4 ab); Änderungen danach gehen verloren. Wiki "Update" und die Release-Notizen sagen das.
 
+### E12: Kontogruppen als eigene Tabelle (Vorgabe 2026-11-28)
+
+**Entscheidung:** Tabelle `account_group(id, kind, name)`; `ledger_account.group_id` ist optional. Eine Gruppe gehört zu genau einer Art (wie bei Webling: Gruppen stehen unter Aktiven, Passiven, Ertrag oder Aufwand). Der Name ist je Art eindeutig (Groß/Klein egal), "Veranstaltungen" darf es also als Ertrags- und als Aufwandsgruppe geben. Ein Trigger verlangt, dass Konto und Gruppe dieselbe Art haben. Der Kontenplan wird später nach Art, Gruppe, Nummer und Name gegliedert. Startgruppen (generisch): "Umlaufvermögen" (Aktiv), "Eigenkapital" (Passiv), "Ertrag" (Ertrag), "Ausgaben" (Aufwand).
+
+Begründung: Umbenennen einer Gruppe ist eine Zeile statt vieler; Tippfehler erzeugen keine zweite Gruppe; eine Gruppe kann leer existieren; der spätere CSV-Import findet Gruppen eindeutig über (Art, Name).
+
+Verworfen: Freitext `group_name` am Konto (Gruppe "Ertrag " und "ertrag" wären zwei Gruppen; Umbenennen ändert viele Konten; leere Gruppen gibt es nicht). Gruppen ohne Art (eine Gruppe könnte Ertrags- und Aufwandskonten mischen; Bilanz und Erfolgsrechnung bräuchten dann Sonderregeln).
+
+### E13: Kontonummer optional, Namen je Gruppe eindeutig (Vorgabe 2026-11-28)
+
+**Entscheidung:** `ledger_account.number` darf NULL sein; ist sie gesetzt, ist sie eindeutig (SQLite erlaubt mehrere NULL in `unique`). Der Name ist nur innerhalb von (Art, Gruppe) eindeutig, Konten ohne Gruppe bilden je Art einen eigenen Bereich: eindeutiger Ausdrucksindex `(kind, ifnull(group_id, 0), name collate nocase)`, im Code zusätzlich per `casefold`. Damit gehen "Spenden" als Ertrag und als Aufwand sowie "Essen" in zwei Gruppen. Der generische Startplan behält Nummern und bekommt Gruppen. Vereinsspezifische Namen kommen nicht ins Repo. Meldungen nennen ein Konto über seine Nummer, ohne Nummer über "Konto-ID n".
+
+Verworfen: Name global eindeutig (verbietet die verlangten Fälle). Name je Art eindeutig (verbietet "Essen" in zwei Aufwandsgruppen). Nummer Pflicht (der Nutzer arbeitet ohne Nummern).
+
+### E14: Kontenplan-Import aus CSV vorbereitet (Vorgabe 2026-11-28, Import selbst später)
+
+Spalten `nummer, konto, typ, gruppe, eroeffnung`. Das Modell trägt jede Zeile ohne Schemaänderung: `typ` `assets|liabilitys|income|expense` wird `asset|liability|income|expense`; `gruppe` wird über (Art, Name) gefunden oder angelegt (`ledger.find_group`, `create_group`); `nummer` leer bleibt NULL; `eroeffnung` wird `ledger.set_opening` (Aktiv- und Passivkonten, nicht das Vereinsvermögen selbst; Ertrag und Aufwand haben keinen Eröffnungsbestand). Gleiche Namen in verschiedenen Gruppen sind erlaubt (E13). Abweichend vom ursprünglichen Plan erlaubt `set_opening` deshalb auch Passivkonten: positiv heißt Haben Konto, Soll Vereinsvermögen.
+
+### E15: Geschäftsjahr = Kalenderjahr als Standard (Vorgabe 2026-11-28)
+
+Seed, Migration und `periods.ensure_period` legen Kalenderjahre "Jahr JJJJ" an. Andere Perioden (Vereinsjahr) legt der Nutzer selbst an (Task 7).
+
 ## Review Focus
 
 - Summenvergleich: unabhängig berechnet (erwartet aus Altdaten in Python, tatsächlich per SQL aus `posting_row`), bricht die Migration mit Rollback ab, Meldung ohne Personendaten.
@@ -154,12 +176,20 @@ Die App läuft in diesem Task weiter auf Schema 3. Die Tests legen die Tabellen 
 **SQL-DDL (`_LEDGER_DDL_4`, ab Freigabe eingefroren wie `SCHEMA`):**
 
 ```sql
+-- Kontogruppe wie bei Webling (E12): gehört zu einer Art, Name je Art eindeutig
+create table account_group(
+  id integer primary key,
+  kind text not null check(kind in ('asset','liability','income','expense')),
+  name text not null check(length(trim(name)) between 1 and 100));
+create unique index account_group_name on account_group(kind, name collate nocase);
+-- Nummer optional, wenn gesetzt eindeutig; Name je (Art, Gruppe) eindeutig (E13)
 create table ledger_account(
   id integer primary key,
-  number integer not null unique
-    check(typeof(number) = 'integer' and number between 1 and 99999),
-  name text not null unique check(length(trim(name)) between 1 and 100),
+  number integer unique
+    check(number is null or (typeof(number) = 'integer' and number between 1 and 99999)),
+  name text not null check(length(trim(name)) between 1 and 100),
   kind text not null check(kind in ('asset','liability','income','expense')),
+  group_id integer references account_group(id),
   hidden integer not null default 0 check(hidden in (0,1)),
   role text unique check(role in ('bank_default','fees','equity')),
   bank_account_id integer unique references account(id),
@@ -219,6 +249,21 @@ create index posting_row_debit on posting_row(debit_account_id);
 create index posting_row_credit on posting_row(credit_account_id);
 create index posting_rule_account on posting_rule(account_id);
 create index period_start on period(start_date);
+create unique index ledger_account_name
+  on ledger_account(kind, ifnull(group_id, 0), name collate nocase);
+create index ledger_account_group on ledger_account(group_id);
+
+create trigger ledger_account_group_kind before insert on ledger_account
+when new.group_id is not null
+ and (select kind from account_group where id = new.group_id) is not new.kind
+begin select raise(abort, 'Die Kontogruppe gehört zu einer anderen Kontoart.'); end;
+create trigger ledger_account_group_kind_upd before update of kind, group_id on ledger_account
+when new.group_id is not null
+ and (select kind from account_group where id = new.group_id) is not new.kind
+begin select raise(abort, 'Die Kontogruppe gehört zu einer anderen Kontoart.'); end;
+create trigger account_group_kind_fixed before update of kind on account_group
+when new.kind <> old.kind and exists (select 1 from ledger_account where group_id = old.id)
+begin select raise(abort, 'Die Art einer benutzten Kontogruppe lässt sich nicht ändern.'); end;
 
 create trigger posting_no_update before update on posting
 begin select raise(abort, 'Buchungen sind unveränderlich (Storno statt Ändern).'); end;
@@ -317,22 +362,22 @@ Hinweise:
 - Kontostand eines Bestandskontos am Tag X = Summe aller Zeilen bis X, über Periodengrenzen hinweg. Er braucht deshalb vor dem ersten Abschluss keinen Übertrag.
 - Die aktive Periode steht in `settings` (Schlüssel `active_period`, Wert = `period.id`). Es gibt keine eigene Spalte, weil "aktiv" eine Ansichtswahl ist und keine Eigenschaft der Daten.
 
-**Startplan (`START_PLAN_4`, Tupel Nummer, Name, Art, Rolle):**
+**Startplan (`START_PLAN_4`, Tupel Nummer, Name, Art, Rolle, Gruppe; Gruppen in `START_GROUPS_4`):**
 
-| Nummer | Name | Art | Rolle |
-|---|---|---|---|
-| 1000 | Barkasse | asset | |
-| 1200 | Bank | asset | `bank_default` |
-| 2000 | Vereinsvermögen | liability | `equity` |
-| 3000 | Beiträge | income | `fees` |
-| 3100 | Spenden | income | |
-| 3200 | Zinsen | income | |
-| 3900 | Sonstige Einnahmen | income | |
-| 4000 | Hauptverein | expense | |
-| 4100 | Bankgebühren | expense | |
-| 4900 | Sonstige Ausgaben | expense | |
+| Nummer | Name | Art | Rolle | Gruppe |
+|---|---|---|---|---|
+| 1000 | Barkasse | asset | | Umlaufvermögen |
+| 1200 | Bank | asset | `bank_default` | Umlaufvermögen |
+| 2000 | Vereinsvermögen | liability | `equity` | Eigenkapital |
+| 3000 | Beiträge | income | `fees` | Ertrag |
+| 3100 | Spenden | income | | Ertrag |
+| 3200 | Zinsen | income | | Ertrag |
+| 3900 | Sonstige Einnahmen | income | | Ertrag |
+| 4000 | Hauptverein | expense | | Ausgaben |
+| 4100 | Bankgebühren | expense | | Ausgaben |
+| 4900 | Sonstige Ausgaben | expense | | Ausgaben |
 
-`_seed_ledger_4(conn, today: date) -> None` legt den Startplan an und verknüpft jedes vorhandene Bankkonto (`account`, nach `id`): das erste mit "Bank" (1200), jedes weitere mit einem neuen Aktivkonto "Bank DE12…1234" (maskiert über `iban.mask_iban`, bei Namensgleichheit " (2)", " (3)") und der nächsten freien Nummer ab 1201. Dazu kommen Perioden "Jahr JJJJ" (Kalenderjahr, offen) vom frühesten Buchungsjahr der Umsätze (ohne Umsätze: `today.year`) bis `today.year`. `settings.active_period` zeigt auf das Jahr von `today`.
+`_seed_ledger_4(conn, today: date) -> None` legt Startgruppen und Startplan an und verknüpft jedes vorhandene Bankkonto (`account`, nach `id`): das erste mit "Bank" (1200), jedes weitere mit einem neuen Aktivkonto "Bank DE12…1234" in der Gruppe von "Bank" (maskiert über `iban.mask_iban`, bei Namensgleichheit in der Gruppe " (2)", " (3)") und der nächsten freien Nummer ab 1201. Dazu kommen Perioden "Jahr JJJJ" (Kalenderjahr, offen) vom frühesten Buchungsjahr der Umsätze (ohne Umsätze: `today.year`) bis `today.year`. `settings.active_period` zeigt auf das Jahr von `today`.
 
 **Interfaces `periods.py` (kein `commit()`):**
 - `create_period(conn, name: str, start: date, end: date) -> int`; `update_period(conn, period_id: int, *, name: str, start: date, end: date) -> None`; `delete_period(conn, period_id: int) -> None` (nur ohne Buchungen); `list_periods(conn) -> list[sqlite3.Row]` (`id, name, start_date, end_date, status, postings`, nach `start_date`).
@@ -347,8 +392,9 @@ Hinweise:
 - `class LedgerError(ValueError)`: deutsche Meldung ohne IBAN, Namen, Zweck.
 - `KINDS = ("asset", "liability", "income", "expense")`, `KIND_TEXT = {"asset": "Aktiv", "liability": "Passiv", "income": "Ertrag", "expense": "Aufwand"}`, `SOURCES` wie im `CHECK`.
 - `@dataclass(frozen=True) class Part: account_id: int; cents: int; cost_center_id: int | None = None`. `cents` hat das Vorzeichen des Umsatzes aus Sicht der Bank (Eingang positiv).
-- Konten: `create_account(conn, number: int, name: str, kind: str) -> int`; `update_account(conn, account_id: int, *, number: int, name: str) -> None`; `set_account_hidden(conn, account_id: int, hidden: bool) -> None`; `delete_account(conn, account_id: int) -> None`; `list_accounts(conn, *, visible_only: bool = False, kinds: tuple[str, ...] | None = None) -> list[sqlite3.Row]` (Spalten `id, number, name, kind, hidden, role, bank_account_id, used`; `used` = Zeilen plus Regeln; nach `number`); `next_free_number(conn, start: int) -> int`; `fees_account_id(conn) -> int`; `equity_account_id(conn) -> int`; `bank_ledger_account(conn, bank_account_id: int) -> int` (vorhandenes, sonst `bank_default` verknüpfen, sonst neu wie im Seed).
-- Prüfregeln Konten: Nummer ist eine ganze Zahl von 1 bis 99 999 und noch frei. Name nach `strip()` 1 bis 100 Zeichen, eindeutig ohne Groß/Klein (`casefold`), nicht "Ohne Kategorie" (bis Schritt 3 reserviert). Art in `KINDS`. Ausblenden geht nicht bei Rolle oder Bankkonto. Löschen geht nur ohne Zeilen, Regeln, Rolle und Bankkonto.
+- Kontogruppen (E12): `create_group(conn, kind: str, name: str) -> int`; `rename_group(conn, group_id: int, name: str) -> None`; `delete_group(conn, group_id: int) -> None` (nur ohne Konten); `find_group(conn, kind: str, name: str) -> int | None` (casefold, für den späteren CSV-Import); `list_groups(conn, kind: str | None = None) -> list[sqlite3.Row]` (`id, kind, name, accounts`, nach Art und Name). Name nach `strip()` 1 bis 100 Zeichen, je Art eindeutig ohne Groß/Klein.
+- Konten: `create_account(conn, name: str, kind: str, *, number: int | None = None, group_id: int | None = None) -> int`; `update_account(conn, account_id: int, *, name: str, number: int | None, group_id: int | None) -> None`; `set_account_hidden(conn, account_id: int, hidden: bool) -> None`; `delete_account(conn, account_id: int) -> None`; `list_accounts(conn, *, visible_only: bool = False, kinds: tuple[str, ...] | None = None) -> list[sqlite3.Row]` (Spalten `id, number, name, kind, group_id, group_name, hidden, role, bank_account_id, used`; `used` = Zeilen plus Regeln; nach Art in `KINDS`-Reihenfolge, Gruppe (ohne Gruppe zuletzt), Nummer (ohne Nummer zuletzt), Name); `account_label(row) -> str` ("1200 Bank" oder "Bank"); `next_free_number(conn, start: int) -> int`; `fees_account_id(conn) -> int`; `equity_account_id(conn) -> int`; `bank_ledger_account(conn, bank_account_id: int) -> int` (vorhandenes, sonst `bank_default` verknüpfen, sonst neu wie im Seed).
+- Prüfregeln Konten: Nummer ist leer (`None`) oder eine ganze Zahl von 1 bis 99 999 und noch frei. Name nach `strip()` 1 bis 100 Zeichen, eindeutig ohne Groß/Klein (`casefold`) nur innerhalb von (Art, Gruppe), nicht "Ohne Kategorie" (bis Schritt 3 reserviert). Art in `KINDS`. Gruppe vorhanden und von derselben Art. Ausblenden geht nicht bei Rolle oder Bankkonto. Löschen geht nur ohne Zeilen, Regeln, Rolle und Bankkonto.
 - Kostenstellen: `create_cost_center(conn, name: str) -> int`; `rename_cost_center(conn, cc_id: int, name: str) -> None`; `set_cost_center_hidden(conn, cc_id: int, hidden: bool) -> None`; `delete_cost_center(conn, cc_id: int) -> None` (nur unbenutzt); `list_cost_centers(conn, *, visible_only: bool = False) -> list[sqlite3.Row]` (`id, name, hidden, used`).
 - Buchen: `post(conn, booking_date: str, rows: list[tuple[int, int, int, int | None]], *, source: str, tx_id: int | None = None, opening_account_id: int | None = None, text: str | None = None, voucher: str | None = None) -> int`. Zeilen sind `(debit_id, credit_id, cents, cost_center_id)`. Prüft vorab mit verständlicher Meldung: Konten vorhanden und sichtbar, Kostenstelle sichtbar, mindestens eine Zeile, Periode offen (`periods.is_open`). `created_at` = jetzt, auf Sekunden.
 - `reverse(conn, posting_id: int, *, source: str) -> int`: gespiegelte Zeilen (Soll und Haben getauscht), Datum, `tx_id` und `opening_account_id` des Originals. Ist die Buchung schon storniert oder selbst ein Storno: `LedgerError`. Liegt sie in einer abgeschlossenen Periode: `LedgerError` "Periode abgeschlossen".
@@ -357,11 +403,11 @@ Hinweise:
 - `set_counter_account(conn, tx_id: int, account_id: int | None, *, cost_center_id: int | None = None, source: str) -> int | None`: `None` heißt "Ohne Kategorie" (stornieren, falls gebucht).
 - `unbook_tx(conn, tx_id: int, *, source: str) -> bool` (True, wenn storniert wurde).
 - `book_fees_if_unbooked(conn, tx_id: int) -> bool`: nur bei Eingang ohne gültige Buchung und mit offener Periode. Bucht auf `fees_account_id` mit `source='fee'`. Bei abgeschlossener Periode: False, kein Fehler.
-- Eröffnungsbestand: `set_opening(conn, account_id: int, cents: int, day: str) -> int | None`. Nur Aktivkonten. `cents` 0 heißt kein Eröffnungsbestand (stornieren). Positiv: Soll Konto, Haben Vereinsvermögen. Negativ (überzogenes Konto): umgekehrt mit `abs`. Gleicher Betrag und Tag: nichts schreiben. Sonst stornieren und neu buchen, `source='opening'`. `get_opening(conn, account_id: int) -> tuple[int, str] | None`.
+- Eröffnungsbestand: `set_opening(conn, account_id: int, cents: int, day: str) -> int | None`. Aktiv- und Passivkonten (E14), nicht das Konto mit Rolle `equity`. `cents` 0 heißt kein Eröffnungsbestand (stornieren). Aktivkonto positiv: Soll Konto, Haben Vereinsvermögen; Passivkonto positiv: Soll Vereinsvermögen, Haben Konto. Negativ (überzogenes Konto): jeweils umgekehrt mit `abs`. Gleicher Betrag und Tag: nichts schreiben. Sonst stornieren und neu buchen, `source='opening'`. `get_opening(conn, account_id: int) -> tuple[int, str] | None`.
 - Kontostand: `balance(conn, account_id: int, until: str | None = None) -> int` (Soll minus Haben bis einschließlich `until`, für Aktivkonten positiv = Guthaben); `money_accounts(conn, until: str) -> list[dict]` je sichtbarem Aktivkonto mit `id, number, name, opening_cents, opening_day, booked_cents` (`balance`), bei Bankkonten zusätzlich `statement_cents` (Eröffnungsbestand plus Summe aller Umsätze bis `until`), `unbooked` (Anzahl Umsätze bis `until` ohne gültige Buchung) und `diff_cents` (`statement_cents - booked_cents`).
 - `counter_accounts(conn, tx_ids) -> dict[int, list[int]]` (gültige Buchung, Gegenseite, aufsteigend; in Blöcken zu 500 IDs wie `dues.distribution_counts`).
 - Feste SQL-Bausteine für Abfragen mit Alias `t` für `"transaction"` (nie aus Nutzereingaben gebaut): `VALID` (Alias `p`: kein Storno, nicht storniert), `BOOKED` (Umsatz hat gültige Buchung), `COUNTER` (Gegenkonto-ID, wenn genau eines, sonst NULL), `ON_FEES` (gültige Buchung hat eine Zeile auf dem Konto mit Rolle `fees`).
-- `check(conn) -> list[str]`: Befunde, leer heißt in Ordnung. Prüft mengenbasiert: Buchung ohne Zeilen; Storno spiegelt das Original nicht genau; Bankseite einer gültigen Umsatz-Buchung ungleich `amount_cents`; mehr als eine gültige Buchung je Umsatz oder Eröffnungsbestand je Konto; gültige Buchung auf einem 0-Cent-Umsatz; Bankkonto ohne Aktivkonto; Buchung außerhalb jeder Periode. Texte nennen nur Buchungs- und Kontonummern.
+- `check(conn) -> list[str]`: Befunde, leer heißt in Ordnung. Prüft mengenbasiert: Buchung ohne Zeilen; Storno spiegelt das Original nicht genau; Bankseite einer gültigen Umsatz-Buchung ungleich `amount_cents`; mehr als eine gültige Buchung je Umsatz oder Eröffnungsbestand je Konto; gültige Buchung auf einem 0-Cent-Umsatz; Bankkonto ohne Aktivkonto; Buchung außerhalb jeder Periode. Texte nennen nur Buchungs- und Kontonummern (ohne Nummer "Konto-ID n").
 
 - [ ] Tests zuerst, `tests/test_ledger_db.py` (rohes SQL gegen die Trigger, ohne `ledger.py`):
   - `test_row_amount_zero_negative_float_rejected`: `cents` 0, -1, 1.5, '100' ergeben `IntegrityError`.
@@ -376,15 +422,17 @@ Hinweise:
   - `test_rule_on_asset_rejected` (insert und update).
   - `test_triggers_work_under_hardened_connection`: Datei-Datenbank, mit `restore.harden` geöffnet. Gültige Buchung, Storno und Neubuchung gehen; eine zweite gültige Buchung wird abgelehnt.
   - `test_seed_links_first_bank_and_creates_more`: Zwei Bankkonten: das erste an 1200 "Bank", das zweite an 1201 "Bank DE11…1111". Startplan vollständig, Rollen eindeutig.
+  - Gruppen und Namen (E12, E13): `test_number_optional_and_unique` (zwei Konten ohne Nummer gehen, doppelte Nummer nicht); `test_same_name_other_kind_or_group_ok` ("Spenden" Ertrag und Aufwand; "Essen" in zwei Aufwandsgruppen); `test_same_name_same_group_rejected` (auch Groß/Klein, auch ohne Gruppe); `test_group_kind_must_match` (insert und update); `test_group_name_unique_per_kind`; `test_used_group_kind_fixed`; `test_seed_groups`.
   - `test_seed_periods_from_first_tx_year`: Umsätze ab 2023, `today` 2026-11-28: Perioden "Jahr 2023" bis "Jahr 2026", alle offen, aktiv ist 2026. Ohne Umsätze nur "Jahr 2026".
 - [ ] Tests zuerst, `tests/test_periods.py`: `test_create_validates` (Ende vor Start, Name leer oder doppelt, Überschneidung: `PeriodError`); `test_vereinsjahr_july_to_june`; `test_ensure_period_creates_calendar_year`; `test_ensure_period_fills_gap_only` (Nachbarn 2026-07-01..2027-06-30 und keine davor: 2026-03-05 ergibt 2026-01-01..2026-06-30); `test_ensure_period_name_taken_gets_suffix`; `test_get_active_falls_back_to_today_then_last`; `test_delete_only_without_postings`; `test_update_cannot_drop_postings`.
 - [ ] Tests zuerst, `tests/test_ledger.py`:
-  - Konten: `test_create_account_validates` (Nummer 0, 100000, "12" oder doppelt; Name leer, 101 Zeichen, "beiträge" gegen "Beiträge", "Ohne Kategorie"; Art "x": jeweils `LedgerError`, DB unverändert); `test_update_account_renames_and_renumbers`; `test_hide_role_or_bank_account_rejected`; `test_delete_only_unused`; `test_list_accounts_used_counts_rows_and_rules`; `test_next_free_number_skips_taken`; `test_bank_ledger_account_links_default_then_creates`.
+  - Gruppen: `test_group_create_rename_delete`; `test_group_validates` (leer, doppelt je Art, Art "x"); `test_find_group_casefold`; `test_delete_used_group_rejected`.
+  - Konten: `test_create_account_validates` (Nummer 0, 100000, "12" oder doppelt; Name leer, 101 Zeichen, "beiträge" gegen "Beiträge" in derselben Gruppe, "Ohne Kategorie"; Art "x"; Gruppe anderer Art oder unbekannt: jeweils `LedgerError`, DB unverändert); `test_create_account_without_number`; `test_same_name_in_other_group_or_kind_ok`; `test_update_account_group_and_clear_number`; `test_list_accounts_order_kind_group_number`; `test_update_account_renames_and_renumbers`; `test_hide_role_or_bank_account_rejected`; `test_delete_only_unused`; `test_list_accounts_used_counts_rows_and_rules`; `test_next_free_number_skips_taken`; `test_bank_ledger_account_links_default_then_creates`.
   - Kostenstellen: `test_cost_center_create_rename_hide_delete`; `test_delete_used_cost_center_rejected`; `test_hidden_cost_center_not_bookable`.
   - Buchen: `test_book_income_debits_bank` (+1700: Soll Bank, Haben Beiträge, 1700); `test_book_expense_credits_bank` (-500: Soll Hauptverein, Haben Bank, 500); `test_book_zero_amount_rejected`; `test_parts_sum_must_equal_amount` (1700 gegen 1000 + 699: Fehler; 1000 + 700: zwei Zeilen); `test_split_with_mixed_signs` (+1000 = +1200 Beiträge, -200 Bankgebühren: Bankseite netto 1000); `test_duplicate_account_in_parts_rejected`; `test_own_bank_as_counter_rejected`; `test_hidden_account_rejected_for_new_but_reversal_ok`; `test_book_tx_creates_missing_period`.
   - Doppelt und Storno: `test_same_booking_twice_is_noop` (zweiter Aufruf: gleiche `id`, keine neue Zeile, kein Storno); `test_change_account_reverses_and_rebooks` (danach drei Buchungen: Original, Storno, neu; Saldo je Konto stimmt; genau eine gültige); `test_set_none_reverses`; `test_set_none_on_unbooked_is_noop`; `test_reverse_twice_rejected`; `test_reversal_keeps_original_date`; `test_reverse_in_closed_period_rejected`.
   - Beiträge: `test_book_fees_if_unbooked_only_once`; `test_book_fees_skips_booked_outgoing_and_closed`.
-  - Eröffnungsbestand und Kontostand: `test_opening_positive_and_negative` (+50 000 und -1 234: Soll und Haben richtig, Gegenkonto Vereinsvermögen); `test_opening_zero_reverses`; `test_opening_same_twice_is_noop`; `test_opening_change_reverses_and_rebooks`; `test_opening_only_for_asset`; `test_balance_until_date`; `test_money_accounts_shows_unbooked_difference` (Eröffnung 10 000, Umsätze +1 700 gebucht und -300 nicht gebucht: `booked_cents` 11 700, `statement_cents` 11 400, `unbooked` 1, `diff_cents` -300); `test_money_accounts_skips_hidden`.
+  - Eröffnungsbestand und Kontostand: `test_opening_positive_and_negative` (+50 000 und -1 234: Soll und Haben richtig, Gegenkonto Vereinsvermögen); `test_opening_zero_reverses`; `test_opening_same_twice_is_noop`; `test_opening_change_reverses_and_rebooks`; `test_opening_only_for_asset_and_liability` (Ertrag, Aufwand und Vereinsvermögen abgelehnt; Passivkonto positiv: Haben Konto); `test_balance_until_date`; `test_money_accounts_shows_unbooked_difference` (Eröffnung 10 000, Umsätze +1 700 gebucht und -300 nicht gebucht: `booked_cents` 11 700, `statement_cents` 11 400, `unbooked` 1, `diff_cents` -300); `test_money_accounts_skips_hidden`.
   - Abfragen: `test_counter_accounts_for_split_and_reversed`; `test_sql_fragments_match_python` (30 zufällige, festgesäte Umsätze mit Buchungen, Storni und Teilungen: `BOOKED`, `COUNTER`, `ON_FEES` per SQL gleich `counter_accounts` und `valid_posting_id`).
   - Prüfung: `test_check_clean_db_empty`; `test_check_finds_bank_side_mismatch` (Zeilen per rohem SQL mit falschem Betrag); `test_check_finds_posting_without_rows`; `test_check_finds_bad_reversal`; `test_check_messages_without_personal_data` (Name und IBAN des Umsatzes kommen in keinem Befund vor).
 - [ ] Rot sehen, umsetzen, grün. Volle Suite grün (App unverändert auf Schema 3). Commit `feat: Buchungskern mit Konten, Perioden, Eröffnungsbestand und Storno` (Refs #57).
@@ -395,7 +443,7 @@ Hinweise:
 
 **Interfaces:**
 - `_migrate_to_4(conn) -> None`, Attribut `_migrate_to_4.fk_off = True` (Task 1). `today` kommt aus `date.today()`; für Tests über das Modulattribut `db._today` austauschbar (Standard `date.today`).
-- `class LedgerMigrationError(Exception)`: Meldung "Summenvergleich: Konto {number}, Jahr {jahr}: vorher {a} Cent, nachher {b} Cent." (keine Namen, keine IBAN). `_migrate` macht daraus wie bei jedem Fehler `MigrationError` mit Rollback und Hinweis auf die Sicherung.
+- `class LedgerMigrationError(Exception)`: Meldung "Summenvergleich: Konto {number}, Jahr {jahr}: vorher {a} Cent, nachher {b} Cent." (keine Namen, keine IBAN; ohne Nummer "Konto-ID {id}"). `_migrate` macht daraus wie bei jedem Fehler `MigrationError` mit Rollback und Hinweis auf die Sicherung.
 - `_category_map(conn) -> dict[int, tuple[int, int]]`: Kategorie-ID auf (Konto für Eingänge, Konto für Ausgänge).
 
 **Ablauf in einer Transaktion (Fremdschlüssel aus):**
@@ -406,7 +454,7 @@ Hinweise:
 5. Kategorien zu Konten (Ergebnis `_category_map`), je Kategorie in der Reihenfolge `id`:
    - `in`: Ertragskonto. `out`: Aufwandskonto. `both`: je ein Ertrags- und ein Aufwandskonto.
    - Wiederverwendung eines Startkontos, wenn Name (casefold) und Art passen. Fest: "Beiträge" auf 3000 (Rolle `fees`), "Hauptverein" auf 4000, "Sonstiges" (`both`) auf 3900 "Sonstige Einnahmen" und 4900 "Sonstige Ausgaben".
-   - Sonst neues Konto. Name = Kategoriename, bei `both` "Name (Einnahmen)" und "Name (Ausgaben)". Ist der Name schon vergeben, kommt " (2)" dazu. Nummer = `next_free_number` ab 3500 (Ertrag) oder 4500 (Aufwand). Sind die Bereiche voll, die nächste freie Nummer ab 5000.
+   - Sonst neues Konto in der Startgruppe der Art ("Ertrag" bzw. "Ausgaben"). Name = Kategoriename, bei `both` "Name (Einnahmen)" und "Name (Ausgaben)" (eindeutig in der Auswahl „Kategorie“, die bis Schritt 3 Ertrag und Aufwand gemeinsam zeigt). Ist der Name in dieser Art und Gruppe schon vergeben (E13), kommt " (2)" dazu; gleiche Namen in anderer Art bleiben ohne Zusatz. Nummer = `next_free_number` ab 3500 (Ertrag) oder 4500 (Aufwand). Sind die Bereiche voll, die nächste freie Nummer ab 5000.
 6. Regeln: jede `category_rule` wird zu `posting_rule` mit gleichem `field`, `contains`, `priority`, `min_cents`, `max_cents`. `in` zeigt auf das Ertragskonto, `out` auf das Aufwandskonto, `both` wird zu zwei Regeln. Die Reihenfolge `priority, id` bleibt erhalten (neue IDs in alter Reihenfolge).
 7. Verbuchen, je Umsatz mit `amount_cents != 0`, in der Reihenfolge `booking_date, id`, `source='migration'`:
    - Mit `category_id`: Gegenkonto = Eingangs- oder Ausgangskonto der Kategorie nach Vorzeichen. Ein Ausgang mit Einnahme-Kategorie (z. B. Rückbuchung "Beiträge") wird damit Soll Beiträge, Haben Bank. Das ist richtig: es mindert den Ertrag.
@@ -427,7 +475,9 @@ Leistung: Ziel unter 10 s für 20 000 Umsätze auf dem CI-Rechner. Messung mit `
 - [ ] Tests zuerst, `tests/test_migration_4.py` (Hilfsfunktion `_v3(tmp_path, rows)` baut eine Schema-3-Datei mit `db.connect`, erfundenen Mitgliedern, Kategorien, Regeln, Umsätzen, Verteilungen, `no_member`, `member_iban`):
   - `test_fresh_db_gets_start_plan_and_period`: Neue Datenbank: Startplan (10 Konten), Perioden, keine Buchung, keine Tabelle `category`, keine Spalte `category_id`.
   - `test_categories_become_accounts`: "Beiträge" ist 3000 mit Rolle `fees`, "Hauptverein" ist 4000, "Sonstiges" ist 3900 und 4900, eigene "Miete" (`out`) ist 4500, eigene "Müller" (`both`) ist 3500 "Müller (Einnahmen)" und 4501 "Müller (Ausgaben)".
-  - `test_name_collision_gets_suffix`: Kategorie "Spenden" mit `out` ergibt "Spenden (2)" als Aufwandskonto.
+  - `test_same_name_other_kind_no_suffix`: Kategorie "Spenden" mit `out` ergibt Aufwandskonto "Spenden" (Ertragskonto 3100 "Spenden" bleibt, E13).
+  - `test_name_collision_gets_suffix`: Kategorien "Miete (Ausgaben)" (`out`) und "Miete" (`both`) ergeben "Miete (Ausgaben)" und "Miete (Ausgaben) (2)".
+  - `test_migrated_accounts_in_start_groups`.
   - `test_many_categories_overflow_numbers`: 600 Kategorien `in`: alle bekommen eindeutige Nummern ≤ 99 999.
   - `test_rules_keep_order_and_split_both`: Regel auf `both` wird zu zwei Regeln. `apply_rules` (neu, Task 5) wird hier nicht gebraucht; geprüft werden Felder und Reihenfolge.
   - `test_tx_with_category_booked_by_sign`: Eingang mit "Sonstiges" auf 3900, Ausgang mit "Sonstiges" auf 4900, Ausgang mit "Beiträge" Soll 3000.
@@ -488,6 +538,7 @@ Abschluss-Kontrolle: `grep -rn "category" src/kassivo` trifft nur noch `categori
 **Files:** Create `src/kassivo/web/accounts_routes.py`, `web/templates/accounts.html`; Modify `web/app.py` (Router), `web/templates/_nav.html`, `web/templates/categories.html` (Hinweis wird Link auf `/accounts`); Test `tests/test_web_accounts.py`, `tests/test_web_layout.py`.
 
 **Interfaces:** Consumes Task 3 (`ledger.*account*`).
+- Vorgabe 2026-11-28: gegliedert nach Art und darin nach Kontogruppe (E12); Nummer im Formular optional (E13); Gruppen anlegen, umbenennen, löschen (nur leer).
 - `GET /accounts`: Tabelle je Art (Aktiv, Passiv, Ertrag, Aufwand) mit Nummer, Name, Status ("ausgeblendet", "von KASSIVO benötigt", "Bankkonto …1234" maskiert) und Zahl der Verwendungen. Ausgeblendete Konten stehen ausgegraut am Ende ihrer Gruppe. Formular "Konto anlegen" (Nummer, Name, Art) mit Vorschlag `next_free_number` je Art (3500, 4500, 1001, 2001 als Startwerte).
 - `POST /accounts`: Felder `number`, `name`, `kind`. Fehler ergeben 422 mit Formularwerten und deutscher Meldung. Erfolg: 303 auf `/accounts?ok=created`.
 - `POST /accounts/{account_id:int}`: Felder `number`, `name`. Gleiche Prüfung.
