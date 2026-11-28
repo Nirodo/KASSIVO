@@ -33,6 +33,11 @@ def backup_dir(db_path: Path) -> Path:
     return Path(db_path).parent / "backups"
 
 
+def update_dir(db_path: Path) -> Path:
+    """Heruntergeladene Update-Pakete: neben der Datenbank, nicht im Projektordner."""
+    return Path(db_path).parent / "updates"
+
+
 def cloud_warning(db_path: Path) -> str | None:
     parts = [p.casefold() for p in Path(db_path).parts]
     if any(m in p for p in parts for m in CLOUD_MARKERS):

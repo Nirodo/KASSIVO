@@ -55,6 +55,9 @@ target/
 bin/
 obj/
 
+# Update: Entpackordner und alter Stand (update.bat)
+.update/
+
 # Logs / Temp
 *.log
 logs/
