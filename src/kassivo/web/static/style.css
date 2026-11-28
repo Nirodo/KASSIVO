@@ -178,6 +178,8 @@ td.status { text-align: center; }
 .status-proposal { box-shadow: inset 0 -4px 0 var(--warn-fg); }
 .status-note { font-size: .8rem; font-style: italic; }
 .status-paid .status-amount, .status-partial .status-amount, .status-overdue .status-amount { color: inherit; }
+a.cell-link { display: block; color: inherit; text-decoration: none; }
+a.cell-link:hover .status-word, a.cell-link:focus .status-word { text-decoration: underline; }
 .legend .status { padding: .1rem .4rem; border-radius: 3px; }
 dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; }
 dl.facts dt { font-weight: 600; }

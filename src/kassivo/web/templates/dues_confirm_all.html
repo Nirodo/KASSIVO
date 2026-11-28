@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Alle Vorschläge bestätigen{% endblock %}
+{% block content %}
+<p><a href="/dues">Zurück zur Beitragsübersicht</a></p>
+{% if items %}
+<p>Diese Zahlungen warten auf Ihre Prüfung. Bestätigt werden nur die angehakten, und nur so, wie sie hier stehen.
+  Hat sich ein Vorschlag inzwischen geändert, wird er übersprungen und danach gemeldet.
+  Nicht angehakt sind Vorschläge, die Sie selbst zur Prüfung gestellt haben, die vor dem Prüfungsstart liegen
+  oder die einen Monat überzahlen würden. Einen Monat überzahlt die Sammelbestätigung nie.</p>
+{% if limited %}<p class="notice" role="status">Es werden die ersten {{ limit }} Vorschläge angezeigt. Die übrigen folgen nach dem Bestätigen.</p>{% endif %}
+<form method="post" action="/dues/confirm-all">
+<div class="table-wrap">
+<table>
+  <caption>Vorschläge zur Prüfung, älteste zuerst</caption>
+  <thead><tr><th scope="col">Bestätigen</th><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col" class="num">Betrag</th><th scope="col">Monate</th><th scope="col">Grund</th></tr></thead>
+  <tbody>
+  {% for i in items %}
+  <tr>
+    <td><input type="checkbox" name="pick" value="{{ i.signature }}"{% if i.selected %} checked{% endif %} id="pick-{{ i.tx_id }}">
+      <label class="visually-hidden" for="pick-{{ i.tx_id }}">Zahlung vom {{ i.booking_date }} von {{ i.member_name }} bestätigen</label></td>
+    <td><a href="/transactions/{{ i.tx_id }}/allocate">{{ i.booking_date }}</a></td>
+    <td>{{ i.member_name }}{% if i.cp_name %}<br><span class="hint">{{ i.cp_name }}</span>{% endif %}</td>
+    <td class="num">{{ i.amount_cents | eur }}</td>
+    <td>{% for month, cents in i.allocations %}{{ month }}: {{ cents | eur }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+    <td>{{ i.reason or "" }}{% for m in i.overpaid %}<br><strong>Monat {{ m }} wäre überzahlt.</strong>{% endfor %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p><button type="submit">Angehakte Vorschläge bestätigen</button></p>
+</form>
+{% else %}
+<p>Keine Vorschläge warten auf Ihre Prüfung.</p>
+{% endif %}
+{% endblock %}

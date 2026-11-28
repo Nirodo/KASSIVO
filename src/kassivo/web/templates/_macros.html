@@ -75,10 +75,11 @@
 
 {% set STATUS_WORDS = {"PAID": "Bezahlt", "PARTIAL": "Teilweise", "OPEN": "Offen", "OVERDUE": "Überfällig", "NONE": "—"} %}
 
-{% macro status_cell(st, proposal=false) %}
-<td class="status status-{{ st.status | lower }}{% if proposal %} status-proposal{% endif %}"><span class="status-word">{{ STATUS_WORDS[st.status] }}</span>
+{# href: Zelle führt zur Zahlungsansicht (#56), ganz ohne Skript #}
+{% macro status_cell(st, proposal=false, href=none) %}
+<td class="status status-{{ st.status | lower }}{% if proposal %} status-proposal{% endif %}">{% if href %}<a class="cell-link" href="{{ href }}">{% endif %}<span class="status-word">{{ STATUS_WORDS[st.status] }}</span>
   {%- if st.expected > 0 %}<br><span class="status-amount">{{ (st.paid | eur)[:-2] }} / {{ st.expected | eur }}</span>{% endif %}
-  {%- if proposal %}<br><span class="status-note">Vorschlag</span>{% endif %}</td>
+  {%- if proposal %}<br><span class="status-note">Vorschlag</span>{% endif %}{% if href %}</a>{% endif %}</td>
 {% endmacro %}
 
 {% macro legend(with_proposal=false) %}

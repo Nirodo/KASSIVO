@@ -108,8 +108,12 @@ def month_status(conn, member_id: int, month: str, today: date) -> MonthStatus:
     start = get_check_start(conn)
     if start and month < start:
         return MonthStatus(month, 0, 0, "NONE")
-    expected = expected_cents(conn, member_id, month)
-    paid = _confirmed_paid(conn, member_id, month)
+    return _status(month, expected_cents(conn, member_id, month),
+                   _confirmed_paid(conn, member_id, month), today)
+
+
+def _status(month: str, expected: int, paid: int, today: date) -> MonthStatus:
+    """Status eines Monats ab dem Prüfungsstart (gemeinsam für month_status und dues_grid)."""
     if expected == 0:
         status = "NONE"
     elif paid >= expected:
@@ -168,6 +172,14 @@ class _Plan:
         return not self.outside and self.reason is None
 
 
+def _fee_table(conn) -> dict[int, list[tuple[str, int]]]:
+    """Beitragssätze je Art, aufsteigend nach valid_from."""
+    fees: dict[int, list[tuple[str, int]]] = {}
+    for r in conn.execute("select type_id, valid_from, cents from fee_rate order by valid_from"):
+        fees.setdefault(r["type_id"], []).append((r["valid_from"], r["cents"]))
+    return fees
+
+
 class _Member:
     """Zwischenspeicher eines Mitglieds: Soll je Monat und bestätigt Bezahltes je Monat.
 
@@ -179,22 +191,30 @@ class _Member:
     def __init__(self, conn, member_id: int):
         m = conn.execute("select fee_start, austritt from member where id=?",
                          (member_id,)).fetchone()
-        self.fee_start = m["fee_start"] if m else None
-        self.austritt = m["austritt"][:7] if m and m["austritt"] else None
-        self.exists = m is not None
-        self.types = [(r["valid_from"], r["type_id"]) for r in conn.execute(
+        types = [(r["valid_from"], r["type_id"]) for r in conn.execute(
             "select valid_from, type_id from member_type_history where member_id=?"
             " order by valid_from", (member_id,))]
-        self.fees: dict[int, list[tuple[str, int]]] = {}
-        for r in conn.execute("select type_id, valid_from, cents from fee_rate"
-                              " order by valid_from"):
-            self.fees.setdefault(r["type_id"], []).append((r["valid_from"], r["cents"]))
-        self._expected: dict[str, int] = {}
-        self.paid: dict[str, dict[int, int]] = {}
+        self._setup(m, types, _fee_table(conn))
         for r in conn.execute("select tx_id, month, cents from allocation"
                               " where member_id=? and status='confirmed'", (member_id,)):
             by_tx = self.paid.setdefault(r["month"], {})
             by_tx[r["tx_id"]] = by_tx.get(r["tx_id"], 0) + r["cents"]
+
+    @classmethod
+    def preloaded(cls, row, types, fees) -> "_Member":
+        """Ohne Abfragen, aus vorab geladenen Zeilen (dues_grid, #49). paid bleibt leer."""
+        self = cls.__new__(cls)
+        self._setup(row, types, fees)
+        return self
+
+    def _setup(self, m, types, fees) -> None:
+        self.fee_start = m["fee_start"] if m else None
+        self.austritt = m["austritt"][:7] if m and m["austritt"] else None
+        self.exists = m is not None
+        self.types = types
+        self.fees: dict[int, list[tuple[str, int]]] = fees
+        self._expected: dict[str, int] = {}
+        self.paid: dict[str, dict[int, int]] = {}
 
     def expected(self, month: str) -> int:
         """Wie members.expected_cents, ohne Abfragen."""
@@ -560,10 +580,11 @@ def repropose_pending(conn) -> int:
     return redistribute_all(conn)[0]
 
 
-def review_reason(conn, tx_id: int) -> str | None:
+def review_reason(conn, tx_id: int, ctx: _Ctx | None = None) -> str | None:
     """Kurzer Grund, warum ein Vorschlag geprüft werden muss. Nur lesend.
 
-    None, wenn die Buchung keinen Vorschlag hat.
+    None, wenn die Buchung keinen Vorschlag hat. ctx: Zwischenspeicher für
+    viele Aufrufe hintereinander (nur lesend gültig).
     """
     rows = conn.execute(
         "select status, source from allocation where tx_id=?", (tx_id,)).fetchall()
@@ -576,10 +597,206 @@ def review_reason(conn, tx_id: int) -> str | None:
         return None
     if any(r["source"] == "manual" for r in rows):
         return REASON_MANUAL
-    plan = _compute(conn, tx)
+    plan = _compute(conn, tx, ctx)
     if plan.outside:
         return REASON_OUTSIDE
     return plan.reason or REASON_STALE
+
+
+# --- Bestätigen aus der Beitragstabelle (#56) -------------------------------------
+#
+# Bestätigt wird nur, was der Nutzer gesehen hat: Die Seite schickt die
+# Signatur des angezeigten Vorschlags (Buchung, Mitglied, Monate, Beträge)
+# zurück. Passt sie nicht mehr zum gespeicherten Vorschlag, wird nichts
+# bestätigt ("stale"). Die Sammelbestätigung bestätigt außerdem nichts, was
+# einen Monat über sein Soll hinaus bezahlen würde ("overpay"), damit zwei
+# Vorschläge auf denselben Monat nicht still beide bestätigt werden.
+#
+# Verworfen: ein Zeitstempel oder Versionszähler je Buchung (bräuchte eine
+# neue Spalte, also Schemawechsel) und das Bestätigen per Buchungsnummer allein
+# (bestätigte auch einen inzwischen neu berechneten, nie gezeigten Vorschlag).
+
+MAX_PICK = 4000
+_PICK_RE = re.compile(r"([1-9][0-9]{0,18}):[1-9][0-9]{0,18}:"
+                      r"[0-9]{4}-[0-9]{2}=[1-9][0-9]{0,9}(,[0-9]{4}-[0-9]{2}=[1-9][0-9]{0,9})*",
+                      re.ASCII)
+
+
+def proposal_signature(conn, tx_id: int) -> str | None:
+    """Signatur des gespeicherten Vorschlags, None ohne Zeilen oder mit Bestätigtem."""
+    rows = conn.execute("select member_id, month, cents, status from allocation"
+                        " where tx_id=? order by month, id", (tx_id,)).fetchall()
+    if not rows or any(r["status"] != "proposed" for r in rows):
+        return None
+    parts = ",".join(f"{r['month']}={r['cents']}" for r in rows)
+    return f"{tx_id}:{rows[0]['member_id']}:{parts}"
+
+
+def parse_pick(text) -> tuple[int, str] | None:
+    """(Buchung, Signatur) aus einem Formularwert, sonst None. Nur festes Format."""
+    if not isinstance(text, str) or len(text) > MAX_PICK:
+        return None
+    m = _PICK_RE.fullmatch(text)
+    return (int(m[1]), text) if m else None
+
+
+def overpaid_months(conn, tx_id: int) -> list[str]:
+    """Monate, die der Vorschlag über ihr Soll hinaus bezahlen würde. Nur lesend.
+
+    Grundlage: bestätigt Bezahltes anderer Buchungen plus dieser Vorschlag.
+    """
+    out = []
+    for r in conn.execute("select member_id, month, sum(cents) as cents from allocation"
+                          " where tx_id=? and status='proposed' group by month order by month",
+                          (tx_id,)):
+        paid = _confirmed_paid(conn, r["member_id"], r["month"], exclude_tx=tx_id)
+        if paid + r["cents"] > expected_cents(conn, r["member_id"], r["month"]):
+            out.append(r["month"])
+    return out
+
+
+def confirm_proposal(conn, tx_id: int, signature: str, *, allow_overpay: bool = True) -> str:
+    """Den angezeigten Vorschlag bestätigen: "confirmed", "stale" oder "overpay".
+
+    Bei "stale" und "overpay" bleibt alles unverändert. Prüfung und Bestätigung
+    laufen unter einer Schreibsperre, damit dazwischen niemand den Vorschlag ändert.
+    Bestätigt über confirm_allocations (source='manual', danach rebuild_member).
+    """
+    if conn.in_transaction:
+        raise RuntimeError("confirm_proposal braucht eine Verbindung ohne offene Transaktion")
+    conn.execute("begin immediate")
+    try:
+        if proposal_signature(conn, tx_id) != signature:
+            conn.rollback()
+            return "stale"
+        if not allow_overpay and overpaid_months(conn, tx_id):
+            conn.rollback()
+            return "overpay"
+        confirm_allocations(conn, tx_id, _stored(conn, tx_id))  # committet
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
+    return "confirmed"
+
+
+@dataclass(frozen=True)
+class ConfirmResult:
+    confirmed: list[int]
+    stale: list[int]    # Vorschlag seit der Vorschau geändert oder schon entschieden
+    overpay: list[int]  # würde einen Monat überzahlen
+    invalid: int        # unlesbare Formularwerte
+
+
+def confirm_proposals(conn, picks) -> ConfirmResult:
+    """Ausgewählte Vorschläge der Vorschau bestätigen, chronologisch, nie überzahlend.
+
+    Jede Buchung zählt einmal. Jede Bestätigung ist ein eigener Commit; ein
+    übersprungener Vorschlag bleibt, wie er ist.
+    """
+    wanted: dict[int, str] = {}
+    invalid = 0
+    for text in picks:
+        parsed = parse_pick(text)
+        if parsed is None:
+            invalid += 1
+        else:
+            wanted.setdefault(*parsed)
+    order = {r["id"]: (r["booking_date"], r["id"]) for r in conn.execute(
+        'select id, booking_date from "transaction"') if r["id"] in wanted}
+    confirmed, stale, overpay = [], [], []
+    for tx_id in sorted(wanted, key=lambda t: order.get(t, ("", t))):
+        result = confirm_proposal(conn, tx_id, wanted[tx_id], allow_overpay=False)
+        {"confirmed": confirmed, "stale": stale, "overpay": overpay}[result].append(tx_id)
+    return ConfirmResult(confirmed, stale, overpay, invalid)
+
+
+def _payment_rows(conn, where: str, params) -> dict[int, list]:
+    rows: dict[int, list] = {}
+    for r in conn.execute("select tx_id, member_id, month, cents, status, source from allocation"
+                          f" where {where} order by tx_id, month, id", params):
+        rows.setdefault(r["tx_id"], []).append(r)
+    return rows
+
+
+def proposal_preview(conn, limit: int = 500) -> list[dict]:
+    """Vorschläge zur Sammelbestätigung, chronologisch. Nur lesend.
+
+    selected: vorausgewählt. Nicht vorausgewählt sind Vorschläge, die der
+    Nutzer selbst zur Prüfung gestellt hat, die vor dem Prüfungsstart liegen
+    oder die einen Monat überzahlen würden (overpaid, gerechnet mit dem
+    Bestätigten plus den vorausgewählten früheren Vorschlägen).
+    """
+    proposed = {r[0] for r in conn.execute(
+        "select distinct tx_id from allocation where status='proposed'")}
+    confirmed = {r[0] for r in conn.execute(
+        "select distinct tx_id from allocation where status='confirmed'")}
+    ids = proposed - confirmed
+    txs = [t for t in conn.execute(
+        'select t.id, t.booking_date, t.amount_cents, t.cp_name, t.member_id,'
+        ' m.name as member_name from "transaction" t join member m on m.id=t.member_id'
+        " where t.amount_cents > 0 order by t.booking_date, t.id") if t["id"] in ids][:limit]
+    ctx = _Ctx(conn)
+    sim: dict[tuple[int, str], int] = {}
+    out = []
+    for t in txs:
+        rows = _payment_rows(conn, "tx_id=?", (t["id"],)).get(t["id"], [])
+        if not rows or rows[0]["member_id"] != t["member_id"]:
+            continue
+        member = ctx.member(t["member_id"])
+        reason = review_reason(conn, t["id"], ctx)
+        over = []
+        for r in rows:
+            key = (t["member_id"], r["month"])
+            if key not in sim:
+                sim[key] = sum(member.paid.get(r["month"], {}).values())
+            if sim[key] + r["cents"] > member.expected(r["month"]):
+                over.append(r["month"])
+        selected = not over and reason not in (REASON_MANUAL, REASON_OUTSIDE)
+        if selected:
+            for r in rows:
+                sim[(t["member_id"], r["month"])] += r["cents"]
+        out.append({
+            "tx_id": t["id"], "booking_date": t["booking_date"],
+            "amount_cents": t["amount_cents"], "cp_name": t["cp_name"],
+            "member_id": t["member_id"], "member_name": t["member_name"],
+            "allocations": [(r["month"], r["cents"]) for r in rows],
+            "reason": reason, "overpaid": over, "selected": selected,
+            "signature": proposal_signature(conn, t["id"]),
+        })
+    return out
+
+
+def cell_payments(conn, member_id: int, month: str) -> list[dict]:
+    """Zahlungen mit einer Zeile für Mitglied und Monat, mit allen ihren Zeilen. Nur lesend.
+
+    state: "proposed" (wartet), "auto" (von KASSIVO verteilt, rückgängig
+    möglich) oder "manual" (vom Nutzer bestätigt).
+    """
+    ids = [r[0] for r in conn.execute(
+        "select distinct tx_id from allocation where member_id=? and month=?", (member_id, month))]
+    if not ids:
+        return []
+    marks = ",".join("?" * len(ids))
+    rows = _payment_rows(conn, f"tx_id in ({marks})", ids)
+    out = []
+    for t in conn.execute('select id, booking_date, amount_cents, cp_name, purpose'
+                          f' from "transaction" where id in ({marks})'
+                          " order by booking_date, id", ids):
+        mine = rows[t["id"]]
+        done = [r for r in mine if r["status"] == "confirmed"]
+        state = ("proposed" if not done else
+                 "auto" if all(r["source"] == "auto" for r in done) else "manual")
+        sig = proposal_signature(conn, t["id"]) if state == "proposed" else None
+        out.append({
+            "tx_id": t["id"], "booking_date": t["booking_date"],
+            "amount_cents": t["amount_cents"], "cp_name": t["cp_name"],
+            "purpose": t["purpose"], "state": state, "signature": sig,
+            "allocations": [(r["month"], r["cents"], r["status"], r["source"]) for r in mine],
+            "reason": review_reason(conn, t["id"]) if sig else None,
+            "overpaid": overpaid_months(conn, t["id"]) if sig else [],
+        })
+    return out
 
 
 def _kind(booking_month: str, allocs, expected: int) -> str:
@@ -733,16 +950,35 @@ def clear_allocations(conn, tx_id: int) -> int:
 
 
 def dues_grid(conn, year: int, today: date) -> list[dict]:
+    """Raster eines Jahres, gleiches Ergebnis wie month_status je Zelle.
+
+    Soll und Bezahltes werden einmal geladen (#49), nicht je Mitglied und
+    Monat abgefragt: feste Zahl an Abfragen. Verworfen: ein Cache über
+    Anfragen hinweg (müsste bei jeder Buchung und Stammdatenänderung
+    ungültig werden).
+    """
     members = sorted(list_members(conn), key=lambda r: (r["name"].casefold(), r["id"]))
     months = [f"{year:04d}-{i:02d}" for i in range(1, 13)]
-    return [
-        {
-            "member_id": m["id"],
-            "name": m["name"],
-            "months": [month_status(conn, m["id"], mo, today) for mo in months],
-        }
-        for m in members
-    ]
+    start = get_check_start(conn)
+    types: dict[int, list[tuple[str, int]]] = {}
+    for r in conn.execute(  # join wie members.type_at
+            "select h.member_id, h.valid_from, h.type_id from member_type_history h"
+            " join membership_type t on t.id=h.type_id order by h.valid_from"):
+        types.setdefault(r["member_id"], []).append((r["valid_from"], r["type_id"]))
+    fees = _fee_table(conn)
+    paid: dict[tuple[int, str], int] = {
+        (r["member_id"], r["month"]): r["cents"] for r in conn.execute(
+            "select member_id, month, sum(cents) as cents from allocation"
+            " where status='confirmed' and month >= ? and month <= ?"
+            " group by member_id, month", (months[0], months[-1]))}
+    out = []
+    for m in members:
+        calc = _Member.preloaded(m, types.get(m["id"], []), fees)
+        out.append({"member_id": m["id"], "name": m["name"], "months": [
+            MonthStatus(mo, 0, 0, "NONE") if start and mo < start
+            else _status(mo, calc.expected(mo), paid.get((m["id"], mo), 0), today)
+            for mo in months]})
+    return out
 
 
 def proposed_months(conn, year: int) -> set[tuple[int, str]]:

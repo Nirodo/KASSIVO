@@ -5,6 +5,7 @@
 {{ help_link("beitragsuebersicht") }}
 {{ check_start_notice(check_start_set) }}
 {% if waiting %}<p class="notice" role="status"><a href="/transactions?year=all&amp;proposed=1">{{ waiting }} Zahlungen warten auf Ihre Prüfung</a> (Ausnahmen, die KASSIVO nicht selbst verteilt hat).</p>{% endif %}
+<p>Ein Klick auf eine Zelle zeigt die Zahlungen des Monats mit „Bestätigen“ und „Ändern“.{% if waiting %} <a href="/dues/confirm-all">Alle Vorschläge bestätigen</a> (zeigt vorher die Liste).{% endif %}</p>
 <p><a href="/auto">Automatisch verteilt</a>: welche Zahlungen KASSIVO selbst auf Monate verteilt hat, mit „Rückgängig“.</p>
 {{ year_nav("/dues", year, prev, next) }}
 {{ legend(with_proposal=true) }}
@@ -16,7 +17,7 @@
   <tbody>
   {% for r in grid %}
   <tr><th scope="row"><a href="/members/{{ r.member_id }}/history?year={{ year }}">{{ r.name }}</a></th>
-    {% for st in r.months %}{{ status_cell(st, (r.member_id, st.month) in proposals) }}{% endfor %}</tr>
+    {% for st in r.months %}{% set prop = (r.member_id, st.month) in proposals %}{{ status_cell(st, prop, "/dues/%d/%s" % (r.member_id, st.month) if (st.expected > 0 or st.paid > 0 or prop) else none) }}{% endfor %}</tr>
   {% endfor %}
   </tbody>
   <tfoot><tr><th scope="row">Summe (bezahlt / erwartet)</th>
