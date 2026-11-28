@@ -523,7 +523,7 @@ Das ist der eine große Schritt, in dem `category` verschwindet. Kleiner schneid
 
 Abschluss-Kontrolle: `grep -rn "category" src/kassivo` trifft nur noch `categories.py` (Modulname), `categories_routes.py` und Vorlagen mit dem Wort "Kategorie" in Texten sowie Formularfeldern `category`/`category_id`, außerdem `db.py` (eingefrorenes `SCHEMA` und Migration 4).
 
-- [ ] Tests zuerst:
+- [x] Tests zuerst:
   - `test_schema_version.py`: `test_migrations_registered` auf 2, 3, 4; `test_fresh_db_schema_4`.
   - `test_categories.py` neu (gleiche Fälle wie bisher, Konten statt Kategorien): `test_rule_books_matching_tx`; `test_income_rule_ignores_outgoing`; `test_priority_order`; `test_overwrite_reverses_and_rebooks` (Storno sichtbar, genau eine gültige); `test_same_account_counts_zero`; `test_hidden_account_rule_sleeps`; `test_closed_period_skipped`; `test_add_rule_rejects_asset_and_hidden`.
   - `test_matching.py`: Erwartungen "category_id == Beiträge" werden zu "gültige Buchung auf dem `fees`-Konto". Neu: `test_assign_member_books_fees_once` (zweimal zuordnen: eine Buchung); `test_assign_keeps_other_booking` (Umsatz auf "Zinsen" gebucht, Mitglied zugeordnet: Buchung bleibt "Zinsen"); `test_unmatched_excludes_non_fee_bookings`; `test_unmatched_includes_unbooked_and_fees`; `test_no_member_still_skipped`.
@@ -532,7 +532,7 @@ Abschluss-Kontrolle: `grep -rn "category" src/kassivo` trifft nur noch `categori
   - `test_web_transactions.py`: Kategorie setzen bucht, gleiche Auswahl noch einmal erzeugt keine Buchung (doppelt gesendetes Formular), "Ohne Kategorie" storniert, unbekanntes oder ausgeblendetes Konto ergibt 422 mit deutschem Text, Filter `none` und `<id>`, ausgeblendetes Gegenkonto erscheint als Option, aufgeteilt zeigt Text, fremde Origin 403.
   - `test_restore*.py`: Rundreise Export und Einspielen mit Schema 4 inklusive Triggern; Sicherung mit Schema 1, 2 und 3 wird eingespielt und umgestellt (`test_restore_old_schema_is_migrated_without_extra_backup` deckt 3 ab, neu 1 und 2); `test_ledger_inconsistent_backup_rejected` (Zeile per rohem SQL mit Triggern aus der Datei entfernt, Trigger neu angelegt: `E_LEDGER`); `test_posting_row_real_cents_rejected` (`E_MONEY`); `MONEY_COLUMNS`-Tests auf neue Tabellen.
   - `test_security_polish.py`, `test_web_start.py`, `test_db.py`, `test_ingest.py`, `test_dues.py`: Stellen mit `category_id` auf `ledger`-Abfragen umstellen, Aussage unverändert.
-- [ ] Rot sehen, umsetzen, grün. Abschluss-Kontrolle per `grep`. Volle Suite grün, auch `node --test tests/js`. Commit `feat: Schema 4, das Journal ersetzt die Kategorien` (Refs #57).
+- [x] Rot sehen, umsetzen, grün. Abschluss-Kontrolle per `grep`. Volle Suite grün, auch `node --test tests/js`. Commit `feat: Schema 4, das Journal ersetzt die Kategorien` (Refs #57).
 - [ ] `kassivo-reviewer` (opus) über Task 1 bis 5 und `/security-review`, Befunde beheben, bevor Task 6 beginnt.
 
 ### Task 6: Seite Kontenplan (Konten anlegen, ändern, ausblenden, löschen)
