@@ -169,7 +169,7 @@ Begründung: Die bisherige Ablehnung aller Trigger macht Sicherungen ab Schema 4
 
 ### Task 3: Buchungskern `ledger.py` mit Tabellen, Perioden und Triggern (noch ohne Migration)
 
-**Files:** Modify `src/kassivo/db.py` (nur neue Konstanten `_LEDGER_DDL_4`, `START_PLAN_4`, Funktion `_seed_ledger_4`; nicht in `MIGRATIONS` eingetragen), `src/kassivo/iban.py` (`mask_iban` hierher verschieben), `src/kassivo/ingest.py` (`from kassivo.iban import mask_iban`, Name bleibt importierbar); Create `src/kassivo/ledger.py`, `src/kassivo/periods.py`; Test `tests/test_ledger.py`, `tests/test_ledger_db.py`, `tests/test_periods.py`.
+**Files:** Modify `src/kassivo/db.py` (nur neue Konstanten `_LEDGER_DDL_4`, `START_PLAN_4`, Funktion `_seed_ledger_4`; nicht in `MIGRATIONS` eingetragen), `src/kassivo/iban.py` (`mask_iban` hierher verschieben), `src/kassivo/ingest.py` (`from kassivo.iban import mask_iban`, Name bleibt importierbar); Create `src/kassivo/ledger.py`, `src/kassivo/periods.py`; Test `tests/test_ledger.py` (Gruppen, Konten, Kostenstellen), `tests/test_ledger_booking.py` (Buchen, Storno, Beiträge), `tests/test_ledger_balance.py` (Eröffnungsbestand, Kontostände, Abfragen, Prüfung), `tests/test_ledger_db.py`, `tests/test_periods.py`.
 
 Die App läuft in diesem Task weiter auf Schema 3. Die Tests legen die Tabellen selbst an: Fixture `ledger_conn` = `db.connect(":memory:")`, danach jede Anweisung aus `db._statements(db._LEDGER_DDL_4)` und `db._seed_ledger_4(conn, today)`.
 

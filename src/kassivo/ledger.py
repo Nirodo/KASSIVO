@@ -558,3 +558,182 @@ def balance(conn, account_id: int, until: str | None = None) -> int:
         sql += " and p.booking_date <= ?"
         args.append(_check_day(until))
     return conn.execute(sql, args).fetchone()[0]
+
+
+# --- Eröffnungsbestand (E11, E14) --------------------------------------------------
+
+def _valid_opening(conn, account_id: int) -> sqlite3.Row | None:
+    return conn.execute(f"select p.id, p.booking_date from posting p"
+                        f" where p.opening_account_id = ? and {VALID}", (account_id,)).fetchone()
+
+
+def _opening_account(conn, account_id: int) -> sqlite3.Row:
+    row = _account_row(conn, account_id)
+    if row["kind"] not in ("asset", "liability") or row["role"] == "equity":
+        raise LedgerError("Einen Eröffnungsbestand haben nur Aktiv- und Passivkonten "
+                          "(nicht das Vereinsvermögen selbst).")
+    return row
+
+
+def get_opening(conn, account_id: int) -> tuple[int, str] | None:
+    """(Cent, Tag) des gültigen Eröffnungsbestands; Aktivkonto: Guthaben positiv,
+    Passivkonto: Schuld positiv."""
+    row = _opening_account(conn, account_id)
+    p = _valid_opening(conn, account_id)
+    if p is None:
+        return None
+    soll = sum(cents if debit == account_id else -cents
+               for debit, _credit, cents, _cc in _rows(conn, p["id"]))
+    return (soll if row["kind"] == "asset" else -soll), p["booking_date"]
+
+
+def set_opening(conn, account_id: int, cents: int, day: str) -> int | None:
+    """Eröffnungsbestand setzen. 0 heißt keiner (stornieren). Gleicher Betrag und Tag:
+    nichts schreiben. Sonst Storno und neue Buchung gegen das Vereinsvermögen."""
+    row = _opening_account(conn, account_id)
+    if not _is_int(cents) or abs(cents) > MAX_ROW_CENTS:
+        raise LedgerError("Der Eröffnungsbestand muss eine ganze Zahl in Cent sein.")
+    current = _valid_opening(conn, account_id)
+    if cents == 0:
+        if current is not None:
+            reverse(conn, current["id"], source="opening")
+        return None
+    day = _check_day(day)
+    equity = equity_account_id(conn)
+    soll = cents if row["kind"] == "asset" else -cents
+    rows = [(account_id, equity, soll, None)] if soll > 0 else [(equity, account_id, -soll, None)]
+    if current is not None and current["booking_date"] == day \
+            and Counter(_rows(conn, current["id"])) == Counter(rows):
+        return current["id"]
+    with _atomic(conn):
+        if current is not None:
+            reverse(conn, current["id"], source="opening")
+        return post(conn, day, rows, source="opening", opening_account_id=account_id)
+
+
+# --- Abfragen ----------------------------------------------------------------------
+
+# Feste SQL-Bausteine für Abfragen mit Alias t für "transaction" (nie aus Eingaben gebaut).
+_VALID_P = ("(p_.reversal_of is null and not exists"
+            " (select 1 from posting r_ where r_.reversal_of = p_.id))")
+BOOKED = f"exists (select 1 from posting p_ where p_.tx_id = t.id and {_VALID_P})"
+_OTHER_SIDE = ("case when w_.debit_account_id = b_.id then w_.credit_account_id"
+               " else w_.debit_account_id end")
+COUNTER = (f"(select case when count(distinct {_OTHER_SIDE}) = 1 then max({_OTHER_SIDE}) end"
+           " from posting p_ join posting_row w_ on w_.posting_id = p_.id"
+           " join ledger_account b_ on b_.bank_account_id = t.account_id"
+           f" where p_.tx_id = t.id and {_VALID_P})")
+ON_FEES = ("exists (select 1 from posting p_ join posting_row w_ on w_.posting_id = p_.id"
+           " join ledger_account f_ on f_.role = 'fees'"
+           " and f_.id in (w_.debit_account_id, w_.credit_account_id)"
+           f" where p_.tx_id = t.id and {_VALID_P})")
+
+
+def counter_accounts(conn, tx_ids) -> dict[int, list[int]]:
+    """Gegenkonten der gültigen Buchung je Umsatz (aufsteigend), in Blöcken zu 500 IDs."""
+    ids = sorted(set(tx_ids))
+    out: dict[int, set] = {}
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        marks = ",".join("?" * len(chunk))
+        for r in conn.execute(
+                "select p.tx_id, w.debit_account_id, w.credit_account_id, b.id as bank"
+                " from posting p join posting_row w on w.posting_id = p.id"
+                ' join "transaction" t on t.id = p.tx_id'
+                " left join ledger_account b on b.bank_account_id = t.account_id"
+                f" where p.tx_id in ({marks}) and {VALID}", chunk):
+            other = r["credit_account_id"] if r["debit_account_id"] == r["bank"] \
+                else r["debit_account_id"]
+            out.setdefault(r["tx_id"], set()).add(other)
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def money_accounts(conn, until: str) -> list[dict]:
+    """Je sichtbarem Aktivkonto Eröffnungsbestand und gebuchter Stand bis until; bei
+    Bankkonten zusätzlich Stand laut Umsätzen, offene Umsätze und Unterschied."""
+    until = _check_day(until)
+    out = []
+    for a in list_accounts(conn, visible_only=True, kinds=("asset",)):
+        opening = get_opening(conn, a["id"])
+        cents, day = opening if opening else (0, None)
+        item = {"id": a["id"], "number": a["number"], "name": a["name"],
+                "opening_cents": cents, "opening_day": day,
+                "booked_cents": balance(conn, a["id"], until)}
+        if a["bank_account_id"] is not None:
+            r = conn.execute(
+                "select coalesce(sum(t.amount_cents), 0),"
+                f" coalesce(sum(t.amount_cents <> 0 and not {BOOKED}), 0)"
+                ' from "transaction" t where t.account_id = ? and t.booking_date <= ?',
+                (a["bank_account_id"], until)).fetchone()
+            statement = r[0] + (cents if day is not None and day <= until else 0)
+            item.update(statement_cents=statement, unbooked=r[1],
+                        diff_cents=statement - item["booked_cents"])
+        out.append(item)
+    return out
+
+
+# --- Prüfung -----------------------------------------------------------------------
+
+def check(conn) -> list[str]:
+    """Befunde zur Stimmigkeit des Journals; leer heißt in Ordnung. Texte nennen nur
+    Buchungs-, Umsatz- und Kontonummern (ohne Nummer die Konto-ID)."""
+    found: list[str] = []
+    label = {r[0]: ref(r[1], r[0]) for r in conn.execute("select id, number from ledger_account")}
+    postings = conn.execute("select id, booking_date, tx_id, opening_account_id, reversal_of"
+                            " from posting order by id").fetchall()
+    rows: dict[int, list[tuple]] = {}
+    for r in conn.execute("select posting_id, debit_account_id, credit_account_id, cents,"
+                          " cost_center_id from posting_row order by id"):
+        rows.setdefault(r[0], []).append(tuple(r)[1:])
+    by_id = {p["id"]: p for p in postings}
+    reversed_ids = {p["reversal_of"] for p in postings if p["reversal_of"] is not None}
+    for p in postings:
+        if not rows.get(p["id"]):
+            found.append(f"Buchung {p['id']}: ohne Zeilen.")
+    for p in postings:
+        o = by_id.get(p["reversal_of"]) if p["reversal_of"] is not None else None
+        if p["reversal_of"] is None:
+            continue
+        mirrored = Counter((cr, d, ct, cc) for d, cr, ct, cc in rows.get(o["id"], [])) \
+            if o is not None else None
+        if o is None or Counter(rows.get(p["id"], [])) != mirrored \
+                or (p["booking_date"], p["tx_id"], p["opening_account_id"]) \
+                != (o["booking_date"], o["tx_id"], o["opening_account_id"]):
+            found.append(f"Buchung {p['id']}: Storno spiegelt Buchung {p['reversal_of']}"
+                         " nicht genau.")
+    valid = [p for p in postings if p["reversal_of"] is None and p["id"] not in reversed_ids]
+    for key, what, text in (("tx_id", "Umsatz", "mehr als eine gültige Buchung."),
+                            ("opening_account_id", None, "mehr als ein Eröffnungsbestand.")):
+        per = Counter(p[key] for p in valid if p[key] is not None)
+        for k, n in sorted(per.items()):
+            if n > 1:
+                found.append(f"{what} {k}: {text}" if what else f"{label.get(k, ref(None, k))}:"
+                             f" {text}")
+    txs = {r[0]: (r[1], r[2]) for r in conn.execute(
+        'select id, account_id, amount_cents from "transaction"'
+        " where id in (select tx_id from posting where tx_id is not null)")}
+    bank_of = {r[0]: r[1] for r in conn.execute(
+        "select bank_account_id, id from ledger_account where bank_account_id is not null")}
+    for p in valid:
+        if p["tx_id"] is None or p["tx_id"] not in txs:
+            continue
+        account_id, amount = txs[p["tx_id"]]
+        if amount == 0:
+            found.append(f"Umsatz {p['tx_id']}: gültige Buchung auf einem Umsatz über 0,00 €.")
+        bank = bank_of.get(account_id)
+        if bank is None:
+            found.append(f"Buchung {p['id']}: Bankseite fehlt (Bankkonto ohne Aktivkonto).")
+            continue
+        side = sum(ct if d == bank else -ct for d, cr, ct, _cc in rows.get(p["id"], [])
+                   if bank in (d, cr))
+        if side != amount:
+            found.append(f"Buchung {p['id']}: Bankseite ({label[bank]}) {side} Cent statt"
+                         f" {amount} Cent.")
+    for r in conn.execute("select id from account where id not in (select bank_account_id"
+                          " from ledger_account where bank_account_id is not null) order by id"):
+        found.append(f"Bankkonto-ID {r[0]} hat kein Aktivkonto.")
+    for r in conn.execute("select p.id from posting p where not exists (select 1 from period q"
+                          " where p.booking_date between q.start_date and q.end_date)"
+                          " order by p.id"):
+        found.append(f"Buchung {r[0]}: liegt in keiner Periode.")
+    return found
