@@ -646,8 +646,8 @@ _migrate_to_4.fk_off = True
 
 
 BASELINE_VERSION = 1
-SCHEMA_VERSION = 3
-MIGRATIONS: dict = {2: _migrate_to_2, 3: _migrate_to_3}
+SCHEMA_VERSION = 4
+MIGRATIONS: dict = {2: _migrate_to_2, 3: _migrate_to_3, 4: _migrate_to_4}
 
 
 class DatabaseOpenError(RuntimeError):

@@ -97,3 +97,20 @@ def make_client(db_path, **kw):
     from fastapi.testclient import TestClient
     kw.setdefault("follow_redirects", False)
     return TestClient(make_app(db_path), **kw)
+
+
+def book_on(conn, tx_id: int, name: str | None) -> int | None:
+    """Bucht den Umsatz auf das Gegenkonto mit diesem Namen (Schema 4, ersetzt das frühere
+    Setzen von category_id). Fehlt das Konto, wird es angelegt: Ertrag bei Eingang, sonst
+    Aufwand. None oder 0 Cent: nichts buchen."""
+    from kassivo import ledger
+    amount = conn.execute('select amount_cents from "transaction" where id=?',
+                          (tx_id,)).fetchone()[0]
+    if name is None or amount == 0:
+        return None
+    row = conn.execute("select id from ledger_account where name=? and kind in"
+                       " ('income','expense') order by id", (name,)).fetchone()
+    account = row[0] if row else ledger.create_account(
+        conn, name, "income" if amount > 0 else "expense")
+    ledger.set_counter_account(conn, tx_id, account, source="manual")
+    return account

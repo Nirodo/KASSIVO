@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
-from kassivo import categories, db, dues, fees, ingest, matching, members  # noqa: E402
+from kassivo import categories, db, dues, fees, ingest, ledger, matching, members  # noqa: E402
 from tests.helpers import make_camt, make_zip  # noqa: E402
 
 ACCOUNT = "XX00FAKE0000009999"
@@ -49,12 +49,14 @@ def build(folder: Path) -> Path:
     members.leave_member(conn, ids[14], date(2026, 8, 31))
     dues.set_check_start(conn, "2026-01")
 
-    cat = {n: categories.create_category(conn, n, k)
-           for n, k in (("Raummiete", "out"), ("Zinsen", "in"))}
-    hv = conn.execute("select id from category where name='Hauptverein'").fetchone()["id"]
-    categories.add_rule(conn, hv, "purpose", "Hauptverein")
-    categories.add_rule(conn, cat["Raummiete"], "purpose", "Raummiete")
-    categories.add_rule(conn, cat["Zinsen"], "purpose", "Zinsabrechnung")
+    # Konten aus dem Startplan (Nummern) und ein eigenes Aufwandskonto; Regeln buchen
+    # über ledger.set_counter_account
+    number = {r["number"]: r["id"] for r in ledger.list_accounts(conn)}
+    miete = ledger.create_account(conn, "Raummiete", "expense", number=4500,
+                                  group_id=ledger.find_group(conn, "expense", "Ausgaben"))
+    categories.add_rule(conn, number[4000], "purpose", "Hauptverein")
+    categories.add_rule(conn, miete, "purpose", "Raummiete")
+    categories.add_rule(conn, number[3200], "purpose", "Zinsabrechnung")
 
     # Einträge je Monat
     by_month: dict[int, list[dict]] = {m: [] for m in range(1, 12)}

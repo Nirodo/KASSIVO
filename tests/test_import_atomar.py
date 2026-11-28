@@ -6,14 +6,15 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from kassivo import categories, dues, matching
-from kassivo.categories import add_rule, create_category
+from kassivo import categories, dues, ledger, matching, periods
+from kassivo.categories import add_rule
 from kassivo.db import connect
 from kassivo.ingest import import_and_assign
 from kassivo.members import create_member
 from tests.helpers import IBAN, OTHER_IBAN, make_app, make_camt, make_zip
 
-TABLES = ("account", "import_batch", "transaction", "allocation", "member_iban", "settings")
+TABLES = ("account", "import_batch", "transaction", "allocation", "member_iban", "settings",
+          "ledger_account", "period", "posting", "posting_row")
 
 
 def _state(conn):
@@ -35,7 +36,7 @@ E_MINUS = {"amount": -500, "name": "Kiosk", "purpose": "Material", "ref": "R3"}
 @pytest.fixture
 def setup(conn):
     m = create_member(conn, "Erika Muster", "Aktiv", date(2025, 12, 10), iban=OTHER_IBAN)
-    cat = create_category(conn, "Zinsen", "in")
+    cat = conn.execute("select id from ledger_account where number=3200").fetchone()[0]
     add_rule(conn, cat, "purpose", "Zinsen")
     conn.commit()
     return m, cat
@@ -52,11 +53,14 @@ def test_success_categorizes_assigns_and_distributes(conn, tmp_path, setup):
     assert erika["member_id"] == m
     assert conn.execute("select count(*) from allocation where tx_id=?",
                         (erika["id"],)).fetchone()[0] == 1
-    assert conn.execute('select category_id from "transaction" where purpose=?',
-                        ("Zinsen",)).fetchone()[0] == cat
+    zins = conn.execute('select id from "transaction" where purpose=?', ("Zinsen",)).fetchone()[0]
+    assert ledger.counter_accounts(conn, [zins]) == {zins: [cat]}
+    assert ledger.counter_accounts(conn, [erika["id"]]) == {
+        erika["id"]: [ledger.fees_account_id(conn)]}
+    assert ledger.check(conn) == []
 
 
-@pytest.mark.parametrize("where", ["rules", "assign", "rebuild", "redistribute"])
+@pytest.mark.parametrize("where", ["rules", "assign", "rebuild", "redistribute", "post"])
 def test_failure_in_any_step_leaves_nothing(conn, tmp_path, setup, monkeypatch, where):
     """Fehler mitten im Import: kein Teilzustand, auch kein Konto und kein Stapel."""
     def boom(*a, **k):
@@ -64,7 +68,7 @@ def test_failure_in_any_step_leaves_nothing(conn, tmp_path, setup, monkeypatch, 
 
     target = {"rules": (categories, "apply_rules"), "assign": (matching, "auto_assign"),
               "rebuild": (dues, "rebuild_member"),
-              "redistribute": (dues, "redistribute_all")}[where]
+              "redistribute": (dues, "redistribute_all"), "post": (ledger, "post")}[where]
     before = _state(conn)
     monkeypatch.setattr(*target, boom)
     with pytest.raises(RuntimeError):
@@ -76,6 +80,56 @@ def test_failure_in_any_step_leaves_nothing(conn, tmp_path, setup, monkeypatch, 
     out = import_and_assign(conn, _zip(tmp_path, [E_ERIKA, E_ZINS, E_MINUS]))
     assert (out.result.new, out.result.duplicates) == (3, 0)
     assert out.assigned == 1 and out.categorized == 1
+
+
+def test_import_new_iban_links_bank_account(conn, tmp_path, setup):
+    import_and_assign(conn, _zip(tmp_path, [E_ZINS]))
+    acc = conn.execute("select id from account").fetchone()[0]
+    bank = conn.execute("select id, role from ledger_account where bank_account_id=?",
+                        (acc,)).fetchone()
+    assert bank["role"] == "bank_default"
+    assert ledger.check(conn) == []
+
+
+def test_import_creates_period_for_new_year(conn, tmp_path, setup):
+    out = import_and_assign(conn, _zip(tmp_path, [dict(E_MINUS, ref="A")], "2019-06-03"))
+    assert out.result.new == 1
+    p = periods.period_for(conn, "2019-06-03")
+    assert (p["name"], p["start_date"], p["end_date"]) == ("Jahr 2019", "2019-01-01",
+                                                          "2019-12-31")
+
+
+def test_failure_leaves_no_period(conn, tmp_path, setup, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("Testfehler")
+    before = _state(conn)
+    monkeypatch.setattr(ledger, "post", boom)
+    with pytest.raises(RuntimeError):
+        import_and_assign(conn, _zip(tmp_path, [dict(E_ZINS, ref="Z")], "2019-06-03"))
+    assert _state(conn) == before
+    assert periods.period_for(conn, "2019-06-03") is None
+
+
+def test_import_into_closed_period_warns_not_books(conn, tmp_path, setup):
+    periods.ensure_period(conn, "2020-03-02")
+    conn.execute("update period set status='closed', closed_at='2021-01-01T00:00:00'"
+                 " where name='Jahr 2020'")
+    conn.commit()
+    out = import_and_assign(conn, _zip(tmp_path, [E_ERIKA, E_ZINS], "2020-03-02"))
+    assert out.result.new == 2 and out.categorized == 0
+    assert ("2 Umsätze liegen in einer abgeschlossenen Periode und wurden nicht verbucht"
+            in out.result.warnings)
+    assert conn.execute("select count(*) from posting").fetchone()[0] == 0
+    assert out.assigned == 1  # Mitglied wird zugeordnet, nur nicht verbucht
+
+
+def test_reimport_creates_no_second_posting(conn, tmp_path, setup):
+    p = _zip(tmp_path, [E_ERIKA, E_ZINS, E_MINUS])
+    import_and_assign(conn, p)
+    n = conn.execute("select count(*) from posting").fetchone()[0]
+    assert n == 2
+    import_and_assign(conn, p)
+    assert conn.execute("select count(*) from posting").fetchone()[0] == n
 
 
 def test_failure_after_partial_writes_of_assign_rolls_back(conn, tmp_path, setup, monkeypatch):

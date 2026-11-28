@@ -9,6 +9,8 @@ from kassivo import db, restore
 TODAY = date(2026, 11, 28)
 IBAN1 = "DE00000000000000000000"
 IBAN2 = "DE11111111111111111111"
+# Schema 3 plus Buchungstabellen von Hand: prüft DDL und Seed ohne die Migration
+V3 = {k: db.MIGRATIONS[k] for k in (2, 3)}
 
 
 def _install(c, today=TODAY):
@@ -20,7 +22,7 @@ def _install(c, today=TODAY):
 
 @pytest.fixture
 def lc():
-    c = db.connect(":memory:")
+    c = db.connect(":memory:", migrations=V3)
     _install(c)
     yield c
     c.close()
@@ -402,7 +404,7 @@ def test_seed_groups(lc):
 
 def test_triggers_work_under_hardened_connection(tmp_path):
     path = tmp_path / "k.db"
-    c = db.connect(path, on_open=restore.harden)
+    c = db.connect(path, on_open=restore.harden, migrations=V3)
     try:
         _install(c)
         assert c.execute("pragma trusted_schema").fetchone()[0] == 0
@@ -422,7 +424,7 @@ def test_triggers_work_under_hardened_connection(tmp_path):
 
 
 def test_seed_links_first_bank_and_creates_more():
-    c = db.connect(":memory:")
+    c = db.connect(":memory:", migrations=V3)
     bank_tx(c, iban=IBAN1, day="2026-01-05")
     bank_tx(c, iban=IBAN2, day="2026-01-06")
     _install(c)
@@ -443,7 +445,7 @@ def test_seed_links_first_bank_and_creates_more():
 
 
 def test_seed_periods_from_first_tx_year():
-    c = db.connect(":memory:")
+    c = db.connect(":memory:", migrations=V3)
     bank_tx(c, day="2023-04-01")
     bank_tx(c, day="2025-04-01")
     _install(c)
@@ -458,7 +460,7 @@ def test_seed_periods_from_first_tx_year():
 
 
 def test_seed_periods_reach_latest_tx_year():
-    c = db.connect(":memory:")
+    c = db.connect(":memory:", migrations=V3)
     bank_tx(c, day="2027-01-03")
     _install(c)
     assert [r[0] for r in c.execute("select name from period order by start_date")] == \
@@ -471,7 +473,7 @@ def test_seed_without_tx_only_current_year(lc):
 
 
 def test_seed_does_not_commit():
-    c = db.connect(":memory:")
+    c = db.connect(":memory:", migrations=V3)
     for stmt in db._statements(db._LEDGER_DDL_4):
         c.execute(stmt)
     c.commit()
@@ -504,6 +506,6 @@ def test_many_postings_stay_fast(lc):
     assert time.perf_counter() - start < 1.0
 
 
-def test_ledger_ddl_not_in_migrations_yet():
-    assert 4 not in db.MIGRATIONS
-    assert db.SCHEMA_VERSION == 3
+def test_ledger_ddl_registered_as_migration_4():
+    assert db.MIGRATIONS[4] is db._migrate_to_4
+    assert db.SCHEMA_VERSION == 4

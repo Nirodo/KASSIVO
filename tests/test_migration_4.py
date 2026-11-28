@@ -1,5 +1,5 @@
-"""Migration 4 (Kategorien werden Konten, Altdaten werden verbucht). Noch nicht in
-MIGRATIONS eingetragen; die Tests reichen sie selbst ein. Nur erfundene Daten in tmp_path."""
+"""Migration 4 (Kategorien werden Konten, Altdaten werden verbucht). Altbestand wird mit
+Migration 2 und 3 angelegt (V3). Nur erfundene Daten in tmp_path."""
 import sqlite3
 from datetime import date
 
@@ -21,7 +21,11 @@ def _fixed_today(monkeypatch):
 
 
 def _migs():
+    # zur Laufzeit gelesen, damit monkeypatch von db._migrate_to_4 greift
     return {**db.MIGRATIONS, 4: db._migrate_to_4}
+
+
+V3 = {k: db.MIGRATIONS[k] for k in (2, 3)}
 
 
 def _cat(c, name, kind="in"):
@@ -47,7 +51,7 @@ def _tx(c, amount, day="2026-03-01", cat=None, member=None, iban=IBAN1, no_membe
 def _v3(tmp_path, build=None):
     """Schema-3-Datei mit erfundenen Mitgliedern, Verteilungen, member_iban."""
     path = tmp_path / "kassivo.db"
-    c = db.connect(path)
+    c = db.connect(path, migrations=V3)
     assert db.schema_version(c) == 3
     m1 = c.execute("insert into member(name, iban) values(?,?)", (NAME, IBAN2)).lastrowid
     c.execute("insert into member_iban(iban, member_id) values(?,?)", (IBAN2, m1))
@@ -439,6 +443,6 @@ def test_second_start_is_noop(tmp_path):
     c.close()
 
 
-def test_not_registered_yet():
-    assert 4 not in db.MIGRATIONS and db.SCHEMA_VERSION == 3
+def test_registered_with_fk_off():
+    assert db.MIGRATIONS[4] is db._migrate_to_4 and db.SCHEMA_VERSION == 4
     assert db._migrate_to_4.fk_off is True

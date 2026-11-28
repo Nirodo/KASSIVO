@@ -7,7 +7,8 @@ def test_connect_twice_no_duplicate_seed(tmp_path):
     c = connect(p)
     assert c.execute("select count(*) from membership_type").fetchone()[0] == 2
     assert c.execute("select count(*) from fee_rate").fetchone()[0] == 2
-    assert c.execute("select count(*) from category").fetchone()[0] == 3
+    assert c.execute("select count(*) from ledger_account").fetchone()[0] == 10
+    assert c.execute("select count(*) from period").fetchone()[0] == 1
     c.close()
 
 
@@ -21,8 +22,12 @@ def test_seed_values(conn):
         "join membership_type t on t.id=r.type_id order by t.name"
     ).fetchall()
     assert [tuple(r) for r in rows] == [("Aktiv", 1700, "1900-01"), ("Passiv", 1000, "1900-01")]
-    cats = conn.execute("select name, kind from category order by name").fetchall()
-    assert [tuple(r) for r in cats] == [("Beiträge", "in"), ("Hauptverein", "out"), ("Sonstiges", "both")]
+    # Startplan statt Kategorien (Schema 4); die Barkasse hat keine Rolle und ist ausblendbar
+    accounts = conn.execute("select number, name, kind, role from ledger_account"
+                            " order by number").fetchall()
+    assert [tuple(r) for r in accounts][:4] == [
+        (1000, "Barkasse", "asset", None), (1200, "Bank", "asset", "bank_default"),
+        (2000, "Vereinsvermögen", "liability", "equity"), (3000, "Beiträge", "income", "fees")]
 
 
 def test_settings(conn):

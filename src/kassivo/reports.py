@@ -1,4 +1,6 @@
-"""Jahresauswertung (nur lesend). Beträge in Cent."""
+"""Jahresauswertung (nur lesend). Beträge in Cent. Gruppen nach Gegenkonten (Journal)."""
+
+from kassivo import ledger
 
 _INC = "coalesce(sum(case when t.amount_cents > 0 then t.amount_cents end), 0)"
 _EXP = "coalesce(sum(case when t.amount_cents < 0 then -t.amount_cents end), 0)"
@@ -11,12 +13,11 @@ def _sort_groups(groups) -> list[dict]:
     )
 
 
-def _by_category_4(conn, ys: str) -> list[dict]:
-    """Gruppen je Gegenkonto der gültigen Buchung (Schema 4). Je Umsatz und Gegenkonto zählt
+def _by_category(conn, ys: str) -> list[dict]:
+    """Gruppen je Gegenkonto der gültigen Buchung. Je Umsatz und Gegenkonto zählt
     der Teilbetrag aus Sicht der Bank: positiv als Einnahme, negativ als Ausgabe der Gruppe.
     Ungebuchte Umsätze bilden "Ohne Kategorie"."""
-    from kassivo import ledger  # spät: ledger importiert periods, periods importiert db
-    span = (f"{ys}-01-01", f"{int(ys) + 1:04d}-01-01")
+    span = (f"{ys}-01-01", f"{ys}-12-31")
     rows = conn.execute(
         "with part as ("
         "  select t.id as tx,"
@@ -26,7 +27,7 @@ def _by_category_4(conn, ys: str) -> list[dict]:
         '  from "transaction" t join posting p on p.tx_id = t.id'
         "  join posting_row w on w.posting_id = p.id"
         "  join ledger_account b on b.bank_account_id = t.account_id"
-        "  where t.booking_date >= ? and t.booking_date < ?"
+        "  where t.booking_date between ? and ?"
         f"   and {ledger.VALID} and b.id in (w.debit_account_id, w.credit_account_id)"
         "  group by t.id, counter)"
         " select a.id, a.name, coalesce(sum(case when part.s > 0 then part.s end), 0) as inc,"
@@ -37,7 +38,7 @@ def _by_category_4(conn, ys: str) -> list[dict]:
               for r in rows]
     inc, exp = conn.execute(
         f'select {_INC}, {_EXP} from "transaction" t'
-        f" where t.booking_date >= ? and t.booking_date < ? and not {ledger.BOOKED}", span,
+        f" where t.booking_date between ? and ? and not {ledger.BOOKED}", span,
     ).fetchone()
     groups.append({"name": "Ohne Kategorie", "income_cents": inc, "expense_cents": exp})
     return _sort_groups(groups)
@@ -53,20 +54,7 @@ def year_summary(conn, year: int) -> dict:
         " where substr(t.booking_date, 1, 4) = ?", (ys,),
     ).fetchone()
 
-    rows = conn.execute(
-        f"select coalesce(c.name, 'Ohne Kategorie') as name,"
-        f" {_INC} as inc, {_EXP} as exp"
-        ' from "transaction" t left join category c on c.id = t.category_id'
-        " where substr(t.booking_date, 1, 4) = ?"
-        " group by t.category_id", (ys,),
-    ).fetchall()
-    by_category = sorted(
-        (
-            {"name": r["name"], "income_cents": r["inc"], "expense_cents": r["exp"]}
-            for r in rows if r["inc"] > 0 or r["exp"] > 0
-        ),
-        key=lambda c: (-(c["income_cents"] + c["expense_cents"]), c["name"].casefold()),
-    )
+    by_category = _by_category(conn, ys)
 
     months = {
         r["m"]: (r["inc"], r["exp"])

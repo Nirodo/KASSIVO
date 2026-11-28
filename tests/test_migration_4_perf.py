@@ -9,7 +9,7 @@ from kassivo import db, ledger
 def test_migrate_20000_tx_fast(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "_today", lambda: date(2026, 11, 28))
     path = tmp_path / "gross.db"
-    c = db.connect(path)
+    c = db.connect(path, migrations={k: db.MIGRATIONS[k] for k in (2, 3)})
     rnd = random.Random(4)
     members = [c.execute("insert into member(name) values(?)", (f"Mitglied {i}",)).lastrowid
                for i in range(300)]
@@ -30,8 +30,7 @@ def test_migrate_20000_tx_fast(tmp_path, monkeypatch):
     c.commit()
     c.close()
     start = time.perf_counter()
-    c = db.connect(path, migrations={**db.MIGRATIONS, 4: db._migrate_to_4},
-                   backup_dir=tmp_path / "backups")
+    c = db.connect(path, backup_dir=tmp_path / "backups")
     elapsed = time.perf_counter() - start
     try:
         assert db.schema_version(c) == 4

@@ -38,7 +38,7 @@
 
 <h2>Beispiele</h2>
 <div class="callout callout-example">
-  <p><strong>Beispiel:</strong> Zinsen der Bank. Die Quartalsabrechnung vom 30.09.2026 hat keine Gegenpartei und den Zweck „Abrechnung 30.09.2026 … Zinsen für Guthaben 8,77+ … Kapitalertragsteuer 2,19- … Abrechnung 6,46+“. Legen Sie einmal die Kategorie „Zinsen“ mit der Art „Einnahmen“ an und eine Regel mit dem Feld „Verwendungszweck“ und „Enthält“ <code>Zinsen für Guthaben</code> (siehe <a href="/wiki/kategorien">Kategorien und Regeln</a>). Dann kategorisiert KASSIVO die Abrechnung schon beim Import, und sie erscheint nie in „Unklar“. Für vorhandene Buchungen wählen Sie in „Unklar“ die Kategorie „Zinsen“ und „Als erledigt kategorisieren“, oder Sie wählen unter „Kategorien“ „Regeln anwenden“.</p>
+  <p><strong>Beispiel:</strong> Zinsen der Bank. Die Quartalsabrechnung vom 30.09.2026 hat keine Gegenpartei und den Zweck „Abrechnung 30.09.2026 … Zinsen für Guthaben 8,77+ … Kapitalertragsteuer 2,19- … Abrechnung 6,46+“. Legen Sie einmal für die Kategorie (das Konto) „Zinsen“ eine Regel an mit dem Feld „Verwendungszweck“ und „Enthält“ <code>Zinsen für Guthaben</code> (siehe <a href="/wiki/kategorien">Kategorien und Regeln</a>). Dann kategorisiert KASSIVO die Abrechnung schon beim Import, und sie erscheint nie in „Unklar“. Für vorhandene Buchungen wählen Sie in „Unklar“ die Kategorie „Zinsen“ und „Als erledigt kategorisieren“, oder Sie wählen unter „Regeln“ „Regeln anwenden“.</p>
 </div>
 <div class="callout callout-example">
   <p><strong>Beispiel:</strong> Max Mustermann hat im Datensatz die IBAN <code>XX00 FAKE 0000 0000 01</code>. Seine Zahlung vom 03.02.2026 über 17,00 € kommt von dieser IBAN. Beim Import ordnet KASSIVO sie ihm zu. Er taucht nie in „Unklar“ auf.</p>
@@ -69,7 +69,7 @@
   <p><strong>Achtung:</strong> Zahlungseingänge ohne Absender-IBAN (zum Beispiel Bareinzahlungen) und Sammelbuchungen werden nie automatisch zugeordnet. Sie stehen immer in „Unklar“.</p>
 </div>
 <div class="callout callout-warn">
-  <p><strong>Achtung:</strong> „— keins —“ ist eine Entscheidung, zum Beispiel für eine Spende von der IBAN eines Mitglieds. KASSIVO ordnet die Zahlung danach nie mehr automatisch zu, auch nicht über „Unklare automatisch zuordnen“, „Absender merken“ oder einen Import. Sie bleibt in „Unklar“. Damit sie dort verschwindet, wählen Sie eine Kategorie (zum Beispiel „Sonstiges“). Wählen Sie später doch ein Mitglied, gilt der Schutz nicht mehr.</p>
+  <p><strong>Achtung:</strong> „— keins —“ ist eine Entscheidung, zum Beispiel für eine Spende von der IBAN eines Mitglieds. KASSIVO ordnet die Zahlung danach nie mehr automatisch zu, auch nicht über „Unklare automatisch zuordnen“, „Absender merken“ oder einen Import. Sie bleibt in „Unklar“. Damit sie dort verschwindet, wählen Sie eine Kategorie (zum Beispiel „Sonstige Einnahmen“). Wählen Sie später doch ein Mitglied, gilt der Schutz nicht mehr.</p>
 </div>
 <div class="callout callout-tip">
   <p><strong>Tipp:</strong> Tragen Sie die IBAN beim Anlegen des Mitglieds ein. Dann ordnet KASSIVO schon den ersten Import richtig zu.</p>

@@ -6,7 +6,7 @@ from urllib.parse import quote, urlencode
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from kassivo import categories, dues, matching
+from kassivo import dues, ledger, matching
 from kassivo.iban import normalize_iban
 from kassivo.ingest import mask_iban
 from kassivo.members import list_members
@@ -46,8 +46,24 @@ def _tx(conn, tx_id: int):
     return row
 
 
-def _cats(conn):
-    return conn.execute("select id, name from category order by name, id").fetchall()
+def _cats(conn, kinds=("income", "expense")):
+    """Auswahl „Kategorie“ bis Schritt 3: sichtbare Ertrags- und Aufwandskonten."""
+    return [{"id": a["id"], "name": ledger.account_label(a)}
+            for a in ledger.list_accounts(conn, visible_only=True, kinds=kinds)]
+
+
+def _hidden_counters(conn, rows, cats) -> dict[int, dict]:
+    """Gegenkonten der Zeilen, die nicht in der Auswahl stehen (ausgeblendet): als zusätzliche
+    Option, sonst zeigte die Auswahl ein falsches Konto."""
+    shown = {c["id"] for c in cats}
+    ids = sorted({r["counter_id"] for r in rows
+                  if r["counter_id"] is not None and r["counter_id"] not in shown})
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    return {a["id"]: {"id": a["id"], "name": ledger.account_label(a) + " (ausgeblendet)"}
+            for a in conn.execute(f"select id, number, name from ledger_account"
+                                  f" where id in ({marks})", ids)}
 
 
 def _cp(row) -> dict:
@@ -122,9 +138,9 @@ def _where(f: dict) -> tuple[str, list]:
         parts.append("t.booking_date >= ? and t.booking_date < ?")
         params += [f"{int(f['year']):04d}-01-01", f"{int(f['year']) + 1:04d}-01-01"]
     if f["category"] == "none":
-        parts.append("t.category_id is null")
+        parts.append("not " + ledger.BOOKED)
     elif f["category"]:
-        parts.append("t.category_id = ?")
+        parts.append(ledger.ON_ACCOUNT)
         params.append(int(f["category"]))
     if f["kind"] == "in":
         parts.append("t.amount_cents > 0")
@@ -156,7 +172,8 @@ async def transactions(request: Request, conn=Depends(get_conn)):
         " coalesce(sum(case when t.amount_cents < 0 then t.amount_cents end), 0)"
         f' from "transaction" t{where}', params).fetchone()
     rows = conn.execute(
-        'select t.*, m.name as member_name from "transaction" t'
+        f"select t.*, m.name as member_name, {ledger.COUNTER} as counter_id,"
+        f' {ledger.BOOKED} as booked from "transaction" t'
         f" left join member m on m.id = t.member_id{where}"
         " order by t.booking_date desc, t.id desc limit ? offset ?",
         params + [PAGE_SIZE, (f["page"] - 1) * PAGE_SIZE]).fetchall()
@@ -174,9 +191,11 @@ async def transactions(request: Request, conn=Depends(get_conn)):
     here = request.url.path + (f"?{query}" if query else "")
     reasons = ({r["id"]: dues.review_reason(conn, r["id"]) for r in rows}
                if f["proposed"] == "1" else {})
+    cats = _cats(conn)
     return render(
         request, "transactions.html", f=f, rows=[_cp(r) for r in rows], count=count,
-        income=income, expense=expense, cats=_cats(conn), members=list_members(conn),
+        income=income, expense=expense, cats=cats, hidden=_hidden_counters(conn, rows, cats),
+        members=list_members(conn),
         reasons=reasons, remember_change=_remember_change(request, conn),
         next_url=safe_next(here), pages=pages,
         prev_url=page_url(f["page"] - 1) if f["page"] > 1 else None,
@@ -189,8 +208,7 @@ async def unmatched(request: Request, conn=Depends(get_conn)):
     return render(request, "unmatched.html", rows=[_cp(r) for r in matching.unmatched(conn)],
                   members=list_members(conn), next_url="/unmatched",
                   remember_change=_remember_change(request, conn),
-                  cats=conn.execute("select id, name from category where kind in ('in', 'both')"
-                                    " order by name, id").fetchall())
+                  cats=_cats(conn, ("income",)))
 
 
 @router.post("/unmatched/auto")
@@ -205,15 +223,21 @@ async def unmatched_auto(conn=Depends(get_conn)):
 @router.post("/transactions/{tx_id:int}/category")
 async def set_category(request: Request, tx_id: int, category_id: str = Form(""),
                        next: str = Form(""), conn=Depends(get_conn)):
+    """Kategorie = Gegenkonto (bis Schritt 3). Bucht ins Journal; gleiche Auswahl noch einmal
+    schreibt nichts, leer storniert die gültige Buchung."""
     _tx(conn, tx_id)
-    cat = None
+    account = None
     if category_id.strip():
-        cat = parse_id(category_id)
-        if cat is None:
-            return _error(request, "Unbekannte Kategorie.", back=safe_next(next))
+        account = parse_id(category_id)
+        row = None if account is None else conn.execute(
+            "select kind from ledger_account where id=?", (account,)).fetchone()
+        if row is None or row["kind"] not in ("income", "expense"):
+            return _error(request, "Unbekannte Kategorie. Bitte ein Ertrags- oder "
+                          "Aufwandskonto wählen.", back=safe_next(next))
     try:
-        categories.set_category(conn, tx_id, cat)
-    except ValueError as e:
+        ledger.set_counter_account(conn, tx_id, account, source="manual")
+    except ValueError as e:  # LedgerError, PeriodError: deutsche Meldung ohne Personendaten
+        conn.rollback()
         return _error(request, str(e), back=safe_next(next))
     conn.commit()
     return _see_other(safe_next(next))

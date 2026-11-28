@@ -163,12 +163,12 @@ LABELS = {
                    "Verteilung aufheben",
                    "Verteilung bearbeiten", "Aktuelle Verteilung", "Beitragsstatus des Mitglieds",
                    "Monat bereits bezahlt", "Summe der Zeilen", "Die Summe passt."],
-    "kategorien": ["Kategorie anlegen", "Regel anlegen", "Regeln anwenden",
+    "kategorien": ["Regel anlegen", "Regeln anwenden", "Konto (Kategorie)",
                    "Gesetzte Kategorien überschreiben",
                    "Ich bestätige das Überschreiben (nur nötig beim Überschreiben)", "Setzen",
                    "Filtern", "Ohne Kategorie", "Verwendungszweck", "Name der Gegenpartei",
                    "Enthält (Pflicht)", "Mindestbetrag", "Höchstbetrag", "Priorität",
-                   "Regeln auf alle Buchungen anwenden", "Regeln angewendet", "Name (Pflicht)"],
+                   "Regeln auf alle Buchungen anwenden", "Regeln angewendet"],
     "beitragsuebersicht": ["Summe (bezahlt / erwartet)", "Bezahlt", "Teilweise", "Offen",
                            "Überfällig", "Vorschlag", "Stammdaten bearbeiten",
                            "Zur Beitragsübersicht", "Keine Mitglieder vorhanden."],
@@ -288,7 +288,6 @@ def test_other_numbers_match_code(pages):
     assert f"0 bis {categories_routes.MAX_PRIORITY}" in _text(pages["kategorien"])
     assert f"zeigt die {MAX_LISTED} neuesten" in _text(pages["backup"])
     assert f"höchstens {dues.MAX_MONTHS_AHEAD} Monate" in _text(pages["verteilung"])
-    assert categories_routes.MAX_NAME == 100 and "1 bis 100 Zeichen" in _text(pages["kategorien"])
 
 
 def test_default_fees_and_port_match_code(pages):
@@ -299,8 +298,9 @@ def test_default_fees_and_port_match_code(pages):
     main = (SRC / "__main__.py").read_text("utf-8")
     assert "port=8000" in main and 'host="127.0.0.1"' in main
     assert "8000" in _text(pages["sicherheit"]) and "8000" in _text(pages["faq"])
-    cats = [r["name"] for r in conn.execute("select name from category order by id")]
-    assert cats == ["Beiträge", "Hauptverein", "Sonstiges"]
+    names = {r["name"] for r in conn.execute("select name from ledger_account")}
+    cats = ["Beiträge", "Hauptverein", "Sonstige Einnahmen", "Sonstige Ausgaben"]
+    assert set(cats) <= names
     for c in cats:
         assert c in t
 

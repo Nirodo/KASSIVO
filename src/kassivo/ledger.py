@@ -623,6 +623,10 @@ COUNTER = (f"(select case when count(distinct {_OTHER_SIDE}) = 1 then max({_OTHE
            " from posting p_ join posting_row w_ on w_.posting_id = p_.id"
            " join ledger_account b_ on b_.bank_account_id = t.account_id"
            f" where p_.tx_id = t.id and {_VALID_P})")
+# Gültige Buchung hat eine Zeile auf dem Konto im (einzigen) Parameter ?
+ON_ACCOUNT = ("exists (select 1 from posting p_ join posting_row w_ on w_.posting_id = p_.id"
+              f" where p_.tx_id = t.id and {_VALID_P}"
+              " and ? in (w_.debit_account_id, w_.credit_account_id))")
 ON_FEES = ("exists (select 1 from posting p_ join posting_row w_ on w_.posting_id = p_.id"
            " join ledger_account f_ on f_.role = 'fees'"
            " and f_.id in (w_.debit_account_id, w_.credit_account_id)"

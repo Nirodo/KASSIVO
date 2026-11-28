@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
+from kassivo import categories, ledger
 from kassivo.db import connect
 from kassivo.dues import month_status, set_check_start
 from kassivo.members import create_member, leave_member
@@ -64,7 +65,19 @@ def _col(db, tx, col):
 
 
 def _cat(db, name):
-    return db.execute("select id from category where name=?", (name,)).fetchone()[0]
+    """Konto (Kategorie) nach Name; ab Schema 4 sind Kategorien Ertrags- und Aufwandskonten."""
+    return db.execute("select id from ledger_account where name=?", (name,)).fetchone()[0]
+
+
+def _counter(db, tx):
+    """Gegenkonto der gültigen Buchung (früher "transaction".category_id)."""
+    db.rollback()  # frischen Stand lesen
+    found = ledger.counter_accounts(db, [tx]).get(tx)
+    return found[0] if found else None
+
+
+def _postings(db, tx):
+    return db.execute("select count(*) from posting where tx_id=?", (tx,)).fetchone()[0]
 
 
 def _assign(client, tx, member_id, **extra):
@@ -108,7 +121,7 @@ def test_year_filter_and_default(client):
 
 def test_category_none_and_q(client, db):
     _upload(client, [E_ERIKA, E_KIOSK, E_SPENDE])
-    cat = _cat(db, "Sonstiges")
+    cat = _cat(db, "Sonstige Ausgaben")
     client.post(f"/transactions/{_tx_id(db, 'Material')}/category", data={"category_id": str(cat)})
     r = client.get("/transactions?year=2026&category=none")
     assert "Kiosk" not in r.text and "Hans Spender" in r.text
@@ -165,9 +178,9 @@ def test_set_and_clear_category(client, db):
     tx = _tx_id(db, "Material")
     cat = _cat(db, "Hauptverein")
     r = client.post(f"/transactions/{tx}/category", data={"category_id": str(cat)})
-    assert r.status_code == 303 and _col(db, tx, "category_id") == cat
+    assert r.status_code == 303 and _counter(db, tx) == cat
     r = client.post(f"/transactions/{tx}/category", data={"category_id": ""})
-    assert r.status_code == 303 and _col(db, tx, "category_id") is None
+    assert r.status_code == 303 and _counter(db, tx) is None
 
 
 @pytest.mark.parametrize("val", ["9999", "abc", "0", "99999999999999999999"])
@@ -175,7 +188,102 @@ def test_unknown_category_422(client, db, val):
     _upload(client, [E_KIOSK])
     tx = _tx_id(db, "Material")
     r = client.post(f"/transactions/{tx}/category", data={"category_id": val})
-    assert r.status_code == 422 and _col(db, tx, "category_id") is None
+    assert r.status_code == 422 and _counter(db, tx) is None
+
+
+def test_category_books_journal_and_double_submit_is_noop(client, db):
+    _upload(client, [E_KIOSK])
+    tx = _tx_id(db, "Material")
+    cat = _cat(db, "Hauptverein")
+    for _ in range(2):  # doppelt gesendetes Formular
+        r = client.post(f"/transactions/{tx}/category", data={"category_id": str(cat)})
+        assert r.status_code == 303
+    assert _postings(db, tx) == 1
+    p = ledger.valid_posting_id(db, tx)
+    assert db.execute("select source from posting where id=?", (p,)).fetchone()[0] == "manual"
+    # anderes Konto: Storno und neue Buchung; "Ohne Kategorie": Storno
+    client.post(f"/transactions/{tx}/category", data={"category_id": str(_cat(db, "Bankgebühren"))})
+    assert _postings(db, tx) == 3 and _counter(db, tx) == _cat(db, "Bankgebühren")
+    client.post(f"/transactions/{tx}/category", data={"category_id": ""})
+    assert _postings(db, tx) == 4 and ledger.valid_posting_id(db, tx) is None
+    client.post(f"/transactions/{tx}/category", data={"category_id": ""})
+    assert _postings(db, tx) == 4
+    assert ledger.check(db) == []
+
+
+@pytest.mark.parametrize("number", [1000, 1200, 2000])
+def test_category_asset_or_liability_422(client, db, number):
+    _upload(client, [E_KIOSK])
+    tx = _tx_id(db, "Material")
+    acc = db.execute("select id from ledger_account where number=?", (number,)).fetchone()[0]
+    r = client.post(f"/transactions/{tx}/category", data={"category_id": str(acc)})
+    assert r.status_code == 422 and "Ertrags- oder Aufwandskonto" in r.text
+    assert _postings(db, tx) == 0
+
+
+def test_category_hidden_account_422_german(client, db):
+    _upload(client, [E_KIOSK])
+    tx = _tx_id(db, "Material")
+    acc = ledger.create_account(db, "Alt", "expense")
+    ledger.set_account_hidden(db, acc, True)
+    db.commit()
+    r = client.post(f"/transactions/{tx}/category", data={"category_id": str(acc)})
+    assert r.status_code == 422 and "ausgeblendetes Konto" in r.text
+    assert _postings(db, tx) == 0
+
+
+def test_category_closed_period_422(client, db):
+    _upload(client, [E_KIOSK])
+    tx = _tx_id(db, "Material")
+    db.execute("update period set status='closed', closed_at='2027-01-01T00:00:00'"
+               " where '2026-03-01' between start_date and end_date")
+    db.commit()
+    r = client.post(f"/transactions/{tx}/category",
+                    data={"category_id": str(_cat(db, "Hauptverein"))})
+    assert r.status_code == 422 and "Buchungsperiode" in r.text
+    assert _postings(db, tx) == 0
+
+
+def test_hidden_counter_shown_as_extra_option(client, db):
+    _upload(client, [E_KIOSK])
+    tx = _tx_id(db, "Material")
+    acc = ledger.create_account(db, "Altkonto", "expense", number=4700)
+    ledger.set_counter_account(db, tx, acc, source="manual")
+    ledger.set_account_hidden(db, acc, True)
+    db.commit()
+    page = client.get("/transactions?year=2026").text
+    assert f'<option value="{acc}" selected>4700 Altkonto (ausgeblendet)</option>' in page
+    assert page.count(f'<option value="{acc}"') == 1
+
+
+def test_split_booking_shows_text(client, db):
+    _upload(client, [E_SPENDE])
+    tx = _tx_id(db, "Spende Sommerfest")
+    ledger.book_tx(db, tx, [ledger.Part(_cat(db, "Spenden"), 2000),
+                            ledger.Part(_cat(db, "Sonstige Einnahmen"), 500)], source="manual")
+    db.commit()
+    page = client.get("/transactions?year=2026").text
+    assert "aufgeteilt" in page and 'id="cat-%d"' % tx not in page
+    r = client.get(f"/transactions?year=2026&category={_cat(db, 'Spenden')}")
+    assert "Hans Spender" in r.text
+
+
+def test_zero_amount_has_no_category_form(client, db):
+    _upload(client, [E_KIOSK])
+    db.execute('insert into "transaction"(account_id, booking_date, amount_cents, purpose,'
+               " dedupe_key) values(1, '2026-03-02', 0, 'Null', 'z0')")
+    db.commit()
+    tx = _tx_id(db, "Null")
+    assert f'id="cat-{tx}"' not in client.get("/transactions?year=2026").text
+
+
+def test_category_select_lists_income_and_expense_accounts(client, db):
+    _upload(client, [E_KIOSK])
+    page = client.get("/transactions?year=2026").text
+    assert "3000 Beiträge" in page and "4000 Hauptverein" in page
+    assert "Barkasse" not in page and "Vereinsvermögen" not in page
+    unmatched = client.get("/unmatched").text
+    assert "4000 Hauptverein" not in unmatched
 
 
 def test_unknown_tx_404(client):
@@ -407,23 +515,32 @@ def test_clear_requires_confirm(client, db):
 
 # --- Kategorien --------------------------------------------------------------
 
-def test_categories_page_and_create(client, db):
+def test_rules_page_lists_accounts_and_hint(client, db):
     r = client.get("/categories")
-    assert r.status_code == 200 and "Hauptverein" in r.text
+    assert r.status_code == 200
+    assert "<title>Regeln" in r.text or "Regeln" in r.text
+    assert "4000 Hauptverein" in r.text and "3000 Beiträge" in r.text
+    assert "Konten legen Sie im Kontenplan an." in r.text
+    assert "1200 Bank" not in r.text and "Barkasse" not in r.text  # nur Ertrag und Aufwand
+    assert 'name="kind"' not in r.text  # kein Formular "Kategorie anlegen" mehr
+
+
+def test_category_create_form_gone(client, db):
+    n = db.execute("select count(*) from ledger_account").fetchone()[0]
     r = client.post("/categories", data={"form": "category", "name": "Neu", "kind": "out"})
-    assert r.status_code == 303
-    assert db.execute("select kind from category where name='Neu'").fetchone()[0] == "out"
+    assert r.status_code == 422 and "Kontenplan" in r.text
+    assert db.execute("select count(*) from ledger_account").fetchone()[0] == n
 
 
-@pytest.mark.parametrize("name,kind", [
-    ("Hauptverein", "out"), ("hauptverein", "in"), ("ohne kategorie", "both"),
-    ("Ohne Kategorie", "both"), ("", "in"), ("   ", "in"), ("x" * 101, "in"), ("Gut", "kaputt"),
-])
-def test_category_create_invalid(client, db, name, kind):
-    n = db.execute("select count(*) from category").fetchone()[0]
-    r = client.post("/categories", data={"form": "category", "name": name, "kind": kind})
-    assert r.status_code == 422 and "Fehler" in r.text
-    assert db.execute("select count(*) from category").fetchone()[0] == n
+def test_rule_on_hidden_account_marked_sleeping(client, db):
+    acc = ledger.create_account(db, "Altes Konto", "expense")
+    categories.add_rule(db, acc, "purpose", "Alt")
+    ledger.set_account_hidden(db, acc, True)
+    db.commit()
+    page = client.get("/categories").text
+    assert "Altes Konto (ausgeblendet)" in page and "ruht, Konto ausgeblendet" in page
+    # in der Auswahl für neue Regeln steht es nicht
+    assert f'<option value="{acc}"' not in page
 
 
 def _rule(client, **kw):
@@ -436,7 +553,7 @@ def test_rule_valid_and_listed(client, db):
     cat = _cat(db, "Hauptverein")
     r = _rule(client, category_id=str(cat), min_amount="1,50", max_amount="20", priority="5")
     assert r.status_code == 303
-    row = db.execute("select * from category_rule").fetchone()
+    row = db.execute("select * from posting_rule").fetchone()
     assert (row["field"], row["contains"], row["priority"], row["min_cents"],
             row["max_cents"]) == ("purpose", "Material", 5, 150, 2000)
     assert "Material" in client.get("/categories").text
@@ -446,37 +563,37 @@ def test_rule_valid_and_listed(client, db):
     {"contains": ""}, {"contains": "   "}, {"contains": "x" * 201}, {"field": "amount_cents"},
     {"min_amount": "5", "max_amount": "4"}, {"max_amount": "100.000,01"}, {"min_amount": "abc"},
     {"min_amount": "-1"}, {"priority": "-1"}, {"priority": "10001"}, {"priority": "x"},
-    {"category_id": "9999"}, {"category_id": ""},
+    {"category_id": "9999"}, {"category_id": ""}, {"category_id": "2"}, {"category_id": "1"},
 ])
 def test_rule_invalid(client, db, kw):
     kw.setdefault("category_id", str(_cat(db, "Hauptverein")))
     r = _rule(client, **kw)
     assert r.status_code == 422 and "Fehler" in r.text
-    assert db.execute("select count(*) from category_rule").fetchone()[0] == 0
+    assert db.execute("select count(*) from posting_rule").fetchone()[0] == 0
 
 
 def test_apply_keeps_manual_without_overwrite(client, db):
     _upload(client, [E_KIOSK, {**E_KIOSK, "ref": "R5", "purpose": "Material 2"}])
-    manual, haupt = _cat(db, "Sonstiges"), _cat(db, "Hauptverein")
+    manual, haupt = _cat(db, "Sonstige Ausgaben"), _cat(db, "Hauptverein")
     t1, t2 = _tx_id(db, "Material"), _tx_id(db, "Material 2")
     client.post(f"/transactions/{t1}/category", data={"category_id": str(manual)})
     _rule(client, category_id=str(haupt))
     r = client.post("/categories/apply", data={})
     assert r.status_code == 303 and "applied=1" in r.headers["location"]
-    assert _col(db, t1, "category_id") == manual and _col(db, t2, "category_id") == haupt
+    assert _counter(db, t1) == manual and _counter(db, t2) == haupt
     assert "1 Buchung" in client.get(r.headers["location"]).text
 
 
 def test_apply_overwrite_needs_confirm(client, db):
     _upload(client, [E_KIOSK])
-    manual, haupt = _cat(db, "Sonstiges"), _cat(db, "Hauptverein")
+    manual, haupt = _cat(db, "Sonstige Ausgaben"), _cat(db, "Hauptverein")
     t1 = _tx_id(db, "Material")
     client.post(f"/transactions/{t1}/category", data={"category_id": str(manual)})
     _rule(client, category_id=str(haupt))
     r = client.post("/categories/apply", data={"overwrite": "on"})
-    assert r.status_code == 422 and _col(db, t1, "category_id") == manual
+    assert r.status_code == 422 and _counter(db, t1) == manual
     r = client.post("/categories/apply", data={"overwrite": "on", "confirm": "yes"})
-    assert r.status_code == 303 and _col(db, t1, "category_id") == haupt
+    assert r.status_code == 303 and _counter(db, t1) == haupt
 
 
 # --- Sicherheit --------------------------------------------------------------
@@ -793,8 +910,12 @@ E_ZINS = {"amount": 646, "purpose": "Abrechnung 30.09.2026 Zinsen für Guthaben 
 
 
 def _zins_cat(db, name="Zinsen"):
-    from kassivo.categories import create_category
-    cid = create_category(db, name, "in")
+    """Ertragskonto "Zinsen" (Startplan) oder ein neues Ertragskonto."""
+    row = db.execute("select id from ledger_account where name=? and kind='income'",
+                     (name,)).fetchone()
+    if row:
+        return row[0]
+    cid = ledger.create_account(db, name, "income")
     db.commit()
     return cid
 
@@ -819,7 +940,7 @@ def test_unmatched_zins_example_appears_first_and_disappears(client, db):
 def test_unmatched_page_texts_and_category_form(client, db):
     _upload(client, [E_ERIKA])
     _zins_cat(db)
-    db.execute("insert into category(name, kind) values('Ausgabe XY', 'out')")
+    ledger.create_account(db, "Ausgabe XY", "expense")
     db.commit()
     t = _text(client.get("/unmatched").text)
     assert "Kein Mitglied nötig" in t and "Als erledigt kategorisieren" in t
@@ -869,7 +990,7 @@ def test_import_rule_keeps_interest_out_of_unmatched(client, db):
     db.commit()
     _upload(client, [E_ZINS])
     tx = _tx_id(db, E_ZINS["purpose"])
-    assert _col(db, tx, "category_id") == cid
+    assert _counter(db, tx) == cid
     assert "Zinsen für Guthaben" not in client.get("/unmatched").text
 
 
@@ -878,4 +999,4 @@ def test_category_post_foreign_origin_403(client, db):
     tx = _tx_id(db, "Beitrag")
     r = _categorize(client, tx, _zins_cat(db), headers={"origin": "https://evil.example"})
     assert r.status_code == 403
-    assert _col(db, tx, "category_id") is None
+    assert _counter(db, tx) is None

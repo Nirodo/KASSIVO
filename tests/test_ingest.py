@@ -54,13 +54,15 @@ def test_zip_import_then_reimport_is_all_duplicates(conn, tmp_path):
 def test_stored_values_and_batch_row(conn, tmp_path):
     r = import_path(conn, write_zip(tmp_path, day_files()))
     rows = conn.execute(
-        'select amount_cents, booking_date, bank_ref, dedupe_key, category_id, member_id, batch_id '
+        'select amount_cents, booking_date, bank_ref, dedupe_key, member_id, batch_id '
         'from "transaction" order by id').fetchall()
     assert [x["amount_cents"] for x in rows] == [1700, -500, 1000, 1, -12345]
     assert all(type(x["amount_cents"]) is int for x in rows)
     assert rows[0]["booking_date"] == "2025-01-06"
     assert rows[0]["dedupe_key"] == "R1"
-    assert all(x["category_id"] is None and x["member_id"] is None for x in rows)
+    assert all(x["member_id"] is None for x in rows)
+    # import_path verbucht nichts (keine Regeln, keine Zuordnung)
+    assert conn.execute("select count(*) from posting").fetchone()[0] == 0
     assert all(x["batch_id"] == r.batch_id for x in rows)
     b = conn.execute("select * from import_batch where id=?", (r.batch_id,)).fetchone()
     assert (b["filename"], b["new_count"], b["dup_count"]) == ("export.zip", 5, 0)

@@ -1,29 +1,34 @@
-"""Kategorien und Regeln: Anlegen, Regel hinzufügen, Regeln neu anwenden."""
+"""Regeln auf Konten: Regel hinzufügen, Regeln neu anwenden. Konten legt der Kontenplan an."""
 import re
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
-from kassivo import categories
+from kassivo import categories, ledger
 from kassivo.money import parse_cents
 from kassivo.web.common import MAX_CENTS, get_conn, parse_id, render
 
 router = APIRouter()
-MAX_NAME, MAX_CONTAINS, MAX_PRIORITY = 100, 200, 10_000
-KIND_TEXT = {"in": "Einnahmen", "out": "Ausgaben", "both": "Beide"}
+MAX_CONTAINS, MAX_PRIORITY = 200, 10_000
+KIND_TEXT = {"income": "Ertrag (Eingänge)", "expense": "Aufwand (Ausgänge)"}
 FIELD_TEXT = {"purpose": "Verwendungszweck", "cp_name": "Name der Gegenpartei",
               "cp_iban": "IBAN der Gegenpartei"}
 
 
 def _page(request, conn, status=200, errors=None, values=None, form=""):
-    cats = conn.execute("select * from category order by name, id").fetchall()
-    rules = conn.execute("select * from category_rule order by priority, id").fetchall()
+    accounts = [dict(a, label=ledger.account_label(a)) for a in
+                ledger.list_accounts(conn, kinds=("income", "expense"))]
+    rules = conn.execute("select * from posting_rule order by priority, id").fetchall()
     by_cat: dict[int, list] = {}
     for r in rules:
-        by_cat.setdefault(r["category_id"], []).append(r)
+        by_cat.setdefault(r["account_id"], []).append(r)
+    # ausgeblendete Konten nur zeigen, wenn Regeln auf ihnen ruhen
+    accounts = [a for a in accounts if not a["hidden"] or a["id"] in by_cat]
+    cats = [a for a in accounts if not a["hidden"]]
     applied = request.query_params.get("applied", "")
     return render(
-        request, "categories.html", status, cats=cats, by_cat=by_cat, errors=errors or [],
+        request, "categories.html", status, cats=cats, accounts=accounts, by_cat=by_cat,
+        errors=errors or [],
         values=values or {}, form=form, kind_text=KIND_TEXT, field_text=FIELD_TEXT,
         applied=int(applied) if re.fullmatch(r"[0-9]{1,9}", applied) else None,
         ok=request.query_params.get("ok") == "1",
@@ -52,29 +57,21 @@ async def categories_page(request: Request, conn=Depends(get_conn)):
 
 @router.post("/categories")
 async def categories_submit(
-    request: Request, form: str = Form(""), name: str = Form(""), kind: str = Form(""),
+    request: Request, form: str = Form(""),
     category_id: str = Form(""), field: str = Form(""), contains: str = Form(""),
     priority: str = Form(""), min_amount: str = Form(""), max_amount: str = Form(""),
     conn=Depends(get_conn),
 ):
-    values = {"name": name, "kind": kind, "category_id": category_id, "field": field,
+    values = {"category_id": category_id, "field": field,
               "contains": contains, "priority": priority, "min_amount": min_amount,
               "max_amount": max_amount}
     errors: list[str] = []
     if form == "category":
-        if not 1 <= len(name.strip()) <= MAX_NAME:
-            errors.append(f"Der Name muss 1 bis {MAX_NAME} Zeichen lang sein.")
-        if kind not in categories.KINDS:
-            errors.append("Bitte Einnahmen, Ausgaben oder Beide wählen.")
-        if not errors:
-            try:
-                categories.create_category(conn, name.strip(), kind)
-            except ValueError as e:
-                errors.append(str(e))
+        errors.append("Konten legen Sie im Kontenplan an.")
     elif form == "rule":
         cat = parse_id(category_id)
         if cat is None:
-            errors.append("Bitte eine Kategorie wählen.")
+            errors.append("Bitte ein Konto wählen.")
         if field not in categories.FIELD_COLUMNS:
             errors.append("Bitte ein Feld wählen.")
         text = contains.strip()

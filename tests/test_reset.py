@@ -65,10 +65,11 @@ def test_reset_creates_fresh_db_and_safety_copy(tmp_path, target):
         assert schema_version(c) == dbmod.SCHEMA_VERSION
         assert get_setting(c, "update_check") is None  # Standard: aus
         assert c.execute("pragma integrity_check").fetchone()[0] == "ok"
-        # wie beim ersten Start: Standard-Mitgliedsarten und -Kategorien
+        # wie beim ersten Start: Standard-Mitgliedsarten, Startplan und Periode
         ref = connect(_fresh_reference(tmp_path))
         try:
-            for table in ("membership_type", "fee_rate", "category"):
+            for table in ("membership_type", "fee_rate", "account_group", "ledger_account",
+                          "period"):
                 q = f'select * from "{table}" order by 1, 2'
                 assert [tuple(r) for r in c.execute(q)] == [tuple(r) for r in ref.execute(q)]
         finally:

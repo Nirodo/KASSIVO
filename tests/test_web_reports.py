@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from kassivo.db import connect
 from kassivo.reports import year_summary
-from tests.helpers import make_app
+from tests.helpers import book_on, make_app
 from kassivo.web.common import get_today
 
 TODAY = date(2026, 11, 24)
@@ -42,13 +42,10 @@ def db(db_path, client):
 def _tx(db, day, amount, category=None, n=[0]):
     n[0] += 1
     db.execute("insert or ignore into account(id, iban) values(1, 'DE00TEST')")
-    cat = None
-    if category:
-        db.execute("insert or ignore into category(name, kind) values(?, 'both')", (category,))
-        cat = db.execute("select id from category where name=?", (category,)).fetchone()[0]
-    db.execute(
-        'insert into "transaction"(account_id, booking_date, amount_cents, category_id,'
-        " dedupe_key) values(1,?,?,?,?)", (day, amount, cat, f"k{n[0]}"))
+    t = db.execute(
+        'insert into "transaction"(account_id, booking_date, amount_cents,'
+        " dedupe_key) values(1,?,?,?)", (day, amount, f"k{n[0]}")).lastrowid
+    book_on(db, t, category)
     db.commit()
 
 

@@ -45,7 +45,7 @@
   {% for r in rows %}
   <tr>
     {{ row.tx_cells(r) }}
-    <td>{{ ui.category_form(r.tx["id"], r.tx["category_id"], cats, next_url) }}</td>
+    <td>{% if r.tx["amount_cents"] == 0 %}—{% elif r.tx["booked"] and r.tx["counter_id"] is none %}aufgeteilt{% else %}{{ ui.category_form(r.tx["id"], r.tx["counter_id"], cats, next_url, extra=hidden.get(r.tx["counter_id"])) }}{% endif %}</td>
     <td>{% if r.tx["amount_cents"] > 0 %}{{ r.tx["member_name"] or "—" }}
       {{ ui.member_form(r.tx["id"], r.tx["member_id"], members, next_url) }}{% else %}—{% endif %}</td>
     <td>{% if r.tx["member_id"] %}<a href="/transactions/{{ r.tx['id'] }}/allocate?next={{ next_url | urlencode }}">Verteilung<span class="visually-hidden"> für Buchung {{ r.tx["id"] }}</span></a>{% endif %}

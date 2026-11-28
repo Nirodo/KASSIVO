@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from kassivo import categories, dues, matching
+from kassivo import categories, dues, ledger, matching, periods
 from kassivo.camt import CamtError, ParsedStatement, parse_camt052
 from kassivo.iban import mask_iban  # bleibt als ingest.mask_iban importierbar
 
@@ -180,7 +180,9 @@ def _account_id(conn, iban: str, label: str) -> int:
     row = conn.execute("select id from account where iban=?", (iban,)).fetchone()
     if row:
         return row[0]
-    return conn.execute("insert into account(iban, label) values(?,?)", (iban, label)).lastrowid
+    acc = conn.execute("insert into account(iban, label) values(?,?)", (iban, label)).lastrowid
+    ledger.bank_ledger_account(conn, acc)  # jedes Bankkonto hat genau ein Aktivkonto
+    return acc
 
 
 def _ref_conflict(conn, acc: int, key: str, tx) -> bool:
@@ -222,6 +224,8 @@ def _write(conn, path: Path, statements, bank_label: str) -> ImportResult:
             )
             if cur.rowcount == 1:
                 new_ids.append(cur.lastrowid)
+                # zu jedem Datum eine Periode, auch wenn der Umsatz "Neu" bleibt
+                periods.ensure_period(conn, tx.booking_date.isoformat())
             else:
                 dups += 1
                 if tx.bank_ref and _ref_conflict(conn, acc, key, tx):
@@ -232,7 +236,22 @@ def _write(conn, path: Path, statements, bank_label: str) -> ImportResult:
         "update import_batch set new_count=?, dup_count=? where id=?",
         (len(new_ids), dups, batch_id),
     )
+    closed = _in_closed_period(conn, new_ids)
+    if closed:
+        warnings.append(f"{closed} Umsätze liegen in einer abgeschlossenen Periode und wurden "
+                        "nicht verbucht")
     return ImportResult(batch_id, len(new_ids), dups, warnings, new_ids)
+
+
+def _in_closed_period(conn, tx_ids: list[int]) -> int:
+    """Zahl der Umsätze, deren Datum in einer abgeschlossenen Periode liegt."""
+    closed = conn.execute("select start_date, end_date from period"
+                          " where status = 'closed'").fetchall()
+    if not closed or not tx_ids:
+        return 0
+    wanted = set(tx_ids)
+    return sum(1 for r in conn.execute('select id, booking_date from "transaction"')
+               if r[0] in wanted and any(s <= r[1] <= e for s, e in closed))
 
 
 def import_path(conn, path: Path, bank_label: str = "Sparkasse") -> ImportResult:

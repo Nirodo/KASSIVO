@@ -1,4 +1,4 @@
-"""Jahresauswertung nach Gegenkonten aus dem Journal (Schema 4). Nur erfundene Daten."""
+"""Jahresauswertung nach Gegenkonten aus dem Journal. Nur erfundene Daten."""
 from datetime import date
 
 import pytest
@@ -24,63 +24,63 @@ def _tx(c, day, amount, account=None):
 
 def _groups(c, year=2026):
     return {g["name"]: (g["income_cents"], g["expense_cents"])
-            for g in reports._by_category_4(c, f"{year:04d}")}
+            for g in reports.year_summary(c, year)["by_category"]}
 
 
-def test_by_category_after_accounts(conn4):
-    _tx(conn4, "2026-03-05", 1700, _acc(conn4, 3000))
-    _tx(conn4, "2026-04-05", -5000, _acc(conn4, 4000))
-    _tx(conn4, "2025-04-05", -999, _acc(conn4, 4000))
-    assert reports._by_category_4(conn4, "2026") == [
+def test_by_category_after_accounts(conn):
+    _tx(conn, "2026-03-05", 1700, _acc(conn, 3000))
+    _tx(conn, "2026-04-05", -5000, _acc(conn, 4000))
+    _tx(conn, "2025-04-05", -999, _acc(conn, 4000))
+    assert reports.year_summary(conn, 2026)["by_category"] == [
         {"name": "Hauptverein", "income_cents": 0, "expense_cents": 5000},
         {"name": "Beiträge", "income_cents": 1700, "expense_cents": 0},
     ]
 
 
-def test_unbooked_is_ohne_kategorie(conn4):
-    _tx(conn4, "2026-03-05", 700)
-    _tx(conn4, "2026-03-06", -300)
-    _tx(conn4, "2026-03-07", 0)
-    assert _groups(conn4) == {"Ohne Kategorie": (700, 300)}
+def test_unbooked_is_ohne_kategorie(conn):
+    _tx(conn, "2026-03-05", 700)
+    _tx(conn, "2026-03-06", -300)
+    _tx(conn, "2026-03-07", 0)
+    assert _groups(conn) == {"Ohne Kategorie": (700, 300)}
 
 
-def test_outgoing_on_income_account_is_expense_of_group(conn4):
-    beitraege = _acc(conn4, 3000)
-    _tx(conn4, "2026-03-05", 1700, beitraege)
-    _tx(conn4, "2026-03-06", -300, beitraege)  # Rückbuchung mindert den Ertrag
-    assert _groups(conn4) == {"Beiträge": (1700, 300)}
+def test_outgoing_on_income_account_is_expense_of_group(conn):
+    beitraege = _acc(conn, 3000)
+    _tx(conn, "2026-03-05", 1700, beitraege)
+    _tx(conn, "2026-03-06", -300, beitraege)  # Rückbuchung mindert den Ertrag
+    assert _groups(conn) == {"Beiträge": (1700, 300)}
 
 
-def test_split_groups_by_sign(conn4):
-    t = _tx(conn4, "2026-03-05", 1000)
-    ledger.book_tx(conn4, t, [ledger.Part(_acc(conn4, 3000), 1200),
-                              ledger.Part(_acc(conn4, 4100), -200)], source="manual")
-    assert _groups(conn4) == {"Beiträge": (1200, 0), "Bankgebühren": (0, 200)}
+def test_split_groups_by_sign(conn):
+    t = _tx(conn, "2026-03-05", 1000)
+    ledger.book_tx(conn, t, [ledger.Part(_acc(conn, 3000), 1200),
+                              ledger.Part(_acc(conn, 4100), -200)], source="manual")
+    assert _groups(conn) == {"Beiträge": (1200, 0), "Bankgebühren": (0, 200)}
 
 
-def test_reversed_booking_counts_once(conn4):
-    t = _tx(conn4, "2026-03-05", 1700, _acc(conn4, 3100))
-    ledger.set_counter_account(conn4, t, _acc(conn4, 3000), source="manual")
-    ledger.set_counter_account(conn4, t, None, source="manual")
-    ledger.set_counter_account(conn4, t, _acc(conn4, 3200), source="manual")
-    assert _groups(conn4) == {"Zinsen": (1700, 0)}
+def test_reversed_booking_counts_once(conn):
+    t = _tx(conn, "2026-03-05", 1700, _acc(conn, 3100))
+    ledger.set_counter_account(conn, t, _acc(conn, 3000), source="manual")
+    ledger.set_counter_account(conn, t, None, source="manual")
+    ledger.set_counter_account(conn, t, _acc(conn, 3200), source="manual")
+    assert _groups(conn) == {"Zinsen": (1700, 0)}
 
 
-def test_group_sums_match_transactions(conn4):
-    _tx(conn4, "2026-01-01", 1700, _acc(conn4, 3000))
-    _tx(conn4, "2026-12-31", -400, _acc(conn4, 4000))
-    _tx(conn4, "2026-06-01", 250)
-    g = _groups(conn4)
+def test_group_sums_match_transactions(conn):
+    _tx(conn, "2026-01-01", 1700, _acc(conn, 3000))
+    _tx(conn, "2026-12-31", -400, _acc(conn, 4000))
+    _tx(conn, "2026-06-01", 250)
+    g = _groups(conn)
     assert sum(i for i, _ in g.values()) == 1950
     assert sum(e for _, e in g.values()) == 400
 
 
-def test_second_bank_account_counts(conn4):
-    conn4.execute("insert into account(id, iban) values(2, 'DE11111111111111111111')")
-    t = conn4.execute('insert into "transaction"(account_id, booking_date, amount_cents,'
+def test_second_bank_account_counts(conn):
+    conn.execute("insert into account(id, iban) values(2, 'DE11111111111111111111')")
+    t = conn.execute('insert into "transaction"(account_id, booking_date, amount_cents,'
                       " dedupe_key) values(2, '2026-02-01', 500, 'b2')").lastrowid
-    ledger.set_counter_account(conn4, t, _acc(conn4, 3100), source="manual")
-    assert _groups(conn4) == {"Spenden": (500, 0)}
+    ledger.set_counter_account(conn, t, _acc(conn, 3100), source="manual")
+    assert _groups(conn) == {"Spenden": (500, 0)}
 
 
 def test_report_equal_before_and_after_migration(tmp_path, monkeypatch):
@@ -108,11 +108,16 @@ def test_report_equal_before_and_after_migration(tmp_path, monkeypatch):
                   " category_id, member_id, dedupe_key) values(1,?,?,?,?,?)",
                   (day, amount, cats.get(cat), member, f"k{i}"))
     c.commit()
-    before = {g["name"]: (g["income_cents"], g["expense_cents"])
-              for g in reports.year_summary(c, 2026)["by_category"]}
+    # Auswertung nach Kategorien wie bis Schema 3 (direktes SQL, year_summary liest das Journal)
+    before = {r[0]: (r[1], r[2]) for r in c.execute(
+        "select coalesce(c.name, 'Ohne Kategorie'),"
+        " coalesce(sum(case when t.amount_cents > 0 then t.amount_cents end), 0),"
+        " coalesce(sum(case when t.amount_cents < 0 then -t.amount_cents end), 0)"
+        ' from "transaction" t left join category c on c.id = t.category_id'
+        " where substr(t.booking_date, 1, 4) = '2026' group by t.category_id")
+        if r[1] or r[2]}
     c.close()
-    c = db.connect(path, migrations={**db.MIGRATIONS, 4: db._migrate_to_4},
-                   backup_dir=tmp_path / "backups")
+    c = db.connect(path, backup_dir=tmp_path / "backups")
     after = _groups(c)
     c.close()
     # Mitglied ohne Kategorie zählt laut Spec jetzt bei "Beiträge"
@@ -128,6 +133,13 @@ def test_report_equal_before_and_after_migration(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("year", [2024, 2027])
-def test_empty_year(conn4, year):
-    _tx(conn4, "2026-03-05", 1700, _acc(conn4, 3000))
-    assert reports._by_category_4(conn4, f"{year:04d}") == []
+def test_empty_year(conn, year):
+    _tx(conn, "2026-03-05", 1700, _acc(conn, 3000))
+    assert reports.year_summary(conn, year)["by_category"] == []
+
+
+def test_year_9999_boundary(conn):
+    """Jahresgrenze als inklusives Ende: kein Vergleich mit "10000-01-01"."""
+    _tx(conn, "9999-12-31", 500, _acc(conn, 3100))
+    _tx(conn, "9999-01-01", 200)
+    assert _groups(conn, 9999) == {"Spenden": (500, 0), "Ohne Kategorie": (200, 0)}

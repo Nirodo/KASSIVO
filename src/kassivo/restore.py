@@ -47,7 +47,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from kassivo import __version__, backup, db
+from kassivo import __version__, backup, db, ledger
 
 FORMAT = "kassivo-backup"
 FORMAT_VERSION = 1
@@ -70,8 +70,8 @@ _SHA_RE = re.compile(r"[0-9a-f]{64}", re.ASCII)
 _DATE_RE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})", re.ASCII)
 # Geldspalten: (Tabelle, Spalte, NULL erlaubt). Beträge sind immer ganze Cent.
 MONEY_COLUMNS = (("transaction", "amount_cents", False), ("allocation", "cents", False),
-                 ("fee_rate", "cents", False), ("category_rule", "min_cents", True),
-                 ("category_rule", "max_cents", True))
+                 ("fee_rate", "cents", False), ("posting_row", "cents", False),
+                 ("posting_rule", "min_cents", True), ("posting_rule", "max_cents", True))
 
 E_ZIP = "Die Datei ist keine gültige KASSIVO-Sicherung (beschädigtes oder fremdes ZIP-Archiv)."
 E_ENTRIES = ("Die Sicherung enthält unerwartete Einträge. Erwartet werden genau "
@@ -85,6 +85,8 @@ E_CORRUPT = "Die Datenbank in der Sicherung ist beschädigt (Integritätsprüfun
 E_SCHEMA = "Die Datenbank in der Sicherung hat nicht den Aufbau einer KASSIVO-Datenbank."
 E_MONEY = ("Die Datenbank in der Sicherung enthält Beträge, die keine ganzen Cent sind. "
            "Sie stammt nicht unverändert aus KASSIVO.")
+E_LEDGER = ("Die Buchungen in der Sicherung sind nicht stimmig "
+            "(Soll und Haben, Storno oder Bankseite).")
 E_MIGRATE = ("Die Sicherung konnte nicht auf das Datenbankformat dieser KASSIVO-Version "
              "umgestellt werden.")
 E_EXPIRED = "Die Vorschau ist nicht mehr gültig. Bitte die Sicherung erneut auswählen."
@@ -170,8 +172,10 @@ def summary(conn: sqlite3.Connection) -> dict:
     """Eckdaten für Manifest und Vorschau (keine Namen, keine IBANs)."""
     members = conn.execute("select count(*) from member").fetchall()[0][0]
     tx, last = conn.execute('select count(*), max(booking_date) from "transaction"').fetchall()[0]
+    postings = conn.execute(f"select count(*) from posting p where {ledger.VALID}"
+                            ).fetchall()[0][0]
     return {"members": members, "transactions": tx, "last_booking": last,
-            "schema": db.schema_version(conn)}
+            "postings": postings, "schema": db.schema_version(conn)}
 
 
 def export_backup(conn: sqlite3.Connection, out: Path, now: datetime | None = None) -> dict:
@@ -191,6 +195,7 @@ def export_backup(conn: sqlite3.Connection, out: Path, now: datetime | None = No
             "created_at": (now or datetime.now()).replace(microsecond=0).isoformat(),
             "db_sha256": _sha256(snap), "db_size": snap.stat().st_size,
             "members": info["members"], "transactions": info["transactions"],
+            "postings": info["postings"],  # optional: ältere Manifeste haben das Feld nicht
         }
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             z.writestr(MANIFEST, json.dumps(manifest, indent=2))
@@ -319,7 +324,8 @@ def _quick_check(c) -> int:
 
 
 def _strict_check(c) -> dict:
-    """Nach der Umstellung: genau der Aufbau der Referenz, Beträge nur ganze Cent."""
+    """Nach der Umstellung: genau der Aufbau der Referenz, Beträge nur ganze Cent, Journal
+    stimmig (ledger.check)."""
     if db.schema_version(c) != db.current_schema_version(db.MIGRATIONS):
         raise RestoreError(E_SCHEMA)
     if c.execute("pragma integrity_check").fetchall() != [("ok",)]:
@@ -332,6 +338,13 @@ def _strict_check(c) -> dict:
         cond = f"typeof({col}) != 'integer'" + (f" and {col} is not null" if nullable else "")
         if c.execute(f'select count(*) from "{table}" where {cond}').fetchall()[0][0]:
             raise RestoreError(E_MONEY)
+    factory, c.row_factory = c.row_factory, sqlite3.Row  # ledger liest Spalten per Name
+    try:
+        findings = ledger.check(c)
+    finally:
+        c.row_factory = factory
+    if findings:
+        raise RestoreError(E_LEDGER)
     return summary(c)
 
 

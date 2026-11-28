@@ -21,25 +21,13 @@ def _kein_netz(monkeypatch):
 
 
 @pytest.fixture
-def conn4():
-    """Datenbank im Speicher auf Schema 4 (Migration 4 ausdrücklich, bis sie eingetragen ist)."""
-    from kassivo import db
-    c = connect(":memory:", migrations={**db.MIGRATIONS, 4: db._migrate_to_4})
-    yield c
-    c.close()
-
-
-@pytest.fixture
-def ledger_conn():
-    """Schema-3-Datenbank im Speicher plus Buchungstabellen von Schema 4 (Task 3, vor der
-    Migration). Startplan, Perioden ab dem frühesten Umsatzjahr bis 2026."""
+def ledger_conn(monkeypatch):
+    """Frische Datenbank im Speicher (Schema 4) mit festem Stichtag 2026-11-28: Startplan,
+    Periode "Jahr 2026"."""
     from datetime import date
 
     from kassivo import db
+    monkeypatch.setattr(db, "_today", lambda: date(2026, 11, 28))
     c = connect(":memory:")
-    for stmt in db._statements(db._LEDGER_DDL_4):
-        c.execute(stmt)
-    db._seed_ledger_4(c, date(2026, 11, 28))
-    c.commit()
     yield c
     c.close()

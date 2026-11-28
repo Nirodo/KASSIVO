@@ -1,58 +1,36 @@
-"""Kategorien und feste Zuweisungsregeln. Beträge sind int-Cent."""
+"""Regeln auf Konten (Schema 4). Beträge sind int-Cent.
 
-KINDS = ("in", "out", "both")
+Der Modulname bleibt bis Schritt 3. Eine Regel zeigt auf ein Ertrags- oder Aufwandskonto
+und bucht über ledger.set_counter_account; Kategorien gibt es ab Schema 4 nicht mehr.
+Keine Funktion ruft commit() (Aufrufer).
+"""
+from kassivo import ledger
+
 # feste Zuordnung Regelfeld -> Spalte; nie SQL aus dem Feldnamen bauen
 FIELD_COLUMNS = {"purpose": "purpose", "cp_name": "cp_name", "cp_iban": "cp_iban"}
-# Anzeigename für Buchungen ohne Kategorie; darf keine echte Kategorie heißen
-RESERVED_NAME = "Ohne Kategorie"
+# Richtung aus der Kontoart: Ertrag nur Eingänge, Aufwand nur Ausgänge
+_DIRECTION = {"income": "in", "expense": "out"}
 
 
-def create_category(conn, name: str, kind: str) -> int:
-    if kind not in KINDS:
-        raise ValueError(f"kind muss in/out/both sein, nicht {kind!r}")
-    key = name.strip().casefold()
-    if key == RESERVED_NAME.casefold():
-        raise ValueError(f"Der Name {RESERVED_NAME!r} ist reserviert")
-    if any(r["name"].strip().casefold() == key for r in conn.execute("select name from category")):
-        raise ValueError("Eine Kategorie mit diesem Namen existiert bereits")
-    cur = conn.execute("insert into category(name, kind) values(?,?)", (name, kind))
-    return cur.lastrowid
-
-
-def add_rule(
-    conn,
-    category_id: int,
-    field: str,
-    contains: str,
-    *,
-    priority: int = 100,
-    min_cents: int | None = None,
-    max_cents: int | None = None,
-) -> int:
+def add_rule(conn, account_id: int, field: str, contains: str, *, priority: int = 100,
+             min_cents: int | None = None, max_cents: int | None = None) -> int:
+    """Regel auf ein sichtbares Ertrags- oder Aufwandskonto. Sonst ValueError."""
     if field not in FIELD_COLUMNS:
-        raise ValueError(f"unbekanntes Feld {field!r}")
+        raise ValueError("Unbekanntes Feld für die Regel.")
     if not contains:
-        raise ValueError("contains darf nicht leer sein")
-    if not conn.execute("select 1 from category where id=?", (category_id,)).fetchone():
-        raise ValueError(f"unbekannte Kategorie {category_id}")
-    cur = conn.execute(
-        "insert into category_rule(category_id, field, contains, priority,"
-        " min_cents, max_cents) values(?,?,?,?,?,?)",
-        (category_id, field, contains, priority, min_cents, max_cents),
-    )
-    return cur.lastrowid
-
-
-def set_category(conn, tx_id: int, category_id: int | None) -> None:
-    if not conn.execute('select 1 from "transaction" where id=?', (tx_id,)).fetchone():
-        raise ValueError(f"unbekannte Buchung {tx_id}")
-    if category_id is not None and not conn.execute(
-        "select 1 from category where id=?", (category_id,)
-    ).fetchone():
-        raise ValueError(f"unbekannte Kategorie {category_id}")
-    conn.execute(
-        'update "transaction" set category_id=? where id=?', (category_id, tx_id)
-    )
+        raise ValueError("Der Suchtext darf nicht leer sein.")
+    row = conn.execute("select kind, hidden from ledger_account where id=?",
+                       (account_id,)).fetchone()
+    if row is None:
+        raise ValueError("Das Konto gibt es nicht (mehr).")
+    if row["kind"] not in _DIRECTION:
+        raise ValueError("Regeln buchen nur auf Ertrags- oder Aufwandskonten.")
+    if row["hidden"]:
+        raise ValueError("Auf ein ausgeblendetes Konto wird keine Regel gelegt.")
+    return conn.execute(
+        "insert into posting_rule(account_id, field, contains, priority, min_cents, max_cents)"
+        " values(?,?,?,?,?,?)",
+        (account_id, field, contains, priority, min_cents, max_cents)).lastrowid
 
 
 def _norm(field: str, text: str) -> str:
@@ -80,37 +58,15 @@ def _matches(rule, tx) -> bool:
     return _norm(field, rule["contains"]) in _norm(field, value)
 
 
-def _add_rule_4(conn, account_id: int, field: str, contains: str, *, priority: int = 100,
-                min_cents: int | None = None, max_cents: int | None = None) -> int:
-    """Regel auf ein sichtbares Ertrags- oder Aufwandskonto (Schema 4)."""
-    if field not in FIELD_COLUMNS:
-        raise ValueError("Unbekanntes Feld für die Regel.")
-    if not contains:
-        raise ValueError("Der Suchtext darf nicht leer sein.")
-    row = conn.execute("select kind, hidden from ledger_account where id=?",
-                       (account_id,)).fetchone()
-    if row is None:
-        raise ValueError("Das Konto gibt es nicht (mehr).")
-    if row["kind"] not in ("income", "expense"):
-        raise ValueError("Regeln buchen nur auf Ertrags- oder Aufwandskonten.")
-    if row["hidden"]:
-        raise ValueError("Auf ein ausgeblendetes Konto wird keine Regel gelegt.")
-    return conn.execute(
-        "insert into posting_rule(account_id, field, contains, priority, min_cents, max_cents)"
-        " values(?,?,?,?,?,?)",
-        (account_id, field, contains, priority, min_cents, max_cents)).lastrowid
-
-
-def _apply_rules_4(conn, tx_ids: list[int] | None = None, overwrite: bool = False) -> int:
-    """Erste passende Regel (priority, id) bucht über ledger.set_counter_account (Schema 4).
+def apply_rules(conn, tx_ids: list[int] | None = None, overwrite: bool = False) -> int:
+    """Erste passende Regel (priority, id) bucht über ledger.set_counter_account.
 
     Ertragskonto nur bei Eingang, Aufwandskonto nur bei Ausgang. Regeln auf ausgeblendeten
     Konten ruhen. Ohne overwrite nur ungebuchte Umsätze. Umsätze in einer abgeschlossenen
     Periode bleiben unberührt. Rückgabe: Zahl neuer Buchungen (gleiches Konto zählt nicht).
-    Ohne commit (Aufrufer)."""
-    from kassivo import ledger  # spät: ledger importiert periods, periods importiert db
+    """
     rules = [
-        dict(r, kind={"income": "in", "expense": "out"}[r["kind"]]) for r in conn.execute(
+        dict(r, kind=_DIRECTION[r["kind"]]) for r in conn.execute(
             "select r.*, a.kind from posting_rule r join ledger_account a on a.id = r.account_id"
             " where a.hidden = 0 and a.kind in ('income', 'expense')"
             " order by r.priority, r.id")
@@ -137,33 +93,5 @@ def _apply_rules_4(conn, tx_ids: list[int] | None = None, overwrite: bool = Fals
                 after = ledger.set_counter_account(conn, tx["id"], rule["account_id"],
                                                    source="rule")
                 changed += after != before
-                break
-    return changed
-
-
-def apply_rules(conn, tx_ids: list[int] | None = None, overwrite: bool = False) -> int:
-    rules = conn.execute(
-        "select r.*, c.kind from category_rule r join category c on c.id=r.category_id"
-        " order by r.priority, r.id"
-    ).fetchall()
-    rules = [r for r in rules if r["field"] in FIELD_COLUMNS]
-    txs = conn.execute(
-        'select id, amount_cents, purpose, cp_name, cp_iban, category_id from "transaction"'
-    ).fetchall()
-    wanted = None if tx_ids is None else set(tx_ids)
-    changed = 0
-    for tx in txs:
-        if wanted is not None and tx["id"] not in wanted:
-            continue
-        if tx["category_id"] is not None and not overwrite:
-            continue
-        for rule in rules:
-            if _matches(rule, tx):
-                if rule["category_id"] != tx["category_id"]:
-                    conn.execute(
-                        'update "transaction" set category_id=? where id=?',
-                        (rule["category_id"], tx["id"]),
-                    )
-                    changed += 1
                 break
     return changed

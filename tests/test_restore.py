@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from kassivo import __version__, restore
+from kassivo import __version__, ledger, restore
 from kassivo import db as dbmod
 from kassivo.db import SchemaTooNewError, connect, schema_version
 from kassivo.restore import RestoreError
@@ -24,11 +24,22 @@ TOKEN_RE = re.compile(r"[0-9a-f]{32}")
 
 # --- Hilfen ---
 
+def _link_banks(c):
+    """Jedes Bankkonto bekommt sein Aktivkonto wie beim Import (ab Schema 4 Pflicht)."""
+    factory, c.row_factory = c.row_factory, sqlite3.Row
+    try:
+        for (acc,) in c.execute("select id from account order by id").fetchall():
+            ledger.bank_ledger_account(c, acc)
+    finally:
+        c.row_factory = factory
+
+
 def _fill(path, members=("Erika Muster",), booking="2026-03-01"):
     c = connect(path)
     for name in members:
         c.execute("insert into member(name, iban) values(?, 'XX00FAKE0000000001')", (name,))
     c.execute("insert or ignore into account(iban) values('XX00FAKE')")
+    _link_banks(c)
     c.execute('insert into "transaction"(account_id, booking_date, amount_cents, dedupe_key) '
               "values(1, ?, 1700, ?)", (booking, f"k-{booking}-{len(members)}"))
     c.commit()
@@ -418,6 +429,41 @@ def target(tmp_path):
 def _backups(target):
     d = target.parent / "backups"
     return sorted(p.name for p in d.iterdir()) if d.exists() else []
+
+
+def test_roundtrip_schema_4_with_postings_and_triggers(tmp_path, target):
+    src = tmp_path / "quelle" / "k.db"
+    c = _fill(src)
+    tx = c.execute('select id from "transaction"').fetchone()[0]
+    ledger.set_counter_account(c, tx, ledger.fees_account_id(c), source="manual")
+    ledger.set_counter_account(c, tx, None, source="manual")  # Storno
+    ledger.set_counter_account(c, tx, ledger.fees_account_id(c), source="manual")
+    c.commit()
+    out = tmp_path / "export.kassivo"
+    manifest = restore.export_backup(c, out, now=NOW)
+    c.close()
+    assert manifest["postings"] == 1
+    st = restore.stage_upload(out, _staging(tmp_path))
+    assert st.schema == 4 and st.summary["postings"] == 1
+    restore.restore(target, st.token, _staging(tmp_path), target.parent / "backups")
+    c = connect(target)
+    assert c.execute("select count(*) from posting").fetchone()[0] == 3
+    assert ledger.check(c) == []
+    triggers = {r[0] for r in c.execute("select name from sqlite_master where type='trigger'")}
+    assert {"posting_no_update", "posting_one_valid", "posting_in_open_period"} <= triggers
+    with pytest.raises(sqlite3.IntegrityError):
+        c.execute("delete from posting")
+    c.close()
+
+
+def test_manifest_without_postings_still_accepted(tmp_path):
+    out = _export(tmp_path)
+    with zipfile.ZipFile(out) as z:
+        m = json.loads(z.read("manifest.json"))
+        db_data = z.read("kassivo.db")
+    m.pop("postings")
+    p = _write(tmp_path, _zip({"manifest.json": json.dumps(m).encode(), "kassivo.db": db_data}))
+    assert restore.stage_upload(p, _staging(tmp_path)).summary["transactions"] == 1
 
 
 def test_restore_replaces_and_keeps_safety_copy(tmp_path, target):

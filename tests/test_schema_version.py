@@ -89,10 +89,27 @@ def _dump(path):
         c.close()
 
 
+# Kategorien überführt Migration 4 in Konten und Buchungen; das prüft test_migration_4.
+_NOT_COMPARED = {"category", "category_rule", "account_group", "ledger_account", "cost_center",
+                 "period", "posting", "posting_row", "posting_rule"}
+
+
 def _rows(path):
-    d = _dump(path)
-    d.pop("__master__")
-    return d
+    """Zeilen der Tabellen aus Schema 1 ohne Kategorien, ohne "transaction".category_id und
+    ohne die Einstellung active_period (Migration 4)."""
+    c = sqlite3.connect(path)
+    try:
+        d = {}
+        for t in _tables(c):
+            if t in _NOT_COMPARED:
+                continue
+            cols = [r[1] for r in c.execute(f'pragma table_info("{t}")') if r[1] != "category_id"]
+            sql = ", ".join(f'"{x}"' for x in cols)
+            d[t] = c.execute(f'select {sql} from "{t}" order by rowid').fetchall()
+        d["settings"] = [r for r in d.get("settings", []) if r[0] != "active_period"]
+        return d
+    finally:
+        c.close()
 
 
 def _raw_version(path):
@@ -122,8 +139,9 @@ def _seed_rows(c):
         c.execute("insert into category(name, kind) values(?,?)", (name, kind))
 
 
-def _sample_rows(c):
-    """Füllt alle Tabellen (Stammdaten müssen schon da sein)."""
+def _sample_rows(c, categories=True):
+    """Füllt alle Tabellen (Stammdaten müssen schon da sein). categories=False: aktuelles
+    Schema ohne Kategorien."""
     c.execute("insert into member(name, iban, street, zip, city, eintritt, fee_start) values("
               "'Erika Muster', 'DE00TEST1', 'Musterweg 1', '12345', 'Musterstadt', "
               "'2020-01', '2020-01')")
@@ -133,16 +151,19 @@ def _sample_rows(c):
     c.execute("insert into member_type_history(member_id, type_id, valid_from) "
               "values(2, 2, '2021-06')")
     c.execute("insert into fee_rate(type_id, cents, valid_from) values(1, 1850, '2026-01')")
-    c.execute("insert into category_rule(category_id, field, contains, priority, min_cents) "
-              "values(1, 'purpose', 'Beitrag', 5, 100)")
+    if categories:
+        c.execute("insert into category_rule(category_id, field, contains, priority, min_cents)"
+                  " values(1, 'purpose', 'Beitrag', 5, 100)")
     c.execute("insert into settings(key, value) values('pruefungsstart', '2026-01')")
     c.execute("insert into account(iban, label) values('DE00KONTO', 'Kasse')")
     c.execute("insert into import_batch(filename, imported_at, new_count, dup_count) "
               "values('erfunden.xml', '2026-03-05T10:00:00', 2, 1)")
     c.execute(
         'insert into "transaction"(account_id, booking_date, value_date, amount_cents, bank_ref, '
-        "cp_name, cp_iban, purpose, dedupe_key, category_id, member_id, batch_id) values("
-        "1,'2026-03-01','2026-03-02',1700,'REF1','Erika Muster','DE00TEST1','Beitrag','k1',1,1,1)")
+        "cp_name, cp_iban, purpose, dedupe_key, member_id, batch_id) values("
+        "1,'2026-03-01','2026-03-02',1700,'REF1','Erika Muster','DE00TEST1','Beitrag','k1',1,1)")
+    if categories:
+        c.execute('update "transaction" set category_id = 1 where id = 1')
     c.execute(
         'insert into "transaction"(account_id, booking_date, amount_cents, dedupe_key, batch_id) '
         "values(1,'2026-03-02',-2550,'k2',1)")
@@ -178,7 +199,7 @@ def _current_db(path):
     """Datenbank im aktuellen Schema mit Beispieldaten."""
     connect(path).close()
     c = sqlite3.connect(path)
-    _sample_rows(c)
+    _sample_rows(c, categories=False)
     c.commit()
     c.close()
 
@@ -249,7 +270,8 @@ def test_fresh_file_db(tmp_path):
 def test_fresh_memory_db():
     c = connect(":memory:")
     assert schema_version(c) == SCHEMA_VERSION
-    assert c.execute("select count(*) from category").fetchone()[0] == 3
+    assert "category" not in _tables(c)
+    assert c.execute("select count(*) from ledger_account").fetchone()[0] == 10
     c.close()
 
 
@@ -270,7 +292,7 @@ def test_legacy_db_stamped_then_migrated_with_backup(tmp_path):
     assert _raw_version(p) == 0
     before = _rows(p)
     connect(p).close()
-    assert _raw_version(p) == SCHEMA_VERSION == 3
+    assert _raw_version(p) == SCHEMA_VERSION == 4
     assert _rows(p) == _as_current(before)
     names = _backups(p)
     assert len(names) == 1
@@ -278,7 +300,7 @@ def test_legacy_db_stamped_then_migrated_with_backup(tmp_path):
     assert _raw_version(bk) == 1 and _rows(bk) == before
     after = _dump(p)
     connect(p).close()
-    assert _dump(p) == after and _raw_version(p) == 3
+    assert _dump(p) == after and _raw_version(p) == 4
     assert len(_backups(p)) == 1
 
 
@@ -742,7 +764,17 @@ def test_migration_2_adds_source_with_data(tmp_path):
 
 
 def test_migrations_registered():
-    assert SCHEMA_VERSION == 3 and set(MIGRATIONS) == {2, 3}
+    assert SCHEMA_VERSION == 4 and set(MIGRATIONS) == {2, 3, 4}
+
+
+def test_fresh_db_schema_4(tmp_path):
+    c = connect(tmp_path / "k.db")
+    assert schema_version(c) == 4
+    tables = set(_tables(c))
+    assert {"ledger_account", "posting", "posting_row", "posting_rule", "period"} <= tables
+    assert not {"category", "category_rule"} & tables
+    assert "category_id" not in [r[1] for r in c.execute('pragma table_info("transaction")')]
+    c.close()
 
 
 # --- Migration 3: transaction.no_member (#6) ---
@@ -759,7 +791,7 @@ def test_migration_3_adds_no_member_with_data(tmp_path):
     assert _raw_version(p) == 2
     before = _dump(p)
     rows_before = _rows(p)
-    c = connect(p)
+    c = connect(p, migrations={2: MIGRATIONS[2], 3: MIGRATIONS[3]})
     assert schema_version(c) == 3
     assert [tuple(r) for r in c.execute(
         'select id, member_id, no_member from "transaction" order by id')] == [

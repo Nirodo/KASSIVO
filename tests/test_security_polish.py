@@ -190,7 +190,7 @@ def _rules_page(tmp_path, *texts):
     c = make_client(db)
     c.get("/dues")
     conn = connect(db)
-    cat = categories.create_category(conn, "Spenden", "in")
+    cat = conn.execute("select id from ledger_account where number=3100").fetchone()[0]
     for t in texts:
         categories.add_rule(conn, cat, "cp_iban", t)
     conn.commit()
@@ -245,7 +245,7 @@ def test_mask_rule_text_non_string_unchanged():
 def test_stored_rule_value_unchanged(tmp_path):
     _rules_page(tmp_path, "DE00000000000000000000")
     conn = connect(tmp_path / "t.db")
-    assert conn.execute("select contains from category_rule").fetchone()[0] == "DE00000000000000000000"
+    assert conn.execute("select contains from posting_rule").fetchone()[0] == "DE00000000000000000000"
 
 
 # --- Doku ---

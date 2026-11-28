@@ -3,8 +3,7 @@ from datetime import date
 
 import pytest
 
-from kassivo import dues
-from kassivo.categories import create_category
+from kassivo import dues, ledger
 from kassivo.dues import month_status, set_check_start
 from kassivo.matching import assign_member, auto_assign, unmatched
 from kassivo.members import create_member
@@ -29,15 +28,19 @@ def _member(conn, name="Anna", iban=None):
 
 
 def _row(conn, tx_id):
-    return conn.execute(
-        'select member_id, category_id from "transaction" where id=?', (tx_id,)
-    ).fetchone()
+    """Mitglied und Gegenkonto der gültigen Buchung (Schlüssel category_id wie bis Schema 3)."""
+    member = conn.execute('select member_id from "transaction" where id=?',
+                          (tx_id,)).fetchone()[0]
+    counter = ledger.counter_accounts(conn, [tx_id]).get(tx_id)
+    return {"member_id": member, "category_id": counter[0] if counter else None}
 
 
 def _beitraege(conn):
-    return conn.execute(
-        "select id from category where name='Beiträge'"
-    ).fetchone()[0]
+    return ledger.fees_account_id(conn)
+
+
+def _postings(conn, tx_id):
+    return conn.execute("select count(*) from posting where tx_id=?", (tx_id,)).fetchone()[0]
 
 
 def _learned(conn):
@@ -230,11 +233,11 @@ def test_auto_assign_empty_list(conn):
 
 
 def test_existing_category_never_overwritten(conn):
-    other = create_category(conn, "Spende", "in")
+    other = ledger.create_account(conn, "Spende", "income")
     m = _member(conn, iban=KID)
     t1, t2 = _tx(conn, 1700, MOM), _tx(conn, 1700, KID)
-    conn.execute('update "transaction" set category_id=? where id in (?,?)',
-                 (other, t1, t2))
+    for t in (t1, t2):
+        ledger.set_counter_account(conn, t, other, source="manual")
     assign_member(conn, t1, m)
     auto_assign(conn, [t2])
     assert _row(conn, t1)["category_id"] == other
@@ -246,6 +249,69 @@ def test_assign_sets_beitraege_when_empty(conn):
     t = _tx(conn, 1700, MOM)
     assign_member(conn, t, m)
     assert _row(conn, t)["category_id"] == _beitraege(conn)
+    p = ledger.valid_posting_id(conn, t)
+    assert conn.execute("select source from posting where id=?", (p,)).fetchone()[0] == "fee"
+
+
+def test_assign_member_books_fees_once(conn):
+    a, b = _member(conn, "Anna"), _member(conn, "Bert")
+    t = _tx(conn, 1700, MOM)
+    assign_member(conn, t, a)
+    assign_member(conn, t, a)
+    assign_member(conn, t, b)
+    assert _postings(conn, t) == 1
+    assert _row(conn, t)["category_id"] == _beitraege(conn)
+
+
+def test_assign_keeps_other_booking(conn):
+    zinsen = conn.execute("select id from ledger_account where number=3200").fetchone()[0]
+    m = _member(conn)
+    t = _tx(conn, 1700, MOM)
+    ledger.set_counter_account(conn, t, zinsen, source="manual")
+    assign_member(conn, t, m)
+    assert _row(conn, t) == {"member_id": m, "category_id": zinsen}
+    assert _postings(conn, t) == 1
+
+
+def test_unmatched_excludes_non_fee_bookings(conn):
+    zinsen = conn.execute("select id from ledger_account where number=3200").fetchone()[0]
+    t = _tx(conn, 1700, MOM)
+    ledger.set_counter_account(conn, t, zinsen, source="manual")
+    assert t not in _ids(unmatched(conn))
+
+
+def test_unmatched_includes_unbooked_and_fees(conn):
+    t1, t2 = _tx(conn, 1700, MOM), _tx(conn, 1000, KID)
+    ledger.set_counter_account(conn, t2, _beitraege(conn), source="manual")
+    assert {t1, t2} <= set(_ids(unmatched(conn)))
+
+
+def test_split_with_fees_part_still_needs_member(conn):
+    spenden = conn.execute("select id from ledger_account where number=3100").fetchone()[0]
+    t = _tx(conn, 1700, MOM)
+    ledger.book_tx(conn, t, [ledger.Part(_beitraege(conn), 1200), ledger.Part(spenden, 500)],
+                   source="manual")
+    assert t in _ids(unmatched(conn))
+
+
+def test_no_member_still_skipped(conn):
+    m = _member(conn, iban=MOM)
+    t = _tx(conn, 1700, MOM)
+    conn.execute('update "transaction" set no_member=1 where id=?', (t,))
+    assert auto_assign(conn, [t]) == 0
+    assert _row(conn, t) == {"member_id": None, "category_id": None}
+    assert m
+
+
+def test_assign_in_closed_period_books_nothing(conn):
+    from kassivo import periods
+    m = _member(conn)
+    t = _tx(conn, 1700, MOM, day="2026-02-01")
+    periods.ensure_period(conn, "2026-02-01")
+    conn.execute("update period set status='closed', closed_at='2026-12-31T00:00:00'"
+                 " where '2026-02-01' between start_date and end_date")
+    assign_member(conn, t, m)
+    assert _row(conn, t) == {"member_id": m, "category_id": None}
 
 
 def test_assign_without_cp_iban(conn):
@@ -650,15 +716,18 @@ def test_learn_false_writes_nothing_even_with_member_iban(conn):
 
 # --- Issue #28: kategorisierte Eingänge ohne Mitglied sind erledigt -------------
 
-def _cat_tx(conn, category_id, amount=1700, iban=None):
-    from kassivo.categories import set_category
+def _cat_tx(conn, account_id, amount=1700, iban=None):
     t = _tx(conn, amount, iban)
-    set_category(conn, t, category_id)
+    ledger.set_counter_account(conn, t, account_id, source="manual")
     return t
 
 
+def _zinsen(conn):
+    return conn.execute("select id from ledger_account where number=3200").fetchone()[0]
+
+
 def test_unmatched_hides_categorized_non_member_booking(conn):
-    zins = create_category(conn, "Zinsen", "in")
+    zins = _zinsen(conn)
     done = _cat_tx(conn, zins)
     plain = _tx(conn, 646)
     beitrag = _cat_tx(conn, _beitraege(conn))
@@ -683,17 +752,16 @@ def test_unmatched_newest_first(conn):
 
 
 def test_unmatched_returns_after_category_removed(conn):
-    from kassivo.categories import set_category
-    zins = create_category(conn, "Zinsen", "in")
+    zins = _zinsen(conn)
     t = _cat_tx(conn, zins)
     assert t not in _ids(unmatched(conn))
-    set_category(conn, t, None)
+    ledger.set_counter_account(conn, t, None, source="manual")  # Storno
     assert t in _ids(unmatched(conn))
 
 
 def test_auto_assign_skips_categorized_non_member(conn):
     m = _member(conn, iban=KID)
-    zins = create_category(conn, "Zinsen", "in")
+    zins = _zinsen(conn)
     done = _cat_tx(conn, zins, iban=KID)
     plain = _tx(conn, 1700, KID)
     beitrag = _cat_tx(conn, _beitraege(conn), iban=KID)

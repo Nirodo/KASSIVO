@@ -1,23 +1,31 @@
 """Jahresauswertung. Nur erfundene Daten."""
 import pytest
 
+from kassivo import ledger
 from kassivo.reports import year_summary
 
 _n = [0]
 
 
+def _account(conn, name):
+    """Konto mit diesem Namen (Startplan oder eigenes Ertragskonto). Die Gruppe im Report
+    heißt wie das Gegenkonto; eine Rückbuchung auf dasselbe Konto bleibt eine Gruppe."""
+    row = conn.execute("select id from ledger_account where name=? order by id",
+                       (name,)).fetchone()
+    return row[0] if row else ledger.create_account(conn, name, "income")
+
+
 def _tx(conn, day, amount, category=None, member_id=None):
     _n[0] += 1
     conn.execute("insert or ignore into account(id, iban) values(1, 'DE00TEST')")
-    cat = None
-    if category:
-        conn.execute("insert or ignore into category(name, kind) values(?, 'both')", (category,))
-        cat = conn.execute("select id from category where name=?", (category,)).fetchone()[0]
     cur = conn.execute(
         'insert into "transaction"(account_id, booking_date, amount_cents,'
-        " category_id, member_id, dedupe_key) values(1,?,?,?,?,?)",
-        (day, amount, cat, member_id, f"r{_n[0]}"),
+        " member_id, dedupe_key) values(1,?,?,?,?)",
+        (day, amount, member_id, f"r{_n[0]}"),
     )
+    if category and amount != 0:
+        ledger.set_counter_account(conn, cur.lastrowid, _account(conn, category),
+                                   source="manual")
     conn.commit()
     return cur.lastrowid
 
@@ -91,7 +99,7 @@ def test_empty_year(conn):
 
 
 def test_zero_amount_counts_nowhere(conn):
-    _tx(conn, "2026-03-05", 0, "Sonstiges")
+    _tx(conn, "2026-03-05", 0, "Sonstige Einnahmen")
     s = year_summary(conn, 2026)
     assert s["by_category"] == []
     assert s["income_cents"] == s["expense_cents"] == 0
@@ -126,9 +134,9 @@ def test_category_sort(conn):
 
 
 def test_income_and_expense_same_category_one_entry(conn):
-    _tx(conn, "2026-03-05", 500, "Sonstiges")
-    _tx(conn, "2026-03-06", -200, "Sonstiges")
+    _tx(conn, "2026-03-05", 500, "Sonstige Einnahmen")
+    _tx(conn, "2026-03-06", -200, "Sonstige Einnahmen")
     s = year_summary(conn, 2026)
     assert s["by_category"] == [
-        {"name": "Sonstiges", "income_cents": 500, "expense_cents": 200}
+        {"name": "Sonstige Einnahmen", "income_cents": 500, "expense_cents": 200}
     ]

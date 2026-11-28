@@ -1,8 +1,9 @@
 """Zuordnung von Zahlungseingängen zu Mitgliedern, mit Lernen der Absender-IBAN.
 
-Eine Buchung wird nie geändert, nur member_id,
-category_id und no_member. Alle Prüfungen
-laufen vor dem ersten Schreiben: bei ValueError bleibt die DB unverändert.
+Ein Bankumsatz wird nie geändert, nur member_id und no_member; die
+Beitragsbuchung legt ledger an (nur, wenn der Umsatz noch keine gültige Buchung
+hat). Alle Prüfungen laufen vor dem ersten Schreiben: bei ValueError bleibt die
+DB unverändert.
 IBANs erscheinen nie in Fehlermeldungen.
 
 Nach jeder neuen Zuordnung berechnet dues die abgeleiteten Verteilungen
@@ -14,19 +15,8 @@ import hashlib
 import hmac
 from datetime import date
 
-from kassivo import dues
+from kassivo import dues, ledger
 from kassivo.iban import normalize_iban
-
-FEE_CATEGORY = "Beiträge"
-
-
-def _set_fee_category_if_empty(conn, tx_id: int) -> None:
-    # nur wenn noch keine Kategorie gesetzt ist; eine vorhandene bleibt immer
-    conn.execute(
-        'update "transaction" set category_id=(select id from category where name=?)'
-        " where id=? and category_id is null",
-        (FEE_CATEGORY, tx_id),
-    )
 
 
 def assign_member(conn, tx_id: int, member_id: int | None,
@@ -78,7 +68,7 @@ def assign_member(conn, tx_id: int, member_id: int | None,
                 # die anderen Zahlungen des alten Mitglieds sahen diese Zahlung
                 dues.rebuild_member(conn, tx["member_id"])
         if member_id is not None:
-            _set_fee_category_if_empty(conn, tx_id)
+            ledger.book_fees_if_unbooked(conn, tx_id)  # vorhandene Buchung bleibt
             iban = normalize_iban(tx["cp_iban"])
             if learn and iban and not _left_before(conn, member_id, tx["booking_date"]):
                 result = _learn(conn, iban, member_id)
@@ -230,12 +220,10 @@ def _iban_lookup(conn) -> dict[str, int | None]:
     return lookup
 
 
-# Ein Eingang ohne Mitglied ist erledigt, sobald er eine andere Kategorie als
-# "Beiträge" hat (zum Beispiel Zinsen): er braucht dann kein Mitglied.
-_NEEDS_MEMBER = (
-    "(category_id is null or category_id in"
-    " (select id from category where name = 'Beiträge'))"
-)
+# Ein Eingang ohne Mitglied ist erledigt, sobald er auf ein anderes Konto als
+# "Beiträge" (Rolle fees) gebucht ist (zum Beispiel Zinsen): er braucht dann kein
+# Mitglied. Alias t für "transaction".
+_NEEDS_MEMBER = "(not " + ledger.BOOKED + " or " + ledger.ON_FEES + ")"
 
 
 def iban_is_ambiguous(conn, iban: str | None) -> bool:
@@ -274,10 +262,10 @@ def _auto_assign(conn, tx_ids: list[int]) -> int:
     assigned = 0
     touched: set[int] = set()  # Mitglieder mit neuen Zahlungen
     rows = conn.execute(
-        'select id, cp_iban, booking_date from "transaction"'
-        " where amount_cents > 0 and member_id is null and cp_iban is not null"
-        " and no_member = 0 and "+_NEEDS_MEMBER+
-        " order by booking_date, id"
+        'select t.id, t.cp_iban, t.booking_date from "transaction" t'
+        " where t.amount_cents > 0 and t.member_id is null and t.cp_iban is not null"
+        " and t.no_member = 0 and "+_NEEDS_MEMBER+
+        " order by t.booking_date, t.id"
     ).fetchall()
     for tx in rows:
         if tx["id"] not in wanted:
@@ -293,7 +281,7 @@ def _auto_assign(conn, tx_ids: list[int]) -> int:
             'update "transaction" set member_id=? where id=?',
             (member_id, tx["id"]),
         )
-        _set_fee_category_if_empty(conn, tx["id"])
+        ledger.book_fees_if_unbooked(conn, tx["id"])
         touched.add(member_id)
         assigned += 1
     # danach je Mitglied einmal chronologisch verteilen
@@ -304,7 +292,7 @@ def _auto_assign(conn, tx_ids: list[int]) -> int:
 
 def unmatched(conn) -> list:
     return conn.execute(
-        'select * from "transaction" where amount_cents > 0 and member_id is null'
+        'select t.* from "transaction" t where t.amount_cents > 0 and t.member_id is null'
         " and "+_NEEDS_MEMBER+
-        " order by booking_date desc, id desc"
+        " order by t.booking_date desc, t.id desc"
     ).fetchall()

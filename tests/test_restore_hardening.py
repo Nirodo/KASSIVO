@@ -14,7 +14,8 @@ from kassivo.db import connect, schema_version
 from kassivo.restore import RestoreError
 from tests.helpers import make_app, make_client
 from tests.test_restore import (
-    _db_bytes, _export, _fill, _manifest_for, _names, _staged_files, _staging, _write, _zip,
+    _db_bytes, _export, _fill, _link_banks, _manifest_for, _names, _staged_files, _staging,
+    _write, _zip,
 )
 
 TABLE_MEMBER = ("create table if not exists member(\n"
@@ -24,8 +25,9 @@ TABLE_MEMBER = ("create table if not exists member(\n"
 
 # --- Hilfen ---
 
-def _current_schema_db(tmp_path, schema=dbmod.SCHEMA, extra=(), rows=()):
-    """Datenbank auf aktuellem Schema, aus (veränderter) Ausgangsfassung plus Migrationen."""
+def _current_schema_db(tmp_path, schema=dbmod.SCHEMA, extra=(), rows=(), link=True):
+    """Datenbank auf aktuellem Schema, aus (veränderter) Ausgangsfassung plus Migrationen.
+    link: Bankkonten aus rows bekommen ihr Aktivkonto (wie beim Import)."""
     def setup(c):
         c.executescript(schema)
         for stmt in extra:
@@ -35,6 +37,8 @@ def _current_schema_db(tmp_path, schema=dbmod.SCHEMA, extra=(), rows=()):
         c.execute(f"pragma user_version = {dbmod.SCHEMA_VERSION}")
         for stmt in rows:
             c.execute(stmt)
+        if link:
+            _link_banks(c)
     return _db_bytes(tmp_path, setup)
 
 
@@ -95,8 +99,6 @@ def test_legacy_member_iban_not_null_is_accepted(tmp_path):
 
 
 @pytest.mark.parametrize("old,new", [
-    (",\n  unique(account_id, dedupe_key));", ");"),
-    ("amount_cents integer not null", "amount_cents real not null"),
     ("status text not null check(status in ('proposed','confirmed'))", "status text not null"),
     ("name text not null unique);\ncreate table if not exists fee_rate",
      "name text not null);\ncreate table if not exists fee_rate"),
@@ -107,6 +109,34 @@ def test_manipulated_structure_rejected(tmp_path, old, new):
     assert dbmod.SCHEMA.count(old) == 1
     _reject(tmp_path, _current_schema_db(tmp_path, dbmod.SCHEMA.replace(old, new)),
             restore.E_SCHEMA)
+
+
+@pytest.mark.parametrize("old,new", [
+    ("unique(account_id, dedupe_key)", "check(1)"),
+    ("amount_cents integer not null", "amount_cents real not null"),
+])
+def test_manipulated_transaction_rejected(tmp_path, monkeypatch, old, new):
+    """Migration 4 baut "transaction" aus _TX_DDL_4 neu auf: dort manipulieren."""
+    assert dbmod._TX_DDL_4.count(old) == 1
+    monkeypatch.setattr(dbmod, "_TX_DDL_4", dbmod._TX_DDL_4.replace(old, new))
+    data = _current_schema_db(tmp_path)
+    monkeypatch.undo()
+    _reject(tmp_path, data, restore.E_SCHEMA)
+
+
+@pytest.mark.parametrize("old,new", [
+    ("cents between 1 and 100000000000)", "cents >= 1)"),
+    ("begin select raise(abort, 'Buchungen sind unveränderlich (Storno statt Ändern).'); end;\n"
+     "create trigger posting_no_delete",
+     "begin select 1; end;\ncreate trigger posting_no_delete"),
+])
+def test_manipulated_ledger_rejected(tmp_path, monkeypatch, old, new):
+    """Veränderte Spaltenprüfung oder Trigger im Journal: abgelehnt."""
+    assert dbmod._LEDGER_DDL_4.count(old) == 1
+    monkeypatch.setattr(dbmod, "_LEDGER_DDL_4", dbmod._LEDGER_DDL_4.replace(old, new))
+    data = _current_schema_db(tmp_path)
+    monkeypatch.undo()
+    _reject(tmp_path, data, restore.E_SCHEMA)
 
 
 @pytest.mark.parametrize("extra", [
@@ -124,7 +154,18 @@ def test_additional_objects_rejected(tmp_path, extra):
     'insert into "transaction"(account_id, booking_date, amount_cents, dedupe_key)'
     " values(1,'2026-01-01','17,00','k')",
     "insert into fee_rate(type_id, cents, valid_from) values(1, 12.25, '2026-01')",
-    "insert into category_rule(category_id, field, contains, min_cents) values(1,'p','x',1.5)",
+    # CHECK verhindert das in KASSIVO; eine fremde Datei kann es trotzdem enthalten
+    ("pragma ignore_check_constraints = on",
+     "insert into posting_rule(account_id, field, contains, min_cents)"
+     " values(6,'purpose','x',1.5)"),
+    ("pragma ignore_check_constraints = on",
+     "insert into posting_rule(account_id, field, contains, max_cents)"
+     " values(6,'purpose','x','9x')"),
+    ("pragma ignore_check_constraints = on",
+     "insert into posting(booking_date, source, created_at)"
+     " values(date('now'), 'manual', '2026-01-01T00:00:00')",
+     "insert into posting_row(posting_id, debit_account_id, credit_account_id, cents)"
+     " values(1, 2, 6, 17.5)"),
     "insert into allocation(tx_id, member_id, month, cents, status, source)"
     " values(1,1,'2026-01',x'00','proposed','auto')",
 ])
@@ -132,14 +173,51 @@ def test_non_integer_money_rejected(tmp_path, row):
     rows = ["insert into account(iban) values('XX00FAKE')",
             "insert into member(name) values('M')",
             "insert into membership_type(name) values('T')",
-            "insert into category(name, kind) values('K','in')", row]
-    _reject(tmp_path, _current_schema_db(tmp_path, rows=rows), restore.E_MONEY)
+            *((row,) if isinstance(row, str) else row)]
+    # Spalten mit CHECK (Journal): schon integrity_check meldet den Verstoß
+    expected = restore.E_MONEY if isinstance(row, str) else restore.E_CORRUPT
+    _reject(tmp_path, _current_schema_db(tmp_path, rows=rows), expected)
+
+
+def test_money_columns_cover_journal():
+    cols = set(restore.MONEY_COLUMNS)
+    assert {("posting_row", "cents", False), ("posting_rule", "min_cents", True),
+            ("posting_rule", "max_cents", True)} <= cols
+    assert not any(t.startswith("category") for t, _, _ in cols)
+
+
+def _ledger_rows(cents=1700):
+    """Ein Umsatz mit Buchung Soll Bank (ID 2), Haben Beiträge (ID 4)."""
+    return ["insert into account(iban) values('XX00FAKE')",
+            'insert into "transaction"(account_id, booking_date, amount_cents, dedupe_key)'
+            " values(1, date('now'), 1700, 'k')",
+            "insert into posting(booking_date, tx_id, source, created_at)"
+            " values(date('now'), 1, 'manual', '2026-01-01T00:00:00')",
+            "insert into posting_row(posting_id, debit_account_id, credit_account_id, cents)"
+            f" values(1, 2, 4, {cents})"]
+
+
+def test_ledger_consistent_backup_accepted(tmp_path):
+    st = _stage_bytes(tmp_path, _current_schema_db(tmp_path, rows=_ledger_rows()))
+    assert st.summary["postings"] == 1
+
+
+def test_ledger_inconsistent_backup_rejected(tmp_path):
+    """Bankseite stimmt nicht mit dem Umsatz überein (Trigger lassen das zu): E_LEDGER."""
+    _reject(tmp_path, _current_schema_db(tmp_path, rows=_ledger_rows(1600)), restore.E_LEDGER)
+
+
+def test_ledger_row_removed_past_triggers_rejected(tmp_path):
+    """Zeile an den Triggern vorbei entfernt, Trigger danach gleich neu angelegt: E_LEDGER."""
+    body = dbmod._LEDGER_DDL_4.split("create trigger posting_row_no_delete")[1].split("end;")[0]
+    rows = _ledger_rows() + ["drop trigger posting_row_no_delete", "delete from posting_row",
+                             "create trigger posting_row_no_delete" + body + "end;"]
+    _reject(tmp_path, _current_schema_db(tmp_path, rows=rows), restore.E_LEDGER)
 
 
 def test_integer_money_and_null_rule_limits_accepted(tmp_path):
     rows = ["insert into account(iban) values('XX00FAKE')",
-            "insert into category(name, kind) values('K','in')",
-            "insert into category_rule(category_id, field, contains) values(1,'p','x')",
+            "insert into posting_rule(account_id, field, contains) values(6,'purpose','x')",
             'insert into "transaction"(account_id, booking_date, amount_cents, dedupe_key)'
             " values(1,'2026-01-01',-1700,'k')"]
     st = _stage_bytes(tmp_path, _current_schema_db(tmp_path, rows=rows))
@@ -323,9 +401,13 @@ T_DEMO = ("create trigger t_demo before delete on demo "
 
 
 def _m4(conn):
-    """Testmigration 4 (die echte kommt erst mit dem Journal): Tabelle und Trigger."""
+    """Testmigration 4: die echte Migration 4 plus Tabelle demo mit Trigger t_demo."""
+    dbmod._migrate_to_4(conn)
     conn.execute("create table demo(id integer primary key, x integer not null)")
     conn.execute(T_DEMO)
+
+
+_m4.fk_off = True
 
 
 @pytest.fixture
@@ -389,8 +471,8 @@ def test_v3_backup_migrated_to_test_v4_gets_trigger(tmp_path, v4):
     st = _stage_bytes(tmp_path, data, schema=3)
     assert st.schema == 3
     c = sqlite3.connect(st.path)
-    assert [r[0] for r in c.execute("select name from sqlite_master where type='trigger'")] == [
-        "t_demo"]
+    names = [r[0] for r in c.execute("select name from sqlite_master where type='trigger'")]
+    assert "t_demo" in names and "posting_one_valid" in names
     c.close()
 
 

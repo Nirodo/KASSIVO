@@ -17,6 +17,7 @@
       <tr><th scope="row">Schema</th><td class="num">{{ staged.schema }}</td><td class="num">{{ current.schema }}</td></tr>
       <tr><th scope="row">Mitglieder</th><td class="num">{{ staged.summary.members }}</td><td class="num">{{ current.members }}</td></tr>
       <tr><th scope="row">Buchungen</th><td class="num">{{ staged.summary.transactions }}</td><td class="num">{{ current.transactions }}</td></tr>
+      <tr><th scope="row">Verbuchungen im Journal</th><td class="num">{{ staged.summary.postings }}</td><td class="num">{{ current.postings }}</td></tr>
       <tr><th scope="row">Letzte Buchung</th><td>{{ day(staged.summary.last_booking) or "–" }}</td><td>{{ day(current.last_booking) or "–" }}</td></tr>
     </tbody>
   </table>

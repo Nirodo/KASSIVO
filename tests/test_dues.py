@@ -456,8 +456,10 @@ def test_payment_history_ties_by_id_desc(conn):
 # --- Verteilung aufheben ----------------------------------------------------
 
 def _tx_row(conn, tx_id):
+    # Mitglied und letzte Buchung im Journal: Aufheben der Verteilung bucht nichts um
     return conn.execute(
-        'select member_id, category_id from "transaction" where id=?', (tx_id,)
+        'select t.member_id, (select max(p.id) from posting p where p.tx_id = t.id) as posting'
+        ' from "transaction" t where t.id=?', (tx_id,)
     ).fetchone()
 
 

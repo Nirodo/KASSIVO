@@ -9,7 +9,7 @@ from kassivo import dues
 from kassivo.db import connect
 from kassivo.members import create_member
 from kassivo.web.common import get_today
-from tests.helpers import make_app
+from tests.helpers import book_on, make_app
 
 TODAY = date(2026, 11, 24)
 
@@ -41,11 +41,14 @@ def db(db_path, app):
 def _tx(db, member_id, cents, day, category=None, n=[0]):
     n[0] += 1
     db.execute("insert or ignore into account(id, iban) values(1, 'XX00FAKE')")
-    cat = db.execute("select id from category where name=?", (category,)).fetchone()
     cur = db.execute(
         'insert into "transaction"(account_id, booking_date, amount_cents, member_id,'
-        " category_id, cp_name, purpose, dedupe_key) values(1,?,?,?,?,'Test Person','x',?)",
-        (day, cents, member_id, cat["id"] if cat else None, f"s{n[0]}"))
+        " cp_name, purpose, dedupe_key) values(1,?,?,?,'Test Person','x',?)",
+        (day, cents, member_id, f"s{n[0]}"))
+    # nur vorhandene Konten (wie früher nur vorhandene Kategorien)
+    if category and db.execute("select 1 from ledger_account where name=?",
+                               (category,)).fetchone():
+        book_on(db, cur.lastrowid, category)
     db.commit()
     return cur.lastrowid
 
@@ -62,7 +65,7 @@ def filled(db):
     _tx(db, None, 999, "2026-05-01")           # unklar
     _tx(db, None, 500, "2026-06-01")           # unklar
     _tx(db, None, 321, "2025-06-01")           # unklar, Vorjahr
-    _tx(db, None, 111, "2026-06-02", "Sonstiges")  # kein Mitglied nötig
+    _tx(db, None, 111, "2026-06-02", "Sonstige Einnahmen")  # kein Mitglied nötig
     _tx(db, None, -12000, "2026-04-06")        # Ausgabe
     dues.redistribute_all(db)
     return db
