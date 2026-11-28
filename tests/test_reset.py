@@ -166,3 +166,159 @@ def test_reset_with_open_connection_on_windows(target):
     finally:
         holder.close()
     assert _count(target, "member") == 1
+
+
+# --- Web ---
+
+import re  # noqa: E402
+
+from tests.helpers import make_client  # noqa: E402
+
+WORD = "LÖSCHEN"
+
+
+@pytest.fixture
+def web(target):
+    return target, make_client(target)
+
+
+def _form_token(html):
+    m = re.search(r'name="token" value="([0-9a-f]{32})"', html)
+    assert m, "Token fehlt im Formular"
+    return m[1]
+
+
+def _post(client, confirm=WORD, token=None, **kw):
+    if token is None:
+        token = _form_token(client.get("/settings/reset").text)
+    return client.post("/settings/reset", data={"confirm": confirm, "token": token}, **kw)
+
+
+def test_page_shows_what_is_lost(web):
+    target, client = web
+    client.post("/backup")
+    (name,) = _backups(target)
+    d = re.fullmatch(r"kassivo-(\d{8})-(\d{6})\.db", name)[1]
+    r = client.get("/settings/reset")
+    assert r.status_code == 200
+    t = r.text
+    assert "Datenbank löschen und neu anfangen" in t
+    assert re.search(r"Mitglieder</th>\s*<td[^>]*>1<", t)
+    assert re.search(r"Buchungen</th>\s*<td[^>]*>1<", t)
+    assert f"{d[6:]}.{d[4:6]}.{d[:4]}" in t  # Datum der letzten Sicherung
+    assert "backups" in t and "IBAN" in t  # Sicherungen bleiben und enthalten Daten
+    assert 'action="/settings/reset"' in t and 'name="confirm"' in t
+    assert "Erika Muster" not in t
+
+
+def test_page_without_backup_says_none(web):
+    _, client = web
+    assert "noch keine" in client.get("/settings/reset").text.lower()
+
+
+def test_sidebar_has_reset_entry(web):
+    _, client = web
+    t = client.get("/settings/reset").text
+    assert re.search(r'<a href="/settings/reset" aria-current="page">', t)
+    assert '<a href="/settings/reset"' in client.get("/backup").text
+
+
+@pytest.mark.parametrize("confirm", ["", "löschen", "LOESCHEN", "JA", "LÖSCHEN!"])
+def test_wrong_confirm_changes_nothing(web, confirm):
+    target, client = web
+    before = target.read_bytes()
+    r = _post(client, confirm=confirm)
+    assert r.status_code == 422
+    assert "LÖSCHEN" in r.text
+    assert target.read_bytes() == before
+    assert _backups(target) == []
+
+
+@pytest.mark.parametrize("confirm", [" LÖSCHEN ", "LO\u0308SCHEN"])
+def test_confirm_tolerates_spaces_and_decomposed_umlaut(web, confirm):
+    target, client = web
+    assert _post(client, confirm=confirm).status_code == 303
+    assert _count(target, "member") == 0
+
+
+@pytest.mark.parametrize("token", ["", "0" * 31, "../x", "Z" * 32])
+def test_bad_token_changes_nothing(web, token):
+    target, client = web
+    before = target.read_bytes()
+    r = client.post("/settings/reset", data={"confirm": WORD, "token": token})
+    assert r.status_code == 422
+    assert target.read_bytes() == before
+
+
+def test_reset_roundtrip_names_safety_copy(web):
+    target, client = web
+    r = _post(client)
+    assert r.status_code == 303
+    (name,) = _backups(target)
+    assert r.headers["location"] == f"/settings/reset?done=1&safety={name}"
+    t = client.get(r.headers["location"]).text
+    assert name in t and "/backup" in t and "Wiederherstellen" in t
+    assert _count(target, "member") == 0
+    assert _count(target.parent / "backups" / name, "member") == 1
+    # nach dem Neuanfang wieder normal nutzbar
+    assert client.get("/members").status_code == 200
+    assert client.get("/settings/update").status_code == 200
+
+
+def test_double_submit_keeps_safety_name_and_resets_once(web):
+    target, client = web
+    token = _form_token(client.get("/settings/reset").text)
+    first = _post(client, token=token)
+    after = target.read_bytes()
+    second = _post(client, token=token)
+    assert second.status_code == 303
+    assert second.headers["location"] == first.headers["location"]
+    assert len(_backups(target)) == 1  # keine Kopie der schon leeren Datenbank
+    assert target.read_bytes() == after
+
+
+def test_new_token_after_reset_resets_again(web):
+    target, client = web
+    _post(client)
+    _post(client)
+    assert len(_backups(target)) == 2
+
+
+def test_safety_failure_shows_error_and_deletes_nothing(web, monkeypatch):
+    target, client = web
+    before = target.read_bytes()
+
+    def boom(*a, **k):
+        raise OSError("platte voll")
+    monkeypatch.setattr(restore.backup, "backup_db", boom)
+    r = _post(client)
+    assert r.status_code == 422 and restore.E_SAFETY in r.text
+    assert target.read_bytes() == before
+
+
+@pytest.mark.parametrize("q", ["safety=<script>x</script>", "safety=kassivo-20260101-000000.db",
+                               "safety=../kassivo.db"])
+def test_safety_param_validated(web, q):
+    _, client = web
+    t = client.get(f"/settings/reset?done=1&{q}").text
+    assert "<script>x" not in t and "../kassivo.db" not in t
+    assert "kassivo-20260101-000000.db" not in t
+
+
+@pytest.mark.parametrize("headers", [{"Origin": "http://evil.example"},
+                                     {"Sec-Fetch-Site": "cross-site"}])
+def test_foreign_origin_blocked(web, headers):
+    target, client = web
+    token = _form_token(client.get("/settings/reset").text)
+    before = target.read_bytes()
+    r = client.post("/settings/reset", data={"confirm": WORD, "token": token}, headers=headers)
+    assert r.status_code == 403
+    assert target.read_bytes() == before
+
+
+def test_memory_db_422(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    c = make_client(":memory:")
+    r = c.post("/settings/reset", data={"confirm": WORD, "token": "0" * 32})
+    assert r.status_code == 422
+    assert list(tmp_path.iterdir()) == []

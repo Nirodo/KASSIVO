@@ -278,6 +278,7 @@ src/kassivo/
     members_routes.py  Mitglieder
     overview_routes.py Startseite "Heute zu tun"
     reports_routes.py  Jahresreport und Diagrammdaten
+    reset_routes.py    Neu anfangen: Datenbank löschen und frisch anlegen
     settings_routes.py Beiträge und Prüfungsstart
     update_routes.py   Update-Seite: Opt-in, nach Updates suchen, Paket herunterladen
     transactions_routes.py  Buchungen, Unklar, Verteilung
